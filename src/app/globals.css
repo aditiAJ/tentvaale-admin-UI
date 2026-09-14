@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * The admin theme is deliberately NOT the storefront's dark-luxury gold.
+ * A back office is a dense, high-contrast reading surface people stare at for
+ * a whole shift: neutral slate ground, one restrained amber accent that nods to
+ * the brand without the glow, and status colours that stay legible next to each
+ * other in a table row. Light is the default here (warehouse and office screens
+ * are usually bright); dark is a full companion palette, not an afterthought.
+ */
+:root {
+  --background: #f7f8fa;
+  --foreground: #16181d;
+  --card: #ffffff;
+  --card-foreground: #16181d;
+  --muted: #eef0f4;
+  --muted-foreground: #626878;
+  --border: #dfe3ea;
+  --input: #ffffff;
+  --primary: #8a6220;
+  --primary-foreground: #fffdf8;
+  --accent: #eef0f4;
+  --accent-foreground: #16181d;
+  --destructive: #b42318;
+  --destructive-foreground: #fff5f4;
+  --success: #256f3a;
+  --warning: #8a5a00;
+  --ring: #8a6220;
+  --radius: 0.5rem;
+
+  /*
+   * Quotation pipeline ramp. The stages are ORDINAL (draft → sent → accepted →
+   * converted), not categorical identities, so this is one blue hue stepped
+   * light→dark rather than four unrelated colours. Steps 250/400/550/700 of the
+   * reference sequential ramp; validated for monotone lightness, adjacent ΔL,
+   * and light-end contrast against the white card surface.
+   */
+  --viz-stage-1: #86b6ef;
+  --viz-stage-2: #3987e5;
+  --viz-stage-3: #1c5cab;
+  --viz-stage-4: #0d366b;
+}
+
+.dark {
+  --background: #0e1014;
+  --foreground: #e9ebf0;
+  --card: #16191f;
+  --card-foreground: #e9ebf0;
+  --muted: #1e222a;
+  --muted-foreground: #99a0b0;
+  --border: #272c36;
+  --input: #16191f;
+  --primary: #d8ab5e;
+  --primary-foreground: #17130a;
+  --accent: #1e222a;
+  --accent-foreground: #e9ebf0;
+  --destructive: #f0705f;
+  --destructive-foreground: #200a07;
+  --success: #6ec98a;
+  --warning: #e0b155;
+  --ring: #d8ab5e;
+
+  /* The same blue hue re-stepped for the dark card surface (150/300/450/600),
+     not an automatic inversion of the light steps. Validated against #16191f:
+     the darkest step still clears 2:1 against the surface behind it. */
+  --viz-stage-1: #b7d3f6;
+  --viz-stage-2: #6da7ec;
+  --viz-stage-3: #2a78d6;
+  --viz-stage-4: #184f95;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular figures everywhere money and counts are shown, so columns of
+     numbers line up digit-for-digit instead of shimmering between rows. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
