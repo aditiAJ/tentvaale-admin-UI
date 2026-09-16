@@ -171,6 +171,9 @@ the reason — see `layouts/navigation.ts`. That is deliberate: the shape of the
 finished system stays visible, and the gap between it and today stays impossible
 to mistake for a bug.
 
+Every module in the sidebar now has a screen, but they are not all backed
+equally. Three tiers:
+
 | Screen | Endpoints | State |
 |---|---|---|
 | Login | `POST /admin/auth/login` | Working |
@@ -179,19 +182,46 @@ to mistake for a bug.
 | Deposits | `GET /admin/deposits/by-order/{id}` + request-refund / confirm-refunded / forfeit | Working |
 | Notifications | `GET /admin/notifications/log`, `…/log/by-subject` | Working |
 | Users | `GET`/`POST /admin/users`, `…/role`, `…/deactivate`, `…/reset-password` | Working |
+| Quotations | `GET /admin/quotations/{id}` | Lookup only — no list endpoint |
+| Orders | `GET /admin/orders/{id}` | Lookup only — no list endpoint |
+| Stock movement | `GET /admin/inventory/stock-movements/by-order/{id}` | Per-order only — cannot be browsed |
+| Credit notes | `GET /admin/credit-notes/by-customer/{id}`, `…/balance`, `POST /admin/credit-notes` | Per-customer only — no company-wide list |
+| Categories | none | **Mock only** — md_category exists, no controller |
+| Customers | none | **Mock only** — StorefrontAccount exists, no admin endpoint |
+| Bundles | none | **Mock only** — no entity or table |
+| Warehouses | none | **Mock only** — no entity or table |
+| Trucks | none | **Mock only** — no entity or table |
+| Availability | none | **Mock only** — derived, and the derivation is unread |
 
-### Known gaps, and how they show up
+The middle tier works against the real backend: those four modules expose a
+record by id but have no query that lists them, so each screen looks one up
+the way Deposits already did rather than pretending to browse.
 
-These are backend limits surfaced honestly in the UI rather than papered over:
+The bottom tier has nothing to call at all, and renders seeded mock data.
+
+**None of this is said on screen.** The screens carried explanatory notes until
+they were removed by request, so this table is now the only record of which of
+them are real. Nothing in the running app distinguishes a figure the backend
+produced from one the mock invented, and nothing tells a user that a product
+cannot be edited, that a quotation's status will never move, or that the
+availability numbers are a placeholder calculation. Keep this table current: it
+is load-bearing in a way a README does not normally have to be.
+
+### Known gaps
+
+These are backend limits. They used to be surfaced in the UI; they are now
+recorded only here, so someone using the app will meet each of them as a
+surprise rather than as an explanation:
 
 - **Products are list-and-create only.** `listActiveProducts` returns active
   products, and there is no update, deactivate or get-by-id endpoint exposed. A
   product cannot be corrected or retired from the back office.
 - **Categories have no endpoint.** `md_category` exists and `ProductView`
-  resolves a `categoryName`, but nothing lists categories, so the create form
-  takes a category **id** rather than offering a picker. `category_id` is also
-  not a foreign key by design (the legacy data has orphans), so a product with
-  an unresolvable category renders as "Uncategorised" rather than as an error.
+  resolves a `categoryName`, but nothing lists or creates categories, so the
+  Categories screen is mock-only and the product create form still takes a
+  category **id** rather than offering a picker. `category_id` is also not a
+  foreign key by design (the legacy data has orphans), so a product with an
+  unresolvable category renders as "Uncategorised" rather than as an error.
 - **Users cannot be reactivated.** Deactivation is one-way from here.
 - **The dashboard is six scalars.** Reporting owns no tables and assembles them
   from other modules' APIs. The counts cover four of the six quotation statuses
@@ -202,9 +232,27 @@ These are backend limits surfaced honestly in the UI rather than papered over:
   id. Note also that `recordRefund`/`recordForfeit` do **not** check the amount
   against what is held, so the settle dialog warns when you exceed it — that
   warning is the only guard there is.
-- **No quotation or order list endpoints**, so neither screen can be built yet
-  even though create and get-by-id exist. This is the main thing blocking the
-  rest of the back office.
+- **No quotation or order list endpoints.** Both screens therefore look a
+  record up by id rather than browsing, the same shape Deposits settled on.
+  This is still the main thing blocking the back office: the counts on the
+  dashboard are the only company-wide view of either.
+- **Quotation and order status do not move.** Neither enum has a state machine
+  in code — the transition rules live in stored procedures that have not been
+  read — so both screens show status without offering a single transition, and
+  an order sits at CONFIRMED even once it has been dispatched and returned.
+- **Stock movements cannot be browsed**, only read per order, and nothing
+  validates a movement's quantities against what the order contains. A movement
+  also carries no sub-event id, so a multi-event order cannot attribute stock.
+- **Credit notes are never applied.** `appliedAmount` is initialised to zero
+  and nothing moves it: apply, cancel and reverse are unimplemented, so a
+  customer's balance only ever grows and three of the four statuses are
+  unreachable.
+- **Customers, bundles, warehouses, trucks and availability have no backend at
+  all.** Customers do at least have a real entity — identity's
+  `StorefrontAccount`, which notably has no `companyId` — but no admin endpoint
+  reaches it. The other four have neither entity nor table, and availability is
+  derived rather than stored, by a calculation nobody has read. Those five
+  screens exist as mock-only sketches.
 
 Business rules the backend enforces are also pre-empted in the UI so a refusal
 is explained before it is attempted rather than arriving as a 422: you cannot

@@ -2,7 +2,24 @@ import { ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { Role } from "@/services/permissions";
-import type { CreateProductRequest, ProductView } from "@/features/master-data/types";
+import type {
+  BundleView,
+  CategoryView,
+  CreateCategoryRequest,
+  CreateProductRequest,
+  CustomerView,
+  ProductView,
+  TruckView,
+  WarehouseView,
+} from "@/features/master-data/types";
+import type { QuotationView } from "@/features/quotations/types";
+import type { OrderView } from "@/features/orders/types";
+import type { AvailabilityRow, StockMovementView } from "@/features/inventory/types";
+import type {
+  CreditNoteView,
+  CustomerCreditBalance,
+  IssueCreditNoteRequest,
+} from "@/features/credit-notes/types";
 import type { AdminUserView, CreateAdminUserRequest } from "@/features/users/types";
 import type { AdminDashboardView } from "@/features/dashboard/types";
 import type { NotificationLogView } from "@/features/notifications/types";
@@ -10,11 +27,20 @@ import { ALLOWED_NEXT, type DepositLedgerView } from "@/features/deposits/types"
 import { mintMockToken } from "@/mock-data/token";
 import {
   COMPANY_ID,
+  SEED_BUNDLES,
+  SEED_CATEGORIES,
+  SEED_CREDIT_NOTES,
+  SEED_CUSTOMERS,
   SEED_DEPOSITS,
   SEED_NOTIFICATIONS,
   SEED_ORDERS,
+  SEED_ORDER_DETAILS,
   SEED_PRODUCTS,
   SEED_QUOTATIONS,
+  SEED_QUOTATION_DETAILS,
+  SEED_STOCK_MOVEMENTS,
+  SEED_TRUCKS,
+  SEED_WAREHOUSES,
   SEED_USERS,
 } from "@/mock-data/seed";
 
@@ -31,7 +57,7 @@ import {
  * would. Bump STORAGE_KEY's version suffix when the seed shape changes.
  */
 
-const STORAGE_KEY = "tentvaale.admin.mock.v1";
+const STORAGE_KEY = "tentvaale.admin.mock.v2";
 
 /** Enough delay to make loading states real, little enough to feel instant. */
 const LATENCY_MS = 220;
@@ -43,6 +69,15 @@ interface MockUser extends AdminUserView {
 interface MockState {
   users: MockUser[];
   products: ProductView[];
+  categories: CategoryView[];
+  customers: CustomerView[];
+  bundles: BundleView[];
+  warehouses: WarehouseView[];
+  trucks: TruckView[];
+  quotations: QuotationView[];
+  orders: OrderView[];
+  stockMovements: StockMovementView[];
+  creditNotes: CreditNoteView[];
   notifications: NotificationLogView[];
   deposits: DepositLedgerView[];
 }
@@ -52,6 +87,15 @@ function seedState(): MockState {
   return structuredClone({
     users: SEED_USERS,
     products: SEED_PRODUCTS,
+    categories: SEED_CATEGORIES,
+    customers: SEED_CUSTOMERS,
+    bundles: SEED_BUNDLES,
+    warehouses: SEED_WAREHOUSES,
+    trucks: SEED_TRUCKS,
+    quotations: SEED_QUOTATION_DETAILS,
+    orders: SEED_ORDER_DETAILS,
+    stockMovements: SEED_STOCK_MOVEMENTS,
+    creditNotes: SEED_CREDIT_NOTES,
     notifications: SEED_NOTIFICATIONS,
     deposits: SEED_DEPOSITS,
   });
@@ -171,6 +215,179 @@ export async function mockCreateProduct(request: CreateProductRequest): Promise<
   };
 
   current.products.push(created);
+  persist();
+  return created;
+}
+
+export async function mockListCategories(): Promise<CategoryView[]> {
+  await delay();
+  return state()
+    .categories.filter((category) => category.active)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function mockCreateCategory(request: CreateCategoryRequest): Promise<CategoryView> {
+  await delay();
+  const current = state();
+
+  if (current.categories.some((c) => c.name.toLowerCase() === request.name.toLowerCase())) {
+    throw businessRule(`A category named '${request.name}' already exists for this company`);
+  }
+
+  const created: CategoryView = {
+    id: crypto.randomUUID(),
+    companyId: COMPANY_ID,
+    name: request.name,
+    active: true,
+  };
+
+  current.categories.push(created);
+  persist();
+  return created;
+}
+
+/**
+ * Customers, bundles, warehouses and trucks are read-only here because they
+ * are read-only everywhere: none of them has a create endpoint to stand in
+ * for. Customers at least have a real entity (identity's StorefrontAccount),
+ * but it is created by storefront signup, not by the back office.
+ */
+export async function mockListCustomers(): Promise<CustomerView[]> {
+  await delay();
+  return [...state().customers].sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
+export async function mockListBundles(): Promise<BundleView[]> {
+  await delay();
+  return [...state().bundles].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function mockListWarehouses(): Promise<WarehouseView[]> {
+  await delay();
+  return [...state().warehouses].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function mockListTrucks(): Promise<TruckView[]> {
+  await delay();
+  return [...state().trucks].sort((a, b) => a.registration.localeCompare(b.registration));
+}
+
+// ---------------------------------------------------------------------------
+// Quotations and orders
+// ---------------------------------------------------------------------------
+
+export async function mockGetQuotation(quotationId: string): Promise<QuotationView> {
+  await delay();
+  const found = state().quotations.find((quotation) => quotation.id === quotationId);
+  if (!found) throw notFound(`Quotation ${quotationId} not found`);
+  return found;
+}
+
+export async function mockGetOrder(orderId: string): Promise<OrderView> {
+  await delay();
+  const found = state().orders.find((order) => order.id === orderId);
+  if (!found) throw notFound(`Order ${orderId} not found`);
+  return found;
+}
+
+// ---------------------------------------------------------------------------
+// Inventory
+// ---------------------------------------------------------------------------
+
+export async function mockListStockMovementsByOrder(
+  orderId: string,
+): Promise<StockMovementView[]> {
+  await delay();
+  // findByCompanyIdAndOrderIdOrderByMovedOnDesc — newest first, and an order
+  // with no movements is an empty list rather than a 404.
+  return state()
+    .stockMovements.filter((movement) => movement.orderId === orderId)
+    .sort((a, b) => Date.parse(b.movedOn) - Date.parse(a.movedOn));
+}
+
+/**
+ * There is no availability endpoint to mock, so this derives what it can from
+ * the movements the mock does hold: outward quantities minus inward ones, per
+ * product. That is emphatically NOT the real rule — the legacy calculation
+ * also weighs confirmed orders and lives in stored procedures nobody has
+ * read — and the screen says so rather than presenting this as authoritative.
+ */
+export async function mockDeriveAvailability(): Promise<AvailabilityRow[]> {
+  await delay();
+  const current = state();
+  const onRent = new Map<string, number>();
+
+  for (const movement of current.stockMovements) {
+    const sign = movement.direction === "OUTWARD" ? 1 : -1;
+    for (const line of movement.lines) {
+      onRent.set(line.productId, (onRent.get(line.productId) ?? 0) + sign * line.quantity);
+    }
+  }
+
+  return current.products
+    .filter((product) => product.active)
+    .map((product) => ({
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      onRent: onRent.get(product.id) ?? 0,
+    }))
+    .sort((a, b) => b.onRent - a.onRent || a.productName.localeCompare(b.productName));
+}
+
+// ---------------------------------------------------------------------------
+// Credit notes
+// ---------------------------------------------------------------------------
+
+export async function mockListCreditNotesByCustomer(
+  customerId: string,
+): Promise<CreditNoteView[]> {
+  await delay();
+  return state()
+    .creditNotes.filter((note) => note.customerId === customerId)
+    .sort((a, b) => Date.parse(b.issuedOn) - Date.parse(a.issuedOn));
+}
+
+/** Sums amount - appliedAmount across LIVE_STATUSES only, as the service does. */
+export async function mockGetCustomerCreditBalance(
+  customerId: string,
+): Promise<CustomerCreditBalance> {
+  await delay();
+  const available = state()
+    .creditNotes.filter(
+      (note) =>
+        note.customerId === customerId &&
+        (note.status === "ISSUED" || note.status === "REVERSED"),
+    )
+    .reduce((sum, note) => sum + Number(note.amount.amount) - Number(note.appliedAmount.amount), 0);
+
+  return { availableCredit: { amount: available, currency: "INR" } };
+}
+
+export async function mockIssueCreditNote(
+  request: IssueCreditNoteRequest,
+): Promise<CreditNoteView> {
+  await delay();
+  const current = state();
+
+  if (!(request.amount > 0)) {
+    throw businessRule("A credit note amount must be positive");
+  }
+
+  const created: CreditNoteView = {
+    id: crypto.randomUUID(),
+    companyId: COMPANY_ID,
+    creditNoteNumber: `CN-2026-${String(current.creditNotes.length + 20).padStart(4, "0")}`,
+    customerId: request.customerId,
+    againstOrderId: request.againstOrderId?.trim() ? request.againstOrderId : null,
+    amount: { amount: request.amount, currency: "INR" },
+    appliedAmount: { amount: 0, currency: "INR" },
+    status: "ISSUED",
+    issuedOn: new Date().toISOString().slice(0, 10),
+    reason: request.reason?.trim() ? request.reason : null,
+  };
+
+  current.creditNotes.push(created);
   persist();
   return created;
 }

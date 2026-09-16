@@ -62,12 +62,6 @@ export function DepositsPage() {
         description="Security deposits held against orders, and how they are settled."
       />
 
-      <Alert tone="info" title="Deposits are looked up one order at a time">
-        The backend exposes deposits only by order id — there is no list of everything outstanding,
-        so this cannot yet answer &ldquo;which deposits are waiting to be refunded?&rdquo;. Paste an
-        order id to see and settle one.
-      </Alert>
-
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {

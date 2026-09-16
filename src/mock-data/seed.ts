@@ -1,7 +1,18 @@
-import type { ProductView } from "@/features/master-data/types";
+import type {
+  BundleView,
+  CategoryView,
+  CustomerView,
+  ProductView,
+  TruckView,
+  WarehouseView,
+} from "@/features/master-data/types";
 import type { AdminUserView } from "@/features/users/types";
 import type { NotificationLogView } from "@/features/notifications/types";
 import type { DepositLedgerView } from "@/features/deposits/types";
+import type { QuotationView } from "@/features/quotations/types";
+import type { OrderView } from "@/features/orders/types";
+import type { StockMovementView } from "@/features/inventory/types";
+import type { CreditNoteView } from "@/features/credit-notes/types";
 import type { Role } from "@/services/permissions";
 
 /**
@@ -101,11 +112,30 @@ export const SEED_PRODUCTS: ProductView[] = [
   { id: "p-13", companyId: COMPANY_ID, sku: "TENT-RETIRED", name: "15x30 Frame Tent (retired)", description: "Withdrawn after storm damage", categoryName: "Tents", rentalRate: inr(9000), securityDeposit: inr(4000), active: false },
 ];
 
+/**
+ * Named to match the categoryName strings already baked into SEED_PRODUCTS
+ * above (products store the name directly in the mock rather than resolving
+ * it through categoryId, so the two lists are not joined — same as the real
+ * schema, where category_id is deliberately not a foreign key).
+ */
+export const SEED_CATEGORIES: CategoryView[] = [
+  { id: "cat-01", companyId: COMPANY_ID, name: "Tents", active: true },
+  { id: "cat-02", companyId: COMPANY_ID, name: "Seating", active: true },
+  { id: "cat-03", companyId: COMPANY_ID, name: "Tables", active: true },
+  { id: "cat-04", companyId: COMPANY_ID, name: "Lighting", active: true },
+  { id: "cat-05", companyId: COMPANY_ID, name: "Power", active: true },
+];
+
 export interface SeedQuotation {
   id: string;
   number: string;
   status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "CONVERTED" | "EXPIRED";
 }
+
+/** UUID-shaped for the same reason order ids are: the quotation screen looks
+ *  one up by id, and nothing else in the app would accept `q-d0`. */
+const quotationId = (group: number, index: number) =>
+  `66666666-6666-6666-6666-6666${String(group).padStart(2, "0")}${String(index).padStart(6, "0")}`;
 
 /**
  * The dashboard counts are derived from these rather than hardcoded, so the
@@ -114,12 +144,48 @@ export interface SeedQuotation {
  * says so rather than quietly folding them into a win rate.
  */
 export const SEED_QUOTATIONS: SeedQuotation[] = [
-  ...Array.from({ length: 14 }, (_, i) => ({ id: `q-d${i}`, number: `QT-2026-${300 + i}`, status: "DRAFT" as const })),
-  ...Array.from({ length: 23 }, (_, i) => ({ id: `q-s${i}`, number: `QT-2026-${200 + i}`, status: "SENT" as const })),
-  ...Array.from({ length: 9 }, (_, i) => ({ id: `q-a${i}`, number: `QT-2026-${150 + i}`, status: "ACCEPTED" as const })),
-  ...Array.from({ length: 31 }, (_, i) => ({ id: `q-c${i}`, number: `QT-2026-${100 + i}`, status: "CONVERTED" as const })),
-  ...Array.from({ length: 6 }, (_, i) => ({ id: `q-r${i}`, number: `QT-2026-${80 + i}`, status: "REJECTED" as const })),
-  ...Array.from({ length: 4 }, (_, i) => ({ id: `q-e${i}`, number: `QT-2026-${70 + i}`, status: "EXPIRED" as const })),
+  ...Array.from({ length: 14 }, (_, i) => ({ id: quotationId(1, i), number: `QT-2026-${300 + i}`, status: "DRAFT" as const })),
+  ...Array.from({ length: 23 }, (_, i) => ({ id: quotationId(2, i), number: `QT-2026-${200 + i}`, status: "SENT" as const })),
+  ...Array.from({ length: 9 }, (_, i) => ({ id: quotationId(3, i), number: `QT-2026-${150 + i}`, status: "ACCEPTED" as const })),
+  ...Array.from({ length: 31 }, (_, i) => ({ id: quotationId(4, i), number: `QT-2026-${100 + i}`, status: "CONVERTED" as const })),
+  ...Array.from({ length: 6 }, (_, i) => ({ id: quotationId(5, i), number: `QT-2026-${80 + i}`, status: "REJECTED" as const })),
+  ...Array.from({ length: 4 }, (_, i) => ({ id: quotationId(6, i), number: `QT-2026-${70 + i}`, status: "EXPIRED" as const })),
+];
+
+/**
+ * Customers are StorefrontAccounts, which have no companyId — they are not
+ * owned by a tenant, so these are deliberately not stamped with COMPANY_ID
+ * the way every other seed here is. One EVENT_PLANNER is included because the
+ * account type is the only thing that distinguishes the two.
+ */
+export const SEED_CUSTOMERS: CustomerView[] = [
+  { id: "44444444-4444-4444-4444-444444444401", email: "amit.shah@example.com", fullName: "Amit Shah", phone: "+91 98200 11223", accountType: "CUSTOMER" },
+  { id: "44444444-4444-4444-4444-444444444402", email: "neha.r@example.com", fullName: "Neha Raghavan", phone: "+91 99300 44556", accountType: "CUSTOMER" },
+  { id: "44444444-4444-4444-4444-444444444403", email: "events@grandpalace.example", fullName: "Grand Palace Banquets", phone: "+91 22 4455 6677", accountType: "EVENT_PLANNER" },
+  { id: "44444444-4444-4444-4444-444444444404", email: "rhea.kapoor@example.com", fullName: "Rhea Kapoor", phone: null, accountType: "CUSTOMER" },
+  { id: "44444444-4444-4444-4444-444444444405", email: "vendor.desk@example.com", fullName: "Mehta Event Co.", phone: "+91 98110 77889", accountType: "EVENT_PLANNER" },
+];
+
+/** Invented outright — no bundle table or endpoint exists to be faithful to. */
+export const SEED_BUNDLES: BundleView[] = [
+  { id: "b-01", companyId: COMPANY_ID, name: "Wedding Mandap Set", contents: ["20x40 Frame Tent", "Gold Chiavari Chair", "6ft Round Table"], rentalRate: inr(28000) },
+  { id: "b-02", companyId: COMPANY_ID, name: "Corporate Conference Kit", contents: ["30x60 Pole Tent", "White Folding Chair", "8x12 Stage Deck"], rentalRate: inr(41000) },
+  { id: "b-03", companyId: COMPANY_ID, name: "Garden Party Package", contents: ["10x10 Canopy", "Cocktail Table", "Fairy Light Curtain"], rentalRate: inr(6400) },
+];
+
+/** Invented outright — warehouses are an opaque UUID on StockMovement only. */
+export const SEED_WAREHOUSES: WarehouseView[] = [
+  { id: "55555555-5555-5555-5555-555555555501", companyId: COMPANY_ID, name: "Andheri Main Store", city: "Mumbai" },
+  { id: "55555555-5555-5555-5555-555555555502", companyId: COMPANY_ID, name: "Pune Satellite Depot", city: "Pune" },
+  { id: "55555555-5555-5555-5555-555555555503", companyId: COMPANY_ID, name: "Nashik Overflow Yard", city: "Nashik" },
+];
+
+/** Invented outright — no truck table, and volume attributes for load
+ *  calculation are not modelled on products either. */
+export const SEED_TRUCKS: TruckView[] = [
+  { id: "t-01", companyId: COMPANY_ID, registration: "MH 01 AB 4471", capacityKg: 3500 },
+  { id: "t-02", companyId: COMPANY_ID, registration: "MH 12 CD 9920", capacityKg: 7500 },
+  { id: "t-03", companyId: COMPANY_ID, registration: "MH 04 EF 1183", capacityKg: 1200 },
 ];
 
 export interface SeedOrder {
@@ -144,6 +210,257 @@ export const SEED_ORDERS: SeedOrder[] = [
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
+const daysFromNow = (days: number) =>
+  new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+
+const productBySku = (sku: string): ProductView => {
+  const found = SEED_PRODUCTS.find((product) => product.sku === sku);
+  if (!found) throw new Error(`Seed error: no product with SKU ${sku}`);
+  return found;
+};
+
+interface SeedLine {
+  sku: string;
+  quantity: number;
+  rentalDays: number;
+}
+
+/**
+ * Full quotation and order records for the screens that look one up by id.
+ *
+ * These are built FROM the count seeds above rather than written out beside
+ * them: the id, number and status all come from the SeedQuotation entry, so
+ * a quotation the dashboard counts as SENT can never open as something else.
+ * Line totals are computed from the real product rates for the same reason —
+ * the backend stores totals at creation time, so they are materialised here
+ * too rather than derived on read.
+ */
+function quotationDetail(
+  source: SeedQuotation,
+  customer: CustomerView,
+  eventInDays: number,
+  lines: SeedLine[],
+  sourceReference: string | null,
+): QuotationView {
+  const built = lines.map((line, index) => {
+    const product = productBySku(line.sku);
+    const rate = Number(product.rentalRate.amount);
+    return {
+      id: `${source.id}-L${index + 1}`,
+      productId: product.id,
+      productName: product.name,
+      quantity: line.quantity,
+      rentalDays: line.rentalDays,
+      unitRatePerDay: inr(rate),
+      lineTotal: inr(rate * line.quantity * line.rentalDays),
+    };
+  });
+
+  const deposit = lines.reduce(
+    (sum, line) => sum + Number(productBySku(line.sku).securityDeposit.amount) * line.quantity,
+    0,
+  );
+
+  return {
+    id: source.id,
+    companyId: COMPANY_ID,
+    quotationNumber: source.number,
+    customerId: customer.id,
+    customerName: customer.fullName,
+    customerEmail: customer.email,
+    eventDate: daysFromNow(eventInDays),
+    status: source.status,
+    totalAmount: inr(built.reduce((sum, line) => sum + Number(line.lineTotal.amount), 0)),
+    totalSecurityDeposit: inr(deposit),
+    sourceReference,
+    lines: built,
+  };
+}
+
+const quotationByNumber = (number: string): SeedQuotation => {
+  const found = SEED_QUOTATIONS.find((quotation) => quotation.number === number);
+  if (!found) throw new Error(`Seed error: no quotation numbered ${number}`);
+  return found;
+};
+
+export const SEED_QUOTATION_DETAILS: QuotationView[] = [
+  quotationDetail(
+    quotationByNumber("QT-2026-100"),
+    SEED_CUSTOMERS[0],
+    12,
+    [
+      { sku: "TENT-20X40", quantity: 1, rentalDays: 2 },
+      { sku: "CHR-GOLD", quantity: 80, rentalDays: 2 },
+      { sku: "TBL-ROUND-6", quantity: 8, rentalDays: 2 },
+    ],
+    "admin-ui",
+  ),
+  quotationDetail(
+    quotationByNumber("QT-2026-200"),
+    SEED_CUSTOMERS[2],
+    26,
+    [
+      { sku: "TENT-30X60", quantity: 1, rentalDays: 3 },
+      { sku: "STAGE-8X12", quantity: 2, rentalDays: 3 },
+      { sku: "LIGHT-UPLIGHT", quantity: 12, rentalDays: 3 },
+    ],
+    "storefront-plan:99999999-9999-9999-9999-999999999901",
+  ),
+  quotationDetail(
+    quotationByNumber("QT-2026-300"),
+    SEED_CUSTOMERS[3],
+    40,
+    [{ sku: "LIGHT-FAIRY", quantity: 6, rentalDays: 1 }],
+    "admin-ui",
+  ),
+  quotationDetail(
+    quotationByNumber("QT-2026-150"),
+    SEED_CUSTOMERS[4],
+    19,
+    [
+      { sku: "GEN-15KVA", quantity: 1, rentalDays: 2 },
+      { sku: "CHR-WHITE", quantity: 150, rentalDays: 2 },
+    ],
+    "admin-ui",
+  ),
+];
+
+/**
+ * Orders are converted quotations, so each detail here is built from one of
+ * the quotation details above: lines, customer and totals are copied across
+ * exactly as OrderMgmtService copies them, rather than being invented a
+ * second time. Status is always CONFIRMED because that is the only status
+ * anything in the rebuild ever sets.
+ */
+function orderFromQuotation(source: SeedOrder, quotation: QuotationView): OrderView {
+  return {
+    id: source.id,
+    companyId: COMPANY_ID,
+    orderNumber: source.number,
+    quotationId: quotation.id,
+    customerId: quotation.customerId,
+    customerName: quotation.customerName,
+    customerEmail: quotation.customerEmail,
+    eventDate: quotation.eventDate,
+    status: "CONFIRMED",
+    totalAmount: quotation.totalAmount,
+    securityDeposit: quotation.totalSecurityDeposit,
+    sourceReference: quotation.sourceReference,
+    lines: quotation.lines.map((line) => ({
+      id: `${source.id}-${line.id}`,
+      productId: line.productId,
+      productName: line.productName,
+      quantity: line.quantity,
+      rentalDays: line.rentalDays,
+      lineTotal: line.lineTotal,
+    })),
+  };
+}
+
+export const SEED_ORDER_DETAILS: OrderView[] = [
+  orderFromQuotation(SEED_ORDERS[0], SEED_QUOTATION_DETAILS[0]),
+  orderFromQuotation(SEED_ORDERS[2], SEED_QUOTATION_DETAILS[1]),
+  orderFromQuotation(SEED_ORDERS[4], SEED_QUOTATION_DETAILS[3]),
+];
+
+/**
+ * Movements are recorded against a whole order. The first order has gone out
+ * and come back; the third has only gone out, so it still reads as on rent —
+ * which is the one thing the availability screen can show.
+ */
+export const SEED_STOCK_MOVEMENTS: StockMovementView[] = [
+  {
+    id: "sm-01",
+    companyId: COMPANY_ID,
+    orderId: SEED_ORDERS[0].id,
+    movementNumber: "SM-2026-0041",
+    direction: "OUTWARD",
+    movedOn: new Date(Date.now() - 86_400_000 * 6).toISOString().slice(0, 10),
+    warehouseId: SEED_WAREHOUSES[0].id,
+    remarks: "Loaded 06:30, two trips",
+    lines: SEED_QUOTATION_DETAILS[0].lines.map((line, index) => ({
+      id: `sm-01-L${index + 1}`,
+      productId: line.productId,
+      quantity: line.quantity,
+    })),
+  },
+  {
+    id: "sm-02",
+    companyId: COMPANY_ID,
+    orderId: SEED_ORDERS[0].id,
+    movementNumber: "SM-2026-0048",
+    direction: "INWARD",
+    movedOn: new Date(Date.now() - 86_400_000 * 3).toISOString().slice(0, 10),
+    warehouseId: SEED_WAREHOUSES[0].id,
+    remarks: "All returned, two chairs scuffed",
+    lines: SEED_QUOTATION_DETAILS[0].lines.map((line, index) => ({
+      id: `sm-02-L${index + 1}`,
+      productId: line.productId,
+      quantity: line.quantity,
+    })),
+  },
+  {
+    id: "sm-03",
+    companyId: COMPANY_ID,
+    orderId: SEED_ORDERS[2].id,
+    movementNumber: "SM-2026-0052",
+    direction: "OUTWARD",
+    movedOn: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
+    warehouseId: SEED_WAREHOUSES[1].id,
+    remarks: null,
+    lines: SEED_QUOTATION_DETAILS[1].lines.map((line, index) => ({
+      id: `sm-03-L${index + 1}`,
+      productId: line.productId,
+      quantity: line.quantity,
+    })),
+  },
+];
+
+/**
+ * Credit notes are read per customer, never company-wide. appliedAmount is
+ * zero on every one of them because nothing in the rebuild applies a credit —
+ * the apply/cancel/reverse transitions live in stored procedures that have
+ * not been read, so ISSUED is the only status any of these can be in.
+ */
+export const SEED_CREDIT_NOTES: CreditNoteView[] = [
+  {
+    id: "cn-01",
+    companyId: COMPANY_ID,
+    creditNoteNumber: "CN-2026-0012",
+    customerId: SEED_CUSTOMERS[0].id,
+    againstOrderId: SEED_ORDERS[0].id,
+    amount: inr(4500),
+    appliedAmount: inr(0),
+    status: "ISSUED",
+    issuedOn: new Date(Date.now() - 86_400_000 * 11).toISOString().slice(0, 10),
+    reason: "Two uplights failed on the night; partial credit agreed",
+  },
+  {
+    id: "cn-02",
+    companyId: COMPANY_ID,
+    creditNoteNumber: "CN-2026-0015",
+    customerId: SEED_CUSTOMERS[0].id,
+    againstOrderId: null,
+    amount: inr(2000),
+    appliedAmount: inr(0),
+    status: "ISSUED",
+    issuedOn: new Date(Date.now() - 86_400_000 * 4).toISOString().slice(0, 10),
+    reason: "Goodwill credit after late dispatch",
+  },
+  {
+    id: "cn-03",
+    companyId: COMPANY_ID,
+    creditNoteNumber: "CN-2026-0009",
+    customerId: SEED_CUSTOMERS[2].id,
+    againstOrderId: SEED_ORDERS[2].id,
+    amount: inr(11750),
+    appliedAmount: inr(0),
+    status: "ISSUED",
+    issuedOn: new Date(Date.now() - 86_400_000 * 22).toISOString().slice(0, 10),
+    reason: "Stage deck shortfall, one section never delivered",
+  },
+];
+
 export const SEED_NOTIFICATIONS: NotificationLogView[] = [
   { id: "n-01", companyId: COMPANY_ID, channel: "EMAIL", templateKey: "quotation.sent", recipient: "rhea.kapoor@example.com", subjectReference: "QT-2026-0184", status: "SENT", attemptedAt: minutesAgo(8) },
   { id: "n-02", companyId: COMPANY_ID, channel: "EMAIL", templateKey: "deposit.refunded", recipient: "amit.shah@example.com", subjectReference: "ORD-2026-0088", status: "PENDING", attemptedAt: minutesAgo(21) },
@@ -163,7 +480,7 @@ export const SEED_DEPOSITS: DepositLedgerView[] = [
   {
     id: "dep-01", companyId: COMPANY_ID,
     orderId: "33333333-3333-3333-3333-333333333301",
-    accountId: "acct-amit",
+    accountId: SEED_CUSTOMERS[0].id,
     amountHeld: inr(15000), amountRefunded: inr(0), amountForfeited: inr(0),
     status: "HELD",
     heldAt: minutesAgo(60 * 24 * 9),
@@ -171,7 +488,7 @@ export const SEED_DEPOSITS: DepositLedgerView[] = [
   {
     id: "dep-02", companyId: COMPANY_ID,
     orderId: "33333333-3333-3333-3333-333333333302",
-    accountId: "acct-neha",
+    accountId: SEED_CUSTOMERS[1].id,
     amountHeld: inr(9000), amountRefunded: inr(0), amountForfeited: inr(3500),
     status: "FORFEITED",
     reason: "Two stage decks returned water-damaged",
@@ -180,7 +497,7 @@ export const SEED_DEPOSITS: DepositLedgerView[] = [
   {
     id: "dep-03", companyId: COMPANY_ID,
     orderId: "33333333-3333-3333-3333-333333333303",
-    accountId: "acct-grandpalace",
+    accountId: SEED_CUSTOMERS[2].id,
     amountHeld: inr(24000), amountRefunded: inr(0), amountForfeited: inr(0),
     status: "REFUND_PENDING",
     reason: "Event completed, nothing damaged",
@@ -189,7 +506,7 @@ export const SEED_DEPOSITS: DepositLedgerView[] = [
   {
     id: "dep-04", companyId: COMPANY_ID,
     orderId: "33333333-3333-3333-3333-333333333304",
-    accountId: "acct-rhea",
+    accountId: SEED_CUSTOMERS[3].id,
     amountHeld: inr(5000), amountRefunded: inr(5000), amountForfeited: inr(0),
     status: "REFUNDED",
     heldAt: minutesAgo(60 * 24 * 40), settledAt: minutesAgo(60 * 24 * 31),
@@ -197,7 +514,7 @@ export const SEED_DEPOSITS: DepositLedgerView[] = [
   {
     id: "dep-05", companyId: COMPANY_ID,
     orderId: "33333333-3333-3333-3333-333333333305",
-    accountId: "acct-mehta",
+    accountId: SEED_CUSTOMERS[4].id,
     amountHeld: inr(10000), amountRefunded: inr(0), amountForfeited: inr(0),
     status: "HELD",
     heldAt: minutesAgo(60 * 24 * 3),
@@ -217,4 +534,30 @@ export const DEMO_DEPOSIT_EXAMPLES = SEED_DEPOSITS.map((deposit) => ({
   orderNumber:
     SEED_ORDERS.find((order) => order.id === deposit.orderId)?.number ??
     deposit.orderId.slice(0, 8),
+}));
+
+/** The same one-click affordance for every other screen that looks up by id:
+ *  only the records the mock actually holds in full are offered. */
+export const DEMO_QUOTATION_EXAMPLES = SEED_QUOTATION_DETAILS.map((quotation) => ({
+  id: quotation.id,
+  label: `${quotation.quotationNumber} · ${quotation.status}`,
+}));
+
+export const DEMO_ORDER_EXAMPLES = SEED_ORDER_DETAILS.map((order) => ({
+  id: order.id,
+  label: order.orderNumber,
+}));
+
+export const DEMO_MOVEMENT_ORDER_EXAMPLES = [
+  ...new Set(SEED_STOCK_MOVEMENTS.map((movement) => movement.orderId)),
+].map((orderId) => ({
+  id: orderId,
+  label: SEED_ORDERS.find((order) => order.id === orderId)?.number ?? orderId.slice(0, 8),
+}));
+
+export const DEMO_CREDIT_CUSTOMER_EXAMPLES = [
+  ...new Set(SEED_CREDIT_NOTES.map((note) => note.customerId)),
+].map((customerId) => ({
+  id: customerId,
+  label: SEED_CUSTOMERS.find((customer) => customer.id === customerId)?.fullName ?? customerId,
 }));

@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert } from "@/components/ui/alert";
 import { Dialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -101,12 +100,6 @@ export function UsersPage() {
           ) : null
         }
       />
-
-      <Alert tone="info" title="Deactivation is one-way from here">
-        Users are deactivated rather than deleted, because audit columns on other records reference
-        them. There is no reactivate endpoint yet, so an account switched off here has to be
-        restored in the database.
-      </Alert>
 
       <Card>
         <TableWrapper>

@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -60,13 +59,6 @@ export function ProductsPage() {
           ) : null
         }
       />
-
-      <Alert tone="info" title="This list shows active products only">
-        The backend returns active products and has no endpoint for deactivating, editing or
-        reactivating one, so a product cannot yet be corrected or retired from here. Categories are
-        equally incomplete: products store a category id, but nothing lists categories, so the
-        create form takes an id rather than offering a picker.
-      </Alert>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">

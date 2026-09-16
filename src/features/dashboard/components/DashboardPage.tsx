@@ -12,7 +12,6 @@ import { formatCount, HeroFigure, StatTile } from "@/components/ui/stat";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -115,15 +114,6 @@ export function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Alert tone="info" title="These six figures are the whole endpoint">
-            The reporting module owns no tables of its own and assembles the dashboard from the
-            quotation and order modules&apos; public APIs, so adding a figure means adding a read
-            method to the module that owns the data. Two consequences worth knowing: the counts
-            cover four of the six quotation statuses — rejected and expired are not returned, so a
-            true win rate cannot be computed here — and order value is a lifetime total with no
-            period comparison. The legacy admin&apos;s revenue trend, overdue payments, late
-            returns, low stock and top products have no equivalent yet.
-          </Alert>
         </>
       ) : null}
     </div>

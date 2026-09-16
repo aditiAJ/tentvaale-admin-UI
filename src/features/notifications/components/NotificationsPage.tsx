@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -100,21 +99,12 @@ export function NotificationsPage() {
     });
   }, [data, deferredSearch, channel, status]);
 
-  const failures = visible.filter((row) => row.status === "FAILED").length;
-
   return (
     <div className="space-y-4">
       <PageHeader
         title="Notifications"
         description="What was sent to customers, and what was not."
       />
-
-      {failures > 0 ? (
-        <Alert tone="warning" title={`${failures} failed ${failures === 1 ? "attempt" : "attempts"} in view`}>
-          Nothing here retries on its own — a failed message has to be re-triggered from whatever
-          raised it.
-        </Alert>
-      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
