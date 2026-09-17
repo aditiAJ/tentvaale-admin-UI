@@ -1,28 +1,32 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Tags } from "lucide-react";
-import { listCategories, masterDataKeys } from "@/features/master-data/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { EyeOff, Plus, Search, Tags } from "lucide-react";
+import { deactivateCategory, listCategories, masterDataKeys } from "@/features/master-data/api";
 import type { CategoryView } from "@/features/master-data/types";
-import { CreateCategoryDialog } from "@/features/master-data/components/CreateCategoryDialog";
+import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
+import { RowActions } from "@/features/master-data/components/RowActions";
 import { useCan } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-
-const COLUMNS = 1;
 
 export function CategoriesPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<CategoryView | null>(null);
+  const [deactivating, setDeactivating] = useState<CategoryView | null>(null);
+  const queryClient = useQueryClient();
 
   const deferredSearch = useDeferredValue(search);
+  const columns = canWrite ? 2 : 1;
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery({
     queryKey: masterDataKeys.categories,
@@ -73,15 +77,27 @@ export function CategoriesPage() {
             <THead>
               <tr>
                 <TH>Name</TH>
+                {canWrite ? <TH className="text-right">Actions</TH> : null}
               </tr>
             </THead>
             <TBody>
-              {isPending ? <TableSkeleton columns={COLUMNS} /> : null}
+              {isPending ? <TableSkeleton columns={columns} /> : null}
 
               {!isPending && visible.length > 0
                 ? visible.map((category: CategoryView) => (
                     <TR key={category.id}>
                       <TD className="font-medium">{category.name}</TD>
+                      {canWrite ? (
+                        <TD>
+                          <RowActions
+                            label={category.name}
+                            onEdit={() => setEditing(category)}
+                            onRemove={() => setDeactivating(category)}
+                            removeLabel="Deactivate"
+                            removeIcon={<EyeOff />}
+                          />
+                        </TD>
+                      ) : null}
                     </TR>
                   ))
                 : null}
@@ -122,7 +138,22 @@ export function CategoriesPage() {
         ) : null}
       </Card>
 
-      {creating ? <CreateCategoryDialog onClose={() => setCreating(false)} /> : null}
+      {creating ? <CategoryDialog onClose={() => setCreating(false)} /> : null}
+      {editing ? <CategoryDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {deactivating ? (
+        <ConfirmDialog
+          title={`Deactivate ${deactivating.name}?`}
+          description="It disappears from the list and from any picker, but the row stays, so products already filed under it keep their label."
+          confirmLabel="Deactivate category"
+          fallbackError="Could not deactivate the category."
+          action={() => deactivateCategory(deactivating.id)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: masterDataKeys.categories });
+            setDeactivating(null);
+          }}
+          onClose={() => setDeactivating(null)}
+        />
+      ) : null}
     </div>
   );
 }

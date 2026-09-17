@@ -25,8 +25,14 @@ const STATUS_VARIANT: Record<OrderStatus, "default" | "success" | "warning" | "d
   CANCELLED: "destructive",
 };
 
-export function OrdersPage() {
-  const [orderId, setOrderId] = useState("");
+/**
+ * `initialOrderId` comes from `?id=` on the route, which is what lets a
+ * conversion end on the order it just created rather than handing the user an
+ * id to paste back in. Initial, not controlled — once the screen is open the
+ * lookup box owns the id.
+ */
+export function OrdersPage({ initialOrderId = "" }: { initialOrderId?: string }) {
+  const [orderId, setOrderId] = useState(initialOrderId);
 
   const { data, isFetching, isError, error } = useQuery({
     queryKey: orderKeys.byId(orderId),

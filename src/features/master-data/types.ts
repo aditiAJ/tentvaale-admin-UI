@@ -101,3 +101,56 @@ export interface TruckView {
   /** Legacy computes load from product volume against this; neither is modelled. */
   capacityKg: number;
 }
+
+// ---------------------------------------------------------------------------
+// Write shapes for the modules the backend has not defined yet.
+//
+// Everything below this line describes an endpoint that does not exist. Four of
+// these modules — categories, bundles, warehouses and trucks — have no
+// controller at all, and customers have an entity but nothing admin-facing that
+// reaches it, so there is no contract to mirror and these are this UI's
+// proposal for one. They are kept deliberately dull: a create that takes the
+// fields the view shows, an update that takes the same fields, and a delete
+// that takes nothing. When the backend defines the real ones, the argument
+// should be about field names, not about shape.
+//
+// The rules the mock enforces against them (unique names, a warehouse that is
+// referenced refusing to be deleted, a category deactivating rather than
+// vanishing) are likewise invented rather than mirrored — see mock-data/store.
+// ---------------------------------------------------------------------------
+
+export interface UpdateCategoryRequest {
+  name: string;
+}
+
+export interface CreateWarehouseRequest {
+  name: string;
+  city: string;
+}
+
+export type UpdateWarehouseRequest = CreateWarehouseRequest;
+
+export interface CreateTruckRequest {
+  registration: string;
+  capacityKg: number;
+}
+
+export type UpdateTruckRequest = CreateTruckRequest;
+
+export interface CreateBundleRequest {
+  name: string;
+  /** Product names, because a bundle has no line entity to hold ids. */
+  contents: string[];
+  rentalRate: number;
+}
+
+export type UpdateBundleRequest = CreateBundleRequest;
+
+export interface CreateCustomerRequest {
+  email: string;
+  fullName: string;
+  phone?: string;
+  accountType: CustomerView["accountType"];
+}
+
+export type UpdateCustomerRequest = CreateCustomerRequest;

@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { FileText } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import { getQuotation, quotationKeys } from "@/features/quotations/api";
 import type { QuotationStatus } from "@/features/quotations/types";
+import { useCan } from "@/features/auth";
+import { ConvertToOrderDialog } from "@/features/orders";
 import { ApiError } from "@/services/api-client";
 import { DEMO_QUOTATION_EXAMPLES } from "@/mock-data/seed";
 import { formatMoney } from "@/lib/money";
 import { IdLookup } from "@/components/id-lookup";
 import { PageHeader } from "@/components/page-header";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
@@ -26,8 +30,20 @@ const STATUS_VARIANT: Record<QuotationStatus, "default" | "success" | "warning" 
   EXPIRED: "destructive",
 };
 
-export function QuotationsPage() {
-  const [quotationId, setQuotationId] = useState("");
+/**
+ * `initialQuotationId` comes from `?id=` on the route, which is how creating a
+ * quotation can end on the record it just made. It is an initial value rather
+ * than a controlled one: once the screen is open, the lookup box owns the id,
+ * and a later edit there should not be fighting the URL.
+ */
+export function QuotationsPage({ initialQuotationId = "" }: { initialQuotationId?: string }) {
+  const [quotationId, setQuotationId] = useState(initialQuotationId);
+  const [converting, setConverting] = useState(false);
+  const canWrite = useCan("QUOTATION_WRITE");
+  // Converting writes an order, so it is ORDER_WRITE that governs it, not
+  // QUOTATION_WRITE — which is why a SALES user sees both actions and an
+  // ACCOUNTS user sees neither.
+  const canConvert = useCan("ORDER_WRITE");
 
   const { data, isFetching, isError, error } = useQuery({
     queryKey: quotationKeys.byId(quotationId),
@@ -43,6 +59,17 @@ export function QuotationsPage() {
       <PageHeader
         title="Quotations"
         description="What was quoted, to whom, and what became of it."
+        actions={
+          canWrite ? (
+            // A link rather than a button with a router push: raising a
+            // quotation is a navigation, and it should middle-click and open in
+            // a new tab like one.
+            <Link href="/quotations/new" className={buttonVariants()}>
+              <Plus />
+              New quotation
+            </Link>
+          ) : null
+        }
       />
 
       <IdLookup
@@ -81,7 +108,28 @@ export function QuotationsPage() {
                   {data.customerEmail ? ` · ${data.customerEmail}` : ""}
                 </p>
               </div>
-              <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>
+                {canConvert ? (
+                  // Only CONVERTED is refused: markConverted is the one rule
+                  // the backend actually has here, so a rejected or expired
+                  // quotation is still offered rather than being blocked by a
+                  // rule this screen invented.
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={data.status === "CONVERTED"}
+                    title={
+                      data.status === "CONVERTED"
+                        ? "This quotation has already been converted to an order"
+                        : undefined
+                    }
+                    onClick={() => setConverting(true)}
+                  >
+                    Convert to order
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
 
             <CardContent>
@@ -145,6 +193,10 @@ export function QuotationsPage() {
               a product&apos;s rate does not alter a quote that has already gone out.
             </CardContent>
           </Card>
+
+          {converting ? (
+            <ConvertToOrderDialog quotation={data} onClose={() => setConverting(false)} />
+          ) : null}
         </>
       ) : null}
     </div>

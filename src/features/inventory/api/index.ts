@@ -1,7 +1,15 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
-import { mockDeriveAvailability, mockListStockMovementsByOrder } from "@/mock-data/store";
-import type { AvailabilityRow, StockMovementView } from "@/features/inventory/types";
+import {
+  mockDeriveAvailability,
+  mockListStockMovementsByOrder,
+  mockRecordStockMovement,
+} from "@/mock-data/store";
+import type {
+  AvailabilityRow,
+  RecordStockMovementRequest,
+  StockMovementView,
+} from "@/features/inventory/types";
 
 /**
  * Real, and works in api mode: movements can be recorded and read back per
@@ -20,6 +28,24 @@ export function listStockMovementsByOrder(
     `/admin/inventory/stock-movements/by-order/${encodeURIComponent(orderId)}`,
     { signal },
   );
+}
+
+/**
+ * Records a dispatch or a return. Needs INVENTORY_WRITE, and answers 201 with
+ * the movement.
+ *
+ * 404 when the order does not exist or belongs to another company, 422 when
+ * there are no lines or a quantity is below 1. Nothing else is checked — see
+ * RecordStockMovementRequest.
+ */
+export function recordStockMovement(
+  request: RecordStockMovementRequest,
+): Promise<StockMovementView> {
+  if (IS_MOCK) return mockRecordStockMovement(request);
+  return apiFetch<StockMovementView>("/admin/inventory/stock-movements", {
+    method: "POST",
+    body: request,
+  });
 }
 
 /**

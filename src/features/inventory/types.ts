@@ -49,3 +49,32 @@ export interface AvailabilityRow {
   sku: string;
   onRent: number;
 }
+
+/** One line of a movement. Mirrors StockMovementAdminController.MovementLineRequest. */
+export interface RecordMovementLineRequest {
+  productId: string;
+  quantity: number;
+}
+
+/**
+ * Mirrors StockMovementAdminController.RecordMovementRequest.
+ *
+ * `movedOn` is optional because the controller substitutes today when it is
+ * absent; `warehouseId` is optional and opaque, since nothing resolves it.
+ * There is still no sub-event id, deliberately — a movement belongs to a whole
+ * order, so a multi-event order cannot say which event the stock went to.
+ *
+ * Note what is NOT checked: InventoryService validates the order exists and
+ * that each quantity is at least 1, and nothing else. It does not compare the
+ * lines against what the order contains, or against what is actually in the
+ * warehouse — its own TODO says those rules live in unread stored procedures.
+ * So a movement can dispatch a product the order never included.
+ */
+export interface RecordStockMovementRequest {
+  orderId: string;
+  direction: MovementDirection;
+  movedOn?: string;
+  warehouseId?: string;
+  remarks?: string;
+  lines: RecordMovementLineRequest[];
+}

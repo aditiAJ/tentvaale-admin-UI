@@ -1,3 +1,9 @@
-export { getOrder, orderKeys } from "./api";
+export { createOrderFromQuotation, getOrder, orderKeys } from "./api";
 export { OrdersPage } from "./components/OrdersPage";
-export type { OrderView, OrderLineView, OrderStatus } from "./types";
+export { ConvertToOrderDialog } from "./components/ConvertToOrderDialog";
+export type {
+  CreateOrderFromQuotationRequest,
+  OrderView,
+  OrderLineView,
+  OrderStatus,
+} from "./types";

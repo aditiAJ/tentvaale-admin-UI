@@ -1,7 +1,7 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
-import { mockGetQuotation } from "@/mock-data/store";
-import type { QuotationView } from "@/features/quotations/types";
+import { mockCreateQuotation, mockGetQuotation } from "@/mock-data/store";
+import type { CreateQuotationRequest, QuotationView } from "@/features/quotations/types";
 
 /**
  * Get-by-id is real — QuotationAdminController exposes it and this call works
@@ -17,6 +17,20 @@ export function getQuotation(quotationId: string, signal?: AbortSignal): Promise
   return apiFetch<QuotationView>(`/admin/quotations/${encodeURIComponent(quotationId)}`, {
     signal,
   });
+}
+
+/**
+ * Create is real, and has been since before this screen existed — the storefront
+ * reaches the same QuotationService through ordering. It needs QUOTATION_WRITE
+ * and answers 201 with the priced quotation, so the response is the record
+ * itself rather than an id to go and fetch.
+ *
+ * 422 when there are no lines, a quantity or day count is below 1, or a product
+ * id does not belong to this company.
+ */
+export function createQuotation(request: CreateQuotationRequest): Promise<QuotationView> {
+  if (IS_MOCK) return mockCreateQuotation(request);
+  return apiFetch<QuotationView>("/admin/quotations", { method: "POST", body: request });
 }
 
 export const quotationKeys = {

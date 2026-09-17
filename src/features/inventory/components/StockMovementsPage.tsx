@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDownLeft, ArrowUpRight, Boxes } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Boxes, Plus } from "lucide-react";
 import { inventoryKeys, listStockMovementsByOrder } from "@/features/inventory/api";
 import { DIRECTION_MEANING } from "@/features/inventory/types";
-import { DEMO_MOVEMENT_ORDER_EXAMPLES, SEED_PRODUCTS } from "@/mock-data/seed";
+import { RecordMovementDialog } from "@/features/inventory/components/RecordMovementDialog";
+import { listProducts, masterDataKeys } from "@/features/master-data/api";
+import { useCan } from "@/features/auth";
+import { DEMO_MOVEMENT_ORDER_EXAMPLES } from "@/mock-data/seed";
 import { IdLookup } from "@/components/id-lookup";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
@@ -15,18 +19,30 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
-/**
- * A movement line carries only a product id — the backend does not denormalise
- * the name the way quotation and order lines do. Resolving it is therefore the
- * UI's job, and an id with no matching product renders as the id rather than
- * as an error, the same way an orphaned category does on the products screen.
- */
-function productName(productId: string): string {
-  return SEED_PRODUCTS.find((product) => product.id === productId)?.name ?? productId;
-}
-
 export function StockMovementsPage() {
   const [orderId, setOrderId] = useState("");
+  const [recording, setRecording] = useState(false);
+  const canWrite = useCan("INVENTORY_WRITE");
+
+  /**
+   * A movement line carries only a product id — the backend does not
+   * denormalise the name the way quotation and order lines do, so resolving it
+   * is the UI's job. It reads the catalogue rather than the seed so a product
+   * added in this session resolves too, and an id with no match renders as the
+   * id rather than as an error, the same way an orphaned category does on the
+   * products screen. A retired product falls into that case honestly: the list
+   * endpoint returns active products only, so the backend could not name it
+   * either.
+   */
+  const products = useQuery({
+    queryKey: masterDataKeys.products,
+    queryFn: ({ signal }) => listProducts(signal),
+  });
+
+  const productNames = useMemo(
+    () => new Map((products.data ?? []).map((product) => [product.id, product.name])),
+    [products.data],
+  );
 
   const { data, isFetching, isError, error } = useQuery({
     queryKey: inventoryKeys.movementsByOrder(orderId),
@@ -40,6 +56,22 @@ export function StockMovementsPage() {
       <PageHeader
         title="Stock movement"
         description="What went out to an event and what came back."
+        actions={
+          canWrite ? (
+            // Always present, disabled until an order is chosen: a movement is
+            // recorded against one order, and there is no list to pick from, so
+            // the id in the lookup box above is the only way this screen knows
+            // which order is meant.
+            <Button
+              disabled={orderId === ""}
+              title={orderId === "" ? "Find an order first" : undefined}
+              onClick={() => setRecording(true)}
+            >
+              <Plus />
+              Record movement
+            </Button>
+          ) : null
+        }
       />
 
       <IdLookup
@@ -95,7 +127,7 @@ export function StockMovementsPage() {
                   <TBody>
                     {movement.lines.map((line) => (
                       <TR key={line.id}>
-                        <TD className="font-medium">{productName(line.productId)}</TD>
+                        <TD className="font-medium">{productNames.get(line.productId) ?? line.productId}</TD>
                         <TD className="text-right tabular">{line.quantity}</TD>
                       </TR>
                     ))}
@@ -112,6 +144,10 @@ export function StockMovementsPage() {
             </Card>
           ))
         : null}
+
+      {recording && orderId !== "" ? (
+        <RecordMovementDialog orderId={orderId} onClose={() => setRecording(false)} />
+      ) : null}
     </div>
   );
 }

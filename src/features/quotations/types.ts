@@ -54,3 +54,34 @@ export interface QuotationView {
   sourceReference: string | null;
   lines: QuotationLineView[];
 }
+
+/** One requested line. Mirrors QuotationAdminController.LineRequest. */
+export interface CreateQuotationLineRequest {
+  productId: string;
+  quantity: number;
+  rentalDays: number;
+}
+
+/**
+ * Mirrors QuotationAdminController.CreateQuotationRequest.
+ *
+ * No prices are sent. QuotationService reads each product's rate and deposit
+ * out of master data at pricing time and stores the result, which is the same
+ * reason QuotationView's totals are stored rather than recomputed on read.
+ * sourceReference is not sent either — the controller stamps "admin-ui" itself,
+ * so a quotation raised here is distinguishable from a storefront one without
+ * the client being trusted to say so.
+ */
+export interface CreateQuotationRequest {
+  /**
+   * Optional, and in practice usually absent: no admin endpoint lists
+   * storefront accounts, so the back office has no picker to produce an id
+   * from. The backend accepts a quotation without one.
+   */
+  customerId?: string;
+  customerName: string;
+  customerEmail?: string;
+  /** ISO yyyy-MM-dd, or omitted. Java parses it as a LocalDate. */
+  eventDate?: string;
+  lines: CreateQuotationLineRequest[];
+}

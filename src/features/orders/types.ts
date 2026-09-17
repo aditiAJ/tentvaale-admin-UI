@@ -49,3 +49,12 @@ export interface OrderView {
   sourceReference: string | null;
   lines: OrderLineView[];
 }
+
+/**
+ * Mirrors OrderAdminController.CreateFromQuotationRequest, which is the whole
+ * body: an order is assembled entirely from the quotation, so there is nothing
+ * else for the caller to supply and nothing it could override.
+ */
+export interface CreateOrderFromQuotationRequest {
+  quotationId: string;
+}
