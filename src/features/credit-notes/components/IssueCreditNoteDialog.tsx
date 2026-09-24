@@ -9,13 +9,12 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { creditNoteKeys, issueCreditNote } from "@/features/credit-notes/api";
 import { ApiError } from "@/services/api-client";
+import { UUID_PATTERN } from "@/lib/forms";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Kept as a string through validation for the same reason the product form
@@ -108,11 +107,7 @@ export function IssueCreditNoteDialog({
           )}
         </Field>
 
-        <Field
-          label="Against order"
-          error={errors.againstOrderId?.message}
-          hint="Optional. Leave blank for a standalone goodwill credit."
-        >
+        <Field label="Against order" error={errors.againstOrderId?.message}>
           {(props) => (
             <Input
               {...props}

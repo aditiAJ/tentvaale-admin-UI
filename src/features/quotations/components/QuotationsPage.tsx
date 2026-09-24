@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Pencil, Plus } from "lucide-react";
 import { getQuotation, quotationKeys } from "@/features/quotations/api";
 import type { QuotationStatus } from "@/features/quotations/types";
 import { useCan } from "@/features/auth";
@@ -107,9 +107,23 @@ export function QuotationsPage({ initialQuotationId = "" }: { initialQuotationId
                   {data.customerName}
                   {data.customerEmail ? ` · ${data.customerEmail}` : ""}
                 </p>
+                {data.customerId ? (
+                  <p className="font-mono text-xs text-muted-foreground">{data.customerId}</p>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>
+                {canWrite && data.status !== "CONVERTED" ? (
+                  // Converted is the one status that cannot be edited: the
+                  // order was copied from this quotation.
+                  <Link
+                    href={`/quotations/edit?id=${data.id}`}
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
+                    <Pencil />
+                    Edit
+                  </Link>
+                ) : null}
                 {canConvert ? (
                   // Only CONVERTED is refused: markConverted is the one rule
                   // the backend actually has here, so a rejected or expired

@@ -3,12 +3,10 @@ import type { Money } from "@/lib/money";
 /**
  * Mirrors com.tentvaale.ordermgmt.api.OrderStatus.
  *
- * As with quotations there is no state machine in code: the enum's javadoc
- * says the legacy transition and cancellation rules live in stored procedures
- * that have not been read. Status is set to CONFIRMED at creation and nothing
- * in the rebuild moves it — dispatch and return are recorded as stock
- * movements without touching the order, so an order shown as CONFIRMED may
- * well have been dispatched.
+ * Nothing sets a status directly. Conversion creates CONFIRMED; recording an
+ * outward movement makes it DISPATCHED, and the inward movement that brings
+ * the last of its goods back makes it RETURNED; completing needs RETURNED and a
+ * refunded or forfeited deposit. Only a CONFIRMED order can be cancelled.
  */
 export const ORDER_STATUSES = [
   "CONFIRMED",
@@ -19,6 +17,14 @@ export const ORDER_STATUSES = [
 ] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+export const ORDER_STATUS_MEANING: Record<OrderStatus, string> = {
+  CONFIRMED: "Converted from a quotation. Nothing has been dispatched yet.",
+  DISPATCHED: "Goods are out with the customer.",
+  RETURNED: "Everything dispatched has come back. Settle the deposit to complete it.",
+  COMPLETED: "Returned and the deposit settled. Terminal.",
+  CANCELLED: "Cancelled before dispatch. Terminal.",
+};
 
 /** Mirrors com.tentvaale.ordermgmt.api.OrderLineView — copied verbatim from
  *  the quotation line it came from, with no independent pricing. */

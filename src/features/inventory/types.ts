@@ -7,19 +7,23 @@ export const DIRECTION_MEANING: Record<MovementDirection, string> = {
   INWARD: "Goods returned to the warehouse.",
 };
 
-/** Mirrors com.tentvaale.inventory.api.MovedLineView. */
+/**
+ * Mirrors com.tentvaale.inventory.api.MovedLineView, plus the variant: stock
+ * is held per warehouse + product + variant, so a line for a product with
+ * variants says which one moved. Null for a product without them.
+ */
 export interface MovedLineView {
   id: string;
   productId: string;
+  variantId: string | null;
   quantity: number;
 }
 
 /**
  * Mirrors com.tentvaale.inventory.api.StockMovementView.
  *
- * warehouseId is an opaque UUID the caller supplies: there is no Warehouse
- * entity behind it, no foreign key and nothing that resolves it to a name.
- * There is also deliberately no sub-event id — a movement is recorded against
+ * warehouseId is the warehouse the goods left or came back to. Every movement
+ * recorded now names one; null survives only for legacy rows. There is also deliberately no sub-event id — a movement is recorded against
  * a whole order, so a multi-event order cannot attribute stock to one event.
  */
 export interface StockMovementView {
@@ -35,24 +39,29 @@ export interface StockMovementView {
 }
 
 /**
- * Availability has no backend at all — no entity, no table, no endpoint.
- *
- * The inventory module's own TODO says availability "is derived from these
- * movements plus confirmed orders", and that the legacy calculation lives in
- * stored procedures that have not been read. This shape is therefore this
- * UI's invention, and the numbers behind it in mock mode are derived the
- * naive way (outward minus inward), which is explicitly NOT the real rule.
+ * Availability has no backend at all — no entity, no table, no endpoint, so
+ * this shape is this UI's invention. In mock mode, in stock is the warehouse
+ * counts, which movements decrease and increase, and on rent is outward minus
+ * inward from the same movements.
  */
 export interface AvailabilityRow {
   productId: string;
   productName: string;
   sku: string;
+  /** On the shelf, summed across warehouses and variants. */
+  inStock: number;
+  /** Dispatched and not yet returned. */
   onRent: number;
 }
 
-/** One line of a movement. Mirrors StockMovementAdminController.MovementLineRequest. */
+/**
+ * One line of a movement. Mirrors StockMovementAdminController.MovementLineRequest,
+ * plus the variant, which is required for a product with variants and must be
+ * absent for one without.
+ */
 export interface RecordMovementLineRequest {
   productId: string;
+  variantId?: string | null;
   quantity: number;
 }
 
@@ -60,21 +69,21 @@ export interface RecordMovementLineRequest {
  * Mirrors StockMovementAdminController.RecordMovementRequest.
  *
  * `movedOn` is optional because the controller substitutes today when it is
- * absent; `warehouseId` is optional and opaque, since nothing resolves it.
- * There is still no sub-event id, deliberately — a movement belongs to a whole
- * order, so a multi-event order cannot say which event the stock went to.
+ * absent. `warehouseId` is required: stock is taken from, or put back into,
+ * that warehouse. There is still no sub-event id, deliberately — a movement
+ * belongs to a whole order, so a multi-event order cannot say which event the
+ * stock went to.
  *
- * Note what is NOT checked: InventoryService validates the order exists and
- * that each quantity is at least 1, and nothing else. It does not compare the
- * lines against what the order contains, or against what is actually in the
- * warehouse — its own TODO says those rules live in unread stored procedures.
- * So a movement can dispatch a product the order never included.
+ * The movement drives the order: an outward one dispatches a CONFIRMED order,
+ * and the inward one that brings the last of its goods back makes it RETURNED.
+ * Lines must be products on the order, outward never more than was ordered or
+ * than the warehouse holds, inward never more than is out from that warehouse.
  */
 export interface RecordStockMovementRequest {
   orderId: string;
   direction: MovementDirection;
   movedOn?: string;
-  warehouseId?: string;
+  warehouseId: string;
   remarks?: string;
   lines: RecordMovementLineRequest[];
 }

@@ -53,7 +53,7 @@ export function BundlesPage() {
             <THead>
               <tr>
                 <TH>Name</TH>
-                <TH>Contents</TH>
+                <TH>Products</TH>
                 <TH className="text-right">Rental rate</TH>
                 {canWrite ? <TH className="text-right">Actions</TH> : null}
               </tr>
@@ -67,9 +67,21 @@ export function BundlesPage() {
                       <TD className="font-medium">{bundle.name}</TD>
                       <TD>
                         <div className="flex flex-wrap gap-1">
-                          {bundle.contents.map((item) => (
-                            <Badge key={item} variant="outline">
-                              {item}
+                          {bundle.components.map((component) => (
+                            <Badge
+                              key={component.productId}
+                              variant="outline"
+                              className={component.active ? undefined : "opacity-60"}
+                              title={
+                                component.active
+                                  ? component.sku
+                                  : `${component.sku} · inactive product`
+                              }
+                            >
+                              {component.productName}
+                              <span className="tabular text-muted-foreground">
+                                × {component.quantity}
+                              </span>
                             </Badge>
                           ))}
                         </div>

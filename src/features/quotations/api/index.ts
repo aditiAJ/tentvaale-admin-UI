@@ -1,7 +1,11 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
-import { mockCreateQuotation, mockGetQuotation } from "@/mock-data/store";
-import type { CreateQuotationRequest, QuotationView } from "@/features/quotations/types";
+import { mockCreateQuotation, mockGetQuotation, mockUpdateQuotation } from "@/mock-data/store";
+import type {
+  CreateQuotationRequest,
+  QuotationView,
+  UpdateQuotationRequest,
+} from "@/features/quotations/types";
 
 /**
  * Get-by-id is real — QuotationAdminController exposes it and this call works
@@ -31,6 +35,23 @@ export function getQuotation(quotationId: string, signal?: AbortSignal): Promise
 export function createQuotation(request: CreateQuotationRequest): Promise<QuotationView> {
   if (IS_MOCK) return mockCreateQuotation(request);
   return apiFetch<QuotationView>("/admin/quotations", { method: "POST", body: request });
+}
+
+/**
+ * Editing has no endpoint on the real controller — this follows the same
+ * PUT /{resource}/{id} shape as the other proposed writes and 404s in api mode.
+ * Existing lines keep the rate they were priced at; new lines are priced now.
+ * 422 once the quotation has been converted to an order.
+ */
+export function updateQuotation(
+  quotationId: string,
+  request: UpdateQuotationRequest,
+): Promise<QuotationView> {
+  if (IS_MOCK) return mockUpdateQuotation(quotationId, request);
+  return apiFetch<QuotationView>(`/admin/quotations/${encodeURIComponent(quotationId)}`, {
+    method: "PUT",
+    body: request,
+  });
 }
 
 export const quotationKeys = {

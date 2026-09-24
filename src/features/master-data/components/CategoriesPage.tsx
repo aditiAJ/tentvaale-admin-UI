@@ -1,8 +1,8 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { Fragment, useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { EyeOff, Plus, Search, Tags } from "lucide-react";
+import { CornerDownRight, EyeOff, Plus, Search, Tags } from "lucide-react";
 import { deactivateCategory, listCategories, masterDataKeys } from "@/features/master-data/api";
 import type { CategoryView } from "@/features/master-data/types";
 import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
@@ -36,7 +36,13 @@ export function CategoriesPage() {
   const visible = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
     if (!term) return data ?? [];
-    return (data ?? []).filter((category: CategoryView) => category.name.toLowerCase().includes(term));
+    // A match on a sub-category keeps its parent in view, so a search for
+    // "chandeliers" shows where they are filed.
+    return (data ?? []).filter(
+      (category: CategoryView) =>
+        category.name.toLowerCase().includes(term) ||
+        category.subCategories.some((sub) => sub.name.toLowerCase().includes(term)),
+    );
   }, [data, deferredSearch]);
 
   return (
@@ -60,7 +66,7 @@ export function CategoriesPage() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search category name"
+            placeholder="Search categories and sub-categories"
             className="pl-8"
             aria-label="Search categories"
           />
@@ -85,20 +91,43 @@ export function CategoriesPage() {
 
               {!isPending && visible.length > 0
                 ? visible.map((category: CategoryView) => (
-                    <TR key={category.id}>
-                      <TD className="font-medium">{category.name}</TD>
-                      {canWrite ? (
+                    <Fragment key={category.id}>
+                      <TR>
                         <TD>
-                          <RowActions
-                            label={category.name}
-                            onEdit={() => setEditing(category)}
-                            onRemove={() => setDeactivating(category)}
-                            removeLabel="Deactivate"
-                            removeIcon={<EyeOff />}
-                          />
+                          <span className="font-medium">{category.name}</span>
+                          <span className="ml-2 text-xs text-muted-foreground tabular">
+                            {category.subCategories.length
+                              ? `${category.subCategories.length} sub-${
+                                  category.subCategories.length === 1 ? "category" : "categories"
+                                }`
+                              : "No sub-categories"}
+                          </span>
                         </TD>
-                      ) : null}
-                    </TR>
+                        {canWrite ? (
+                          <TD>
+                            <RowActions
+                              label={category.name}
+                              onEdit={() => setEditing(category)}
+                              onRemove={() => setDeactivating(category)}
+                              removeLabel="Deactivate"
+                              removeIcon={<EyeOff />}
+                            />
+                          </TD>
+                        ) : null}
+                      </TR>
+                      {/* Sub-categories are edited through their category, so
+                          their rows carry no actions of their own. */}
+                      {category.subCategories.map((sub) => (
+                        <TR key={sub.id}>
+                          <TD colSpan={columns} className="py-1.5 pl-6 text-muted-foreground">
+                            <span className="flex items-center gap-2">
+                              <CornerDownRight className="size-3.5 shrink-0" aria-hidden="true" />
+                              {sub.name}
+                            </span>
+                          </TD>
+                        </TR>
+                      ))}
+                    </Fragment>
                   ))
                 : null}
             </TBody>
@@ -123,7 +152,7 @@ export function CategoriesPage() {
             title={data?.length ? "No categories match that search" : "No categories yet"}
             description={
               data?.length
-                ? "Try a different name."
+                ? "Try a different category or sub-category name."
                 : "Add the first grouping for this company's catalogue."
             }
             action={
@@ -143,7 +172,7 @@ export function CategoriesPage() {
       {deactivating ? (
         <ConfirmDialog
           title={`Deactivate ${deactivating.name}?`}
-          description="It disappears from the list and from any picker, but the row stays, so products already filed under it keep their label."
+          description="It disappears from the list and from any picker, along with its sub-categories, but the rows stay, so products already filed under it keep their label."
           confirmLabel="Deactivate category"
           fallbackError="Could not deactivate the category."
           action={() => deactivateCategory(deactivating.id)}

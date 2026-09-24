@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useMemo, useState } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,41 +13,40 @@ import {
   masterDataKeys,
   updateBundle,
 } from "@/features/master-data/api";
+import { addBundleComponent } from "@/features/master-data/bundles";
 import type { BundleView } from "@/features/master-data/types";
 import { ApiError } from "@/services/api-client";
+import { amountField, positiveIntegerField } from "@/lib/forms";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 
 const FORM_ID = "bundle-form";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(150, "Maximum 150 characters"),
-  rentalRate: z
-    .string()
-    .trim()
-    .min(1, "Rental rate is required")
-    .regex(/^\d+(\.\d{1,2})?$/, "Enter an amount like 28000 or 28000.50")
-    .transform(Number),
-  contents: z
-    .array(z.object({ name: z.string().trim().min(1, "Choose a product") }))
+  rentalRate: amountField("Rental rate"),
+  components: z
+    .array(z.object({ productId: z.string(), quantity: positiveIntegerField("Quantity") }))
     .min(1, "A bundle needs at least one product"),
 });
 
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
 
+/** The add row's quantity, checked the same way as a component's. */
+const addQuantity = positiveIntegerField("Quantity");
+
 /**
- * Add or edit one bundle.
+ * Add or edit one bundle: its name, its own rental rate, and the existing
+ * products it packages with a quantity each.
  *
- * Contents are product *names*, not ids, because BundleView has no line entity
- * to hold an id — the shape was invented for a module with no backend and kept
- * minimal. They are still picked from the catalogue rather than typed, so the
- * names at least match real products; a bundle built before a product was
- * renamed will quietly disagree with it, which is one of the things whoever
- * designs the real table will need to fix.
+ * Picking a product the bundle already contains adds to that line's quantity
+ * instead of creating a second line — the rule lives in addBundleComponent.
+ * Removing a line takes the product out of this bundle only.
  */
 export function BundleDialog({
   existing,
@@ -58,6 +57,9 @@ export function BundleDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  const [pickProductId, setPickProductId] = useState("");
+  const [pickQuantity, setPickQuantity] = useState("1");
+  const [pickError, setPickError] = useState<string | null>(null);
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -68,34 +70,78 @@ export function BundleDialog({
     control,
     register,
     handleSubmit,
+    getValues,
     formState: { errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: existing?.name ?? "",
       rentalRate: existing ? String(Number(existing.rentalRate.amount)) : "",
-      contents: existing?.contents.length
-        ? existing.contents.map((name) => ({ name }))
-        : [{ name: "" }],
+      components: (existing?.components ?? []).map((component) => ({
+        productId: component.productId,
+        quantity: String(component.quantity),
+      })),
     },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: "contents" });
+  const { fields, remove, replace } = useFieldArray({ control, name: "components" });
+  const watched = useWatch({ control, name: "components" });
+
+  // The catalogue lists active products only; a product deactivated after it
+  // joined the bundle is labelled from the bundle's own copy instead.
+  const labels = useMemo(() => {
+    const map = new Map<string, { name: string; sku: string; active: boolean }>();
+    for (const component of existing?.components ?? []) {
+      map.set(component.productId, {
+        name: component.productName,
+        sku: component.sku,
+        active: component.active,
+      });
+    }
+    for (const product of products.data ?? []) {
+      map.set(product.id, { name: product.name, sku: product.sku, active: true });
+    }
+    return map;
+  }, [existing, products.data]);
+
+  const addPicked = () => {
+    if (!pickProductId) {
+      setPickError("Choose a product");
+      return;
+    }
+    const parsed = addQuantity.safeParse(pickQuantity);
+    if (!parsed.success) {
+      setPickError(parsed.error.issues[0]?.message ?? "Enter a quantity");
+      return;
+    }
+    // Merged on the current form values, so a quantity already typed into an
+    // existing line is what gets added to. A line whose own quantity is not a
+    // number yet is treated as zero rather than blocking the add.
+    const current = getValues("components").map((component) => ({
+      productId: component.productId,
+      quantity: /^\d+$/.test(component.quantity.trim()) ? Number(component.quantity) : 0,
+    }));
+    const merged = addBundleComponent(current, pickProductId, parsed.data);
+    replace(merged.map((component) => ({ ...component, quantity: String(component.quantity) })));
+    setPickError(null);
+    setPickProductId("");
+    setPickQuantity("1");
+  };
 
   const mutation = useMutation({
     mutationFn: (values: FormOutput) => {
       const request = {
         name: values.name,
         rentalRate: values.rentalRate,
-        contents: values.contents.map((entry) => entry.name),
+        components: values.components,
       };
       return existing ? updateBundle(existing.id, request) : createBundle(request);
     },
     onSuccess: (bundle) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.bundles });
       toast.success(existing ? `${bundle.name} updated` : `${bundle.name} added`, {
-        description: `${bundle.contents.length} ${
-          bundle.contents.length === 1 ? "product" : "products"
+        description: `${bundle.components.length} ${
+          bundle.components.length === 1 ? "product" : "products"
         }`,
       });
       onClose();
@@ -104,7 +150,8 @@ export function BundleDialog({
       setFormError(error instanceof ApiError ? error.message : "Could not save the bundle."),
   });
 
-  const contentsError = errors.contents?.root?.message ?? errors.contents?.message;
+  const componentsError = errors.components?.root?.message ?? errors.components?.message;
+  const inBundle = new Set((watched ?? []).map((component) => component.productId));
 
   return (
     <Dialog
@@ -112,6 +159,7 @@ export function BundleDialog({
       onClose={onClose}
       title={existing ? "Edit bundle" : "New bundle"}
       description="A pre-priced group of products, quoted as a single line."
+      className="max-w-xl"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
@@ -136,7 +184,7 @@ export function BundleDialog({
         {formError ? <Alert tone="error" title={formError} /> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required error={errors.name?.message} hint="Unique per company.">
+          <Field label="Name" required error={errors.name?.message}>
             {(props) => (
               <Input
                 {...props}
@@ -147,12 +195,7 @@ export function BundleDialog({
             )}
           </Field>
 
-          <Field
-            label="Rental rate"
-            required
-            error={errors.rentalRate?.message}
-            hint="In INR. Not derived from the products it contains."
-          >
+          <Field label="Rental rate" required error={errors.rentalRate?.message} hint="In INR.">
             {(props) => (
               <Input
                 {...props}
@@ -165,66 +208,104 @@ export function BundleDialog({
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-medium">Contents</p>
+          <p className="text-xs font-medium">
+            Products
+            <span className="ml-0.5 text-destructive">*</span>
+          </p>
+
+          <div className="flex items-start gap-2">
+            <Select
+              value={pickProductId}
+              onChange={(event) => {
+                setPickProductId(event.target.value);
+                setPickError(null);
+              }}
+              disabled={products.isPending || mutation.isPending}
+              aria-label="Product to add"
+              className="min-w-0 flex-1"
+            >
+              <option value="">{products.isPending ? "Loading catalogue" : "Choose a product"}</option>
+              {(products.data ?? []).map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                  {inBundle.has(product.id) ? " (in bundle)" : ""}
+                </option>
+              ))}
+            </Select>
+            <Input
+              value={pickQuantity}
+              onChange={(event) => {
+                setPickQuantity(event.target.value);
+                setPickError(null);
+              }}
+              inputMode="numeric"
+              aria-label="Quantity to add"
+              className="tabular w-20 text-right"
+              disabled={mutation.isPending}
+            />
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              onClick={addPicked}
               disabled={mutation.isPending}
-              onClick={() => append({ name: "" })}
             >
               <Plus />
-              Add product
+              Add
             </Button>
           </div>
+          {pickError ? <p className="text-xs text-destructive">{pickError}</p> : null}
 
-          {fields.map((field, index) => (
-            <div key={field.id} className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <Select
-                  {...register(`contents.${index}.name`)}
-                  aria-label={`Product ${index + 1}`}
-                  aria-invalid={Boolean(errors.contents?.[index]?.name)}
-                  disabled={products.isPending || mutation.isPending}
-                >
-                  <option value="">
-                    {products.isPending ? "Loading catalogue" : "Choose a product"}
-                  </option>
-                  {(products.data ?? []).map((product) => (
-                    <option key={product.id} value={product.name}>
-                      {product.name}
-                    </option>
-                  ))}
-                  {/* A bundle saved earlier may name a product that has since
-                      been renamed or retired; keeping it as an option stops the
-                      select silently blanking it on open. */}
-                  {field.name && !(products.data ?? []).some((p) => p.name === field.name) ? (
-                    <option value={field.name}>{field.name}</option>
-                  ) : null}
-                </Select>
-                {errors.contents?.[index]?.name ? (
-                  <p className="mt-1 text-xs text-destructive">
-                    {errors.contents[index]?.name?.message}
-                  </p>
-                ) : null}
-              </div>
+          {fields.length ? (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {fields.map((field, index) => {
+                const label = labels.get(field.productId);
+                const rowError = errors.components?.[index]?.quantity?.message;
+                return (
+                  <li key={field.id} className="px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm">{label?.name ?? field.productId}</span>
+                        {label ? (
+                          <span className="ml-2 font-mono text-xs text-muted-foreground">
+                            {label.sku}
+                          </span>
+                        ) : null}
+                        {label && !label.active ? (
+                          <Badge className="ml-2 align-middle">Inactive</Badge>
+                        ) : null}
+                      </div>
+                      <span className="text-xs text-muted-foreground">×</span>
+                      <Input
+                        {...register(`components.${index}.quantity`)}
+                        inputMode="numeric"
+                        aria-label={`Quantity of ${label?.name ?? "product"}`}
+                        aria-invalid={Boolean(rowError)}
+                        className="tabular h-8 w-20 text-right"
+                        disabled={mutation.isPending}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => remove(index)}
+                        disabled={mutation.isPending}
+                        aria-label={`Remove ${label?.name ?? "product"} from this bundle`}
+                        title="Remove from bundle"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </div>
+                    {rowError ? (
+                      <p className="mt-1 text-right text-xs text-destructive">{rowError}</p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={fields.length === 1 || mutation.isPending}
-                onClick={() => remove(index)}
-                aria-label={`Remove product ${index + 1}`}
-                title={fields.length === 1 ? "A bundle needs at least one product" : "Remove"}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          ))}
-
-          {contentsError ? <p className="text-xs text-destructive">{contentsError}</p> : null}
+          {componentsError ? <p className="text-xs text-destructive">{componentsError}</p> : null}
         </div>
       </form>
     </Dialog>

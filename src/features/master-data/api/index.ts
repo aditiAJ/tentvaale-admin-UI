@@ -1,45 +1,65 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import {
+  mockAddProductToWarehouse,
   mockCreateBundle,
   mockCreateCategory,
   mockCreateCustomer,
+  mockCreateFeaturedCollection,
   mockCreateProduct,
+  mockCreateProductVariant,
   mockCreateTruck,
   mockCreateWarehouse,
   mockDeactivateCategory,
   mockDeleteBundle,
+  mockDeleteProductVariant,
   mockDeleteTruck,
   mockDeleteWarehouse,
+  mockGetCustomer,
   mockListBundles,
   mockListCategories,
   mockListCustomers,
+  mockListFeaturedCollections,
   mockListProducts,
   mockListTrucks,
+  mockListWarehouseProducts,
   mockListWarehouses,
   mockUpdateBundle,
   mockUpdateCategory,
+  mockSetFeaturedCollectionActive,
   mockUpdateCustomer,
+  mockUpdateFeaturedCollection,
+  mockUpdateProduct,
+  mockUpdateProductVariant,
   mockUpdateTruck,
   mockUpdateWarehouse,
 } from "@/mock-data/store";
 import type {
+  AddWarehouseProductRequest,
   BundleView,
   CategoryView,
   CreateBundleRequest,
   CreateCategoryRequest,
   CreateCustomerRequest,
+  CreateFeaturedCollectionRequest,
   CreateProductRequest,
+  CreateProductVariantRequest,
   CreateTruckRequest,
   CreateWarehouseRequest,
   CustomerView,
+  FeaturedCollectionView,
+  ProductVariantView,
   ProductView,
   TruckView,
   UpdateBundleRequest,
   UpdateCategoryRequest,
   UpdateCustomerRequest,
+  UpdateFeaturedCollectionRequest,
+  UpdateProductRequest,
+  UpdateProductVariantRequest,
   UpdateTruckRequest,
   UpdateWarehouseRequest,
+  WarehouseProductView,
   WarehouseView,
 } from "@/features/master-data/types";
 
@@ -60,6 +80,61 @@ export function createProduct(request: CreateProductRequest): Promise<ProductVie
   return apiFetch<ProductView>("/admin/master-data/products", {
     method: "POST",
     body: request,
+  });
+}
+
+/**
+ * MasterDataApi has no product update endpoint yet, so this path is a guess
+ * following the same PUT /{resource}/{id} shape as the other master-data
+ * writes; it will 404 in api mode until the backend adds it. 422 if the new SKU
+ * belongs to another product, or for a sub-category outside the chosen category.
+ */
+export function updateProduct(
+  productId: string,
+  request: UpdateProductRequest,
+): Promise<ProductView> {
+  if (IS_MOCK) return mockUpdateProduct(productId, request);
+  return apiFetch<ProductView>(`/admin/master-data/products/${productId}`, {
+    method: "PUT",
+    body: request,
+  });
+}
+
+/**
+ * Variants have no backend either. They sit under their product, as
+ * /products/{id}/variants, and 404 in api mode. Every write is refused with a
+ * 422 unless the product has hasVariants set, and the name must be unique
+ * within the product. A variant's stock is not written here: it is added per
+ * warehouse, through addProductToWarehouse.
+ */
+export function createProductVariant(
+  productId: string,
+  request: CreateProductVariantRequest,
+): Promise<ProductVariantView> {
+  if (IS_MOCK) return mockCreateProductVariant(productId, request);
+  return apiFetch<ProductVariantView>(`/admin/master-data/products/${productId}/variants`, {
+    method: "POST",
+    body: request,
+  });
+}
+
+export function updateProductVariant(
+  productId: string,
+  variantId: string,
+  request: UpdateProductVariantRequest,
+): Promise<ProductVariantView> {
+  if (IS_MOCK) return mockUpdateProductVariant(productId, variantId, request);
+  return apiFetch<ProductVariantView>(
+    `/admin/master-data/products/${productId}/variants/${variantId}`,
+    { method: "PUT", body: request },
+  );
+}
+
+/** Leaves the product alone. 422 while a warehouse still holds stock of the variant. */
+export function deleteProductVariant(productId: string, variantId: string): Promise<void> {
+  if (IS_MOCK) return mockDeleteProductVariant(productId, variantId);
+  return apiFetch<void>(`/admin/master-data/products/${productId}/variants/${variantId}`, {
+    method: "DELETE",
   });
 }
 
@@ -98,6 +173,16 @@ export function createCategory(request: CreateCategoryRequest): Promise<Category
 export function listCustomers(signal?: AbortSignal): Promise<CustomerView[]> {
   if (IS_MOCK) return mockListCustomers();
   return apiFetch<CustomerView[]>("/admin/customers", { signal });
+}
+
+/**
+ * One customer by its id — the stable reference quotations, orders, deposits
+ * and credit notes store. Customers are never deleted, so an id issued once
+ * resolves for good; 404 means it was never issued.
+ */
+export function getCustomer(customerId: string, signal?: AbortSignal): Promise<CustomerView> {
+  if (IS_MOCK) return mockGetCustomer(customerId);
+  return apiFetch<CustomerView>(`/admin/customers/${encodeURIComponent(customerId)}`, { signal });
 }
 
 export function listBundles(signal?: AbortSignal): Promise<BundleView[]> {
@@ -176,6 +261,34 @@ export function deleteWarehouse(warehouseId: string): Promise<void> {
   return apiFetch<void>(`/admin/master-data/warehouses/${warehouseId}`, { method: "DELETE" });
 }
 
+/** Sorted by product name. 404 if the warehouse does not exist. */
+export function listWarehouseProducts(
+  warehouseId: string,
+  signal?: AbortSignal,
+): Promise<WarehouseProductView[]> {
+  if (IS_MOCK) return mockListWarehouseProducts(warehouseId);
+  return apiFetch<WarehouseProductView[]>(
+    `/admin/master-data/warehouses/${warehouseId}/products`,
+    { signal },
+  );
+}
+
+/**
+ * Adds stock of a product to a warehouse, creating the warehouse–product
+ * relationship or raising its quantity if the warehouse already holds that
+ * product. 422 for a quantity below 1 or an inactive product.
+ */
+export function addProductToWarehouse(
+  warehouseId: string,
+  request: AddWarehouseProductRequest,
+): Promise<WarehouseProductView> {
+  if (IS_MOCK) return mockAddProductToWarehouse(warehouseId, request);
+  return apiFetch<WarehouseProductView>(`/admin/master-data/warehouses/${warehouseId}/products`, {
+    method: "POST",
+    body: request,
+  });
+}
+
 export function createTruck(request: CreateTruckRequest): Promise<TruckView> {
   if (IS_MOCK) return mockCreateTruck(request);
   return apiFetch<TruckView>("/admin/master-data/trucks", { method: "POST", body: request });
@@ -213,6 +326,51 @@ export function deleteBundle(bundleId: string): Promise<void> {
 }
 
 /**
+ * Featured collections have no backend either; these paths follow the same
+ * /admin/master-data/{resource} shape and 404 in api mode. Every collection is
+ * returned, active or not, sorted by name.
+ */
+export function listFeaturedCollections(signal?: AbortSignal): Promise<FeaturedCollectionView[]> {
+  if (IS_MOCK) return mockListFeaturedCollections();
+  return apiFetch<FeaturedCollectionView[]>("/admin/master-data/featured-collections", { signal });
+}
+
+/** 422 for a taken name, no products, a repeated product or an inactive one. */
+export function createFeaturedCollection(
+  request: CreateFeaturedCollectionRequest,
+): Promise<FeaturedCollectionView> {
+  if (IS_MOCK) return mockCreateFeaturedCollection(request);
+  return apiFetch<FeaturedCollectionView>("/admin/master-data/featured-collections", {
+    method: "POST",
+    body: request,
+  });
+}
+
+/** Replaces the product list; a product left out leaves the collection, nothing more. */
+export function updateFeaturedCollection(
+  collectionId: string,
+  request: UpdateFeaturedCollectionRequest,
+): Promise<FeaturedCollectionView> {
+  if (IS_MOCK) return mockUpdateFeaturedCollection(collectionId, request);
+  return apiFetch<FeaturedCollectionView>(
+    `/admin/master-data/featured-collections/${collectionId}`,
+    { method: "PUT", body: request },
+  );
+}
+
+/** Same activate/deactivate shape as categories, which also switch off rather than delete. */
+export function setFeaturedCollectionActive(
+  collectionId: string,
+  active: boolean,
+): Promise<FeaturedCollectionView> {
+  if (IS_MOCK) return mockSetFeaturedCollectionActive(collectionId, active);
+  return apiFetch<FeaturedCollectionView>(
+    `/admin/master-data/featured-collections/${collectionId}/${active ? "activate" : "deactivate"}`,
+    { method: "POST" },
+  );
+}
+
+/**
  * A storefront account raised from the back office, for the customer who books
  * over the phone. The real StorefrontAccount is created by storefront signup
  * and carries a password; what an admin-created one would do about that is a
@@ -240,7 +398,14 @@ export const masterDataKeys = {
   products: ["master-data", "products"] as const,
   categories: ["master-data", "categories"] as const,
   customers: ["master-data", "customers"] as const,
+  // Nested under `customers`, so refreshing the list refreshes every lookup too.
+  customer: (customerId: string) => ["master-data", "customers", customerId] as const,
   bundles: ["master-data", "bundles"] as const,
+  featuredCollections: ["master-data", "featured-collections"] as const,
   warehouses: ["master-data", "warehouses"] as const,
+  // Nested under `warehouses`, so invalidating the warehouse list refreshes
+  // every warehouse's products too.
+  warehouseProducts: (warehouseId: string) =>
+    ["master-data", "warehouses", warehouseId, "products"] as const,
   trucks: ["master-data", "trucks"] as const,
 };

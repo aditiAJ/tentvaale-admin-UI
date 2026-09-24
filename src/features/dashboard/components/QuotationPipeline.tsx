@@ -15,9 +15,9 @@ export interface PipelineStage {
 /**
  * Quotation pipeline as one part-to-whole bar.
  *
- * The four stat tiles beside it already give the counts; what a bar adds, and
- * they cannot, is the *shape* — whether work is piling up in draft or moving
- * through to converted. That is the only reason it is here.
+ * The legend below it already gives every stage's count; what the bar adds, and
+ * a column of numbers cannot, is the *shape* — whether work is piling up in
+ * draft or moving through to converted. That is the only reason it is here.
  *
  * Colour is a single blue hue stepped light→dark because the stages are
  * ordinal, not four separate identities. Every stage is also named in the

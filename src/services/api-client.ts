@@ -14,6 +14,15 @@ interface ProblemBody {
   detail?: string;
 }
 
+/**
+ * A failed request, carrying the status so callers can tell the cases apart.
+ *
+ * The status callers care about most is 422, the backend's
+ * BusinessRuleViolationException: the request was well-formed but the domain
+ * refused it, and its `detail` is written for the user, so the UI surfaces
+ * `message` verbatim rather than substituting copy of its own. A 403 or a 500
+ * gets generic copy instead — see defaultMessage below.
+ */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -21,17 +30,6 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = "ApiError";
-  }
-
-  /** A 422 is the backend's BusinessRuleViolationException: the request was
-   *  well-formed but the domain refused it. Worth surfacing verbatim to the
-   *  user, unlike a 500, because the detail is written for them. */
-  get isBusinessRule(): boolean {
-    return this.status === 422;
-  }
-
-  get isForbidden(): boolean {
-    return this.status === 403;
   }
 }
 

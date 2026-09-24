@@ -89,12 +89,7 @@ export function TruckDialog({ existing, onClose }: { existing?: TruckView; onClo
       >
         {formError ? <Alert tone="error" title={formError} /> : null}
 
-        <Field
-          label="Registration"
-          required
-          error={errors.registration?.message}
-          hint="Unique across the fleet."
-        >
+        <Field label="Registration" required error={errors.registration?.message}>
           {(props) => (
             <Input
               {...props}
@@ -110,7 +105,7 @@ export function TruckDialog({ existing, onClose }: { existing?: TruckView; onClo
           label="Capacity"
           required
           error={errors.capacityKg?.message}
-          hint="In kilograms. Nothing computes a load against it yet."
+          hint="In kilograms."
         >
           {(props) => (
             <Input {...props} {...register("capacityKg")} inputMode="numeric" placeholder="3500" />

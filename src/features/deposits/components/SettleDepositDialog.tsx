@@ -130,7 +130,7 @@ export function SettleDepositDialog({ action, deposit, onClose }: Props) {
               label={action === "forfeit" ? "Amount to forfeit" : "Amount refunded"}
               required
               error={amountError}
-              hint="In INR. Enter less than the held amount for a partial settlement."
+              hint="In INR."
             >
               {(props) => (
                 <Input
@@ -158,11 +158,6 @@ export function SettleDepositDialog({ action, deposit, onClose }: Props) {
         {action !== "confirm-refunded" ? (
           <Field
             label="Reason"
-            hint={
-              action === "forfeit"
-                ? "Recommended — this is what explains the charge to the customer later."
-                : "Optional."
-            }
           >
             {(props) => (
               <Textarea

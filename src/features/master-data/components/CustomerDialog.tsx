@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { createCustomer, masterDataKeys, updateCustomer } from "@/features/master-data/api";
 import type { CustomerView } from "@/features/master-data/types";
 import { ApiError } from "@/services/api-client";
+import { isValidPhone } from "@/lib/forms";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -34,6 +35,7 @@ const schema = z.object({
     .string()
     .trim()
     .max(30, "Maximum 30 characters")
+    .refine((value) => value === "" || isValidPhone(value), "Enter a valid phone number")
     .transform((value) => (value === "" ? undefined : value)),
   accountType: z.enum(["CUSTOMER", "EVENT_PLANNER"]),
 });
@@ -94,7 +96,9 @@ export function CustomerDialog({
       open
       onClose={onClose}
       title={existing ? "Edit customer" : "New customer"}
-      description="An account that can be quoted and ordered against."
+      description={
+        existing ? `ID ${existing.id}` : "An account that can be quoted and ordered against."
+      }
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
@@ -125,12 +129,7 @@ export function CustomerDialog({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Email"
-            required
-            error={errors.email?.message}
-            hint="How the account is identified."
-          >
+          <Field label="Email" required error={errors.email?.message}>
             {(props) => (
               <Input
                 {...props}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { PiggyBank, Search } from "lucide-react";
 import { depositKeys, getDepositByOrder } from "@/features/deposits/api";
@@ -41,9 +42,10 @@ const ACTION_FOR: Record<string, { action: SettleAction; label: string; destruct
   FORFEITED: { action: "forfeit", label: "Forfeit deposit", destructive: true },
 };
 
-export function DepositsPage() {
+/** `initialOrderId` comes from `?orderId=`, so an order can link to its deposit. */
+export function DepositsPage({ initialOrderId = "" }: { initialOrderId?: string }) {
   const canWrite = useCan("DEPOSIT_WRITE");
-  const [orderId, setOrderId] = useState("");
+  const [orderId, setOrderId] = useState(initialOrderId);
   const [settling, setSettling] = useState<SettleAction | null>(null);
 
   const { data, isFetching, isError, error } = useQuery({
@@ -132,7 +134,12 @@ export function DepositsPage() {
             <CardHeader className="flex-row items-center justify-between gap-3">
               <div className="space-y-1">
                 <CardTitle>Deposit ledger</CardTitle>
-                <p className="font-mono text-xs text-muted-foreground">Order {data.orderId}</p>
+                <Link
+                  href={`/orders?id=${data.orderId}`}
+                  className="font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Order {data.orderId}
+                </Link>
               </div>
               <Badge variant={STATUS_VARIANT[data.status]} title={DEPOSIT_STATUS_MEANING[data.status]}>
                 {data.status.replace("_", " ")}

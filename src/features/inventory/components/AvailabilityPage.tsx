@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
-const COLUMNS = 3;
+const COLUMNS = 4;
 
 export function AvailabilityPage() {
   const { data, isPending, isError, error, refetch } = useQuery({
@@ -22,7 +22,10 @@ export function AvailabilityPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Availability" description="What is out on rent right now." />
+      <PageHeader
+        title="Availability"
+        description="What is on the shelf across warehouses, and what is out on rent."
+      />
 
       <Card>
         <TableWrapper>
@@ -31,6 +34,7 @@ export function AvailabilityPage() {
               <tr>
                 <TH>SKU</TH>
                 <TH>Product</TH>
+                <TH className="text-right">In stock</TH>
                 <TH className="text-right">On rent</TH>
               </tr>
             </THead>
@@ -42,6 +46,7 @@ export function AvailabilityPage() {
                     <TR key={row.productId}>
                       <TD className="font-mono text-xs">{row.sku}</TD>
                       <TD className="font-medium">{row.productName}</TD>
+                      <TD className="text-right tabular">{row.inStock}</TD>
                       <TD className="text-right">
                         {row.onRent > 0 ? (
                           <Badge variant="warning">{row.onRent} out</Badge>

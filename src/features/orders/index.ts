@@ -1,4 +1,4 @@
-export { createOrderFromQuotation, getOrder, orderKeys } from "./api";
+export { cancelOrder, completeOrder, createOrderFromQuotation, getOrder, orderKeys } from "./api";
 export { OrdersPage } from "./components/OrdersPage";
 export { ConvertToOrderDialog } from "./components/ConvertToOrderDialog";
 export type {

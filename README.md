@@ -329,7 +329,11 @@ named and counted in the legend, so nothing is carried by colour alone.
 
 ## Verification
 
-Build, typecheck and lint are clean.
+Build, typecheck and lint are clean. There is deliberately **no automated test
+suite**: the Vitest suite that once covered `mock-data/store.ts` was removed, so
+`npm run build` is the only gate, and the flows below were checked by hand rather
+than pinned by assertions. Re-adding tests means re-adding `vitest` and a config;
+nothing in the app depends on them.
 
 In **mock mode**, the flows were driven in headless Chrome: signing in as each
 role and confirming the menu narrows accordingly (WAREHOUSE loses the dashboard

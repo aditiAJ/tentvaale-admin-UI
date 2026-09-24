@@ -6,7 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, Boxes, Plus } from "lucide-react";
 import { inventoryKeys, listStockMovementsByOrder } from "@/features/inventory/api";
 import { DIRECTION_MEANING } from "@/features/inventory/types";
 import { RecordMovementDialog } from "@/features/inventory/components/RecordMovementDialog";
-import { listProducts, masterDataKeys } from "@/features/master-data/api";
+import { listProducts, listWarehouses, masterDataKeys } from "@/features/master-data/api";
 import { useCan } from "@/features/auth";
 import { DEMO_MOVEMENT_ORDER_EXAMPLES } from "@/mock-data/seed";
 import { IdLookup } from "@/components/id-lookup";
@@ -19,8 +19,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
-export function StockMovementsPage() {
-  const [orderId, setOrderId] = useState("");
+/** `initialOrderId` comes from `?orderId=`, so an order can link to its movements. */
+export function StockMovementsPage({ initialOrderId = "" }: { initialOrderId?: string }) {
+  const [orderId, setOrderId] = useState(initialOrderId);
   const [recording, setRecording] = useState(false);
   const canWrite = useCan("INVENTORY_WRITE");
 
@@ -43,6 +44,27 @@ export function StockMovementsPage() {
     () => new Map((products.data ?? []).map((product) => [product.id, product.name])),
     [products.data],
   );
+
+  const variantNames = useMemo(
+    () =>
+      new Map(
+        (products.data ?? []).flatMap((product) =>
+          product.variants.map((variant) => [variant.id, variant.name] as const),
+        ),
+      ),
+    [products.data],
+  );
+
+  const warehouses = useQuery({
+    queryKey: masterDataKeys.warehouses,
+    queryFn: ({ signal }) => listWarehouses(signal),
+    retry: false,
+  });
+
+  const warehouseName = (warehouseId: string | null) =>
+    warehouseId
+      ? (warehouses.data?.find((warehouse) => warehouse.id === warehouseId)?.name ?? warehouseId)
+      : null;
 
   const { data, isFetching, isError, error } = useQuery({
     queryKey: inventoryKeys.movementsByOrder(orderId),
@@ -105,7 +127,10 @@ export function StockMovementsPage() {
               <CardHeader className="flex-row items-center justify-between gap-3">
                 <div className="space-y-1">
                   <CardTitle>{movement.movementNumber}</CardTitle>
-                  <p className="tabular text-xs text-muted-foreground">{movement.movedOn}</p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="tabular">{movement.movedOn}</span>
+                    {movement.warehouseId ? ` · ${warehouseName(movement.warehouseId)}` : ""}
+                  </p>
                 </div>
                 <Badge
                   variant={movement.direction === "OUTWARD" ? "warning" : "success"}
@@ -121,6 +146,7 @@ export function StockMovementsPage() {
                   <THead>
                     <tr>
                       <TH>Product</TH>
+                      <TH>Variant</TH>
                       <TH className="text-right">Quantity</TH>
                     </tr>
                   </THead>
@@ -128,6 +154,9 @@ export function StockMovementsPage() {
                     {movement.lines.map((line) => (
                       <TR key={line.id}>
                         <TD className="font-medium">{productNames.get(line.productId) ?? line.productId}</TD>
+                        <TD className="text-muted-foreground">
+                          {line.variantId ? (variantNames.get(line.variantId) ?? line.variantId) : "—"}
+                        </TD>
                         <TD className="text-right tabular">{line.quantity}</TD>
                       </TR>
                     ))}

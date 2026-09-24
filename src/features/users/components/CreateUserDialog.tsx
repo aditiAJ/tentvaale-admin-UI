@@ -115,7 +115,7 @@ export function CreateUserDialog({ onClose }: { onClose: () => void }) {
           label="Temporary password"
           required
           error={errors.password?.message}
-          hint="At least 12 characters. Shown only now — the user should change it after signing in."
+          hint="At least 12 characters."
         >
           {(props) => (
             <div className="flex gap-2">

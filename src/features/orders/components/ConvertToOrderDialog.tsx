@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createOrderFromQuotation, orderKeys } from "@/features/orders/api";
 import { quotationKeys } from "@/features/quotations/api";
+import { depositKeys } from "@/features/deposits/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
@@ -18,10 +19,10 @@ import { Alert } from "@/components/ui/alert";
 /**
  * Confirms converting one quotation into an order.
  *
- * It asks first because the conversion is terminal on both sides: the order is
- * created and the quotation is marked CONVERTED, and neither can be undone from
- * the back office — there is no cancel endpoint and no status transition to
- * walk it back with.
+ * It asks first because the conversion is terminal for the quotation: it is
+ * marked CONVERTED and cannot be converted again. The order starts CONFIRMED
+ * with its security deposit held; cancelling it later does not reopen the
+ * quotation.
  */
 export function ConvertToOrderDialog({
   quotation,
@@ -42,6 +43,7 @@ export function ConvertToOrderDialog({
       // behind the dialog finds out.
       queryClient.invalidateQueries({ queryKey: quotationKeys.byId(quotation.id) });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+      queryClient.invalidateQueries({ queryKey: depositKeys.byOrder(order.id) });
       toast.success(`${order.orderNumber} confirmed`, {
         description: `${order.customerName} — ${formatMoney(order.totalAmount)}`,
       });
@@ -64,7 +66,7 @@ export function ConvertToOrderDialog({
       open
       onClose={onClose}
       title="Convert to order"
-      description="Creates a confirmed order and closes the quotation. Neither can be undone from here."
+      description="Creates a confirmed order, holds its security deposit, and closes the quotation."
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>

@@ -65,23 +65,59 @@ export interface CreateQuotationLineRequest {
 /**
  * Mirrors QuotationAdminController.CreateQuotationRequest.
  *
- * No prices are sent. QuotationService reads each product's rate and deposit
- * out of master data at pricing time and stores the result, which is the same
- * reason QuotationView's totals are stored rather than recomputed on read.
+ * No line prices are sent. QuotationService reads each product's rate out of
+ * master data at pricing time and stores the result, which is the same reason
+ * QuotationView's totals are stored rather than recomputed on read. The
+ * security deposit is the exception, and this UI's addition to the real
+ * request: products no longer carry one, so it is set for the booking as a
+ * whole and sent as a single amount.
  * sourceReference is not sent either — the controller stamps "admin-ui" itself,
  * so a quotation raised here is distinguishable from a storefront one without
  * the client being trusted to say so.
  */
 export interface CreateQuotationRequest {
   /**
-   * Optional, and in practice usually absent: no admin endpoint lists
-   * storefront accounts, so the back office has no picker to produce an id
-   * from. The backend accepts a quotation without one.
+   * The customer the quotation is for — the stable reference orders, deposits
+   * and credit notes follow. Optional on the real controller, which predates a
+   * customer list; this UI always sends one, and the mock requires it.
    */
-  customerId?: string;
+  customerId: string;
+  /**
+   * Copies taken when the quotation is saved. The real controller stores what
+   * it is sent; the mock takes both from the customer record instead, so the
+   * copy can never disagree with the id it sits beside.
+   */
   customerName: string;
   customerEmail?: string;
   /** ISO yyyy-MM-dd, or omitted. Java parses it as a LocalDate. */
   eventDate?: string;
+  /** In INR, zero or more. Stored as the quotation's totalSecurityDeposit. */
+  securityDeposit: number;
   lines: CreateQuotationLineRequest[];
+}
+
+/**
+ * One line of an edit. `lineId` names an existing line, which keeps the
+ * per-day rate it was priced at; a line without one is new and is priced from
+ * the product's current retail rate. An existing line's product cannot change —
+ * that is a different line, so it is sent without a lineId.
+ */
+export interface UpdateQuotationLineRequest {
+  lineId?: string;
+  productId: string;
+  quantity: number;
+  rentalDays: number;
+}
+
+/**
+ * Edits a quotation that has not been converted. There is no update endpoint
+ * on the real controller; this is this UI's proposal, and the complete line
+ * list — a line left out is removed.
+ */
+export interface UpdateQuotationRequest {
+  customerId: string;
+  /** ISO yyyy-MM-dd, or omitted to clear it. */
+  eventDate?: string;
+  securityDeposit: number;
+  lines: UpdateQuotationLineRequest[];
 }

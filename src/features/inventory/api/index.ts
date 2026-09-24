@@ -34,9 +34,11 @@ export function listStockMovementsByOrder(
  * Records a dispatch or a return. Needs INVENTORY_WRITE, and answers 201 with
  * the movement.
  *
- * 404 when the order does not exist or belongs to another company, 422 when
- * there are no lines or a quantity is below 1. Nothing else is checked — see
- * RecordStockMovementRequest.
+ * 404 when the order, warehouse, product or variant does not exist; 422 when
+ * the order's status does not allow the direction, a line is not on the
+ * order, or the warehouse cannot supply (outward) or did not send (inward) the
+ * quantity. It moves the order to DISPATCHED or RETURNED — see
+ * RecordStockMovementRequest — so the caller's copy of the order is stale.
  */
 export function recordStockMovement(
   request: RecordStockMovementRequest,
