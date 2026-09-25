@@ -178,20 +178,21 @@ equally. Three tiers:
 |---|---|---|
 | Login | `POST /admin/auth/login` | Working |
 | Dashboard | `GET /admin/reporting/dashboard` | Working |
-| Products | `GET`/`POST /admin/master-data/products` | Working |
+| Products | `GET`/`POST /admin/master-data/products` | List and create work; edit, variants and media are **mock only** |
 | Deposits | `GET /admin/deposits/by-order/{id}` + request-refund / confirm-refunded / forfeit | Working |
 | Notifications | `GET /admin/notifications/log`, `…/log/by-subject` | Working |
 | Users | `GET`/`POST /admin/users`, `…/role`, `…/deactivate`, `…/reset-password` | Working |
-| Quotations | `GET`/`POST /admin/quotations` | Create works; reading is lookup-only — no list endpoint |
-| Orders | `GET /admin/orders/{id}`, `POST /admin/orders/from-quotation` | Convert works; reading is lookup-only — no list endpoint |
-| Stock movement | `GET /admin/inventory/stock-movements/by-order/{id}`, `POST /admin/inventory/stock-movements` | Recording works; reading is per-order only — cannot be browsed |
-| Credit notes | `GET /admin/credit-notes/by-customer/{id}`, `…/balance`, `POST /admin/credit-notes` | Per-customer only — no company-wide list |
-| Categories | none | **Mock only** — full CRUD, all of it invented; md_category exists, no controller |
+| Quotations | `GET`/`POST /admin/quotations` | Create works; edit is **mock only**; reading is lookup-only — no list endpoint |
+| Orders | `GET /admin/orders/{id}`, `POST /admin/orders/from-quotation` | Convert works; cancel, complete and by-customer listing are **mock only**; reading is lookup-only |
+| Stock movement | `GET /admin/inventory/stock-movements/by-order/{id}`, `POST /admin/inventory/stock-movements` | Recording works; the order-flow rules and stock effects are **mock only**; reading is per-order only |
+| Credit notes | `GET /admin/credit-notes/by-customer/{id}`, `…/balance`, `POST /admin/credit-notes` | Per-customer only; apply, cancel and reverse are **mock only** |
+| Categories | none | **Mock only** — add, edit and deactivate, with sub-categories; md_category exists, no controller |
 | Customers | none | **Mock only** — add and edit, invented; StorefrontAccount exists, no admin endpoint |
 | Bundles | none | **Mock only** — full CRUD, all of it invented; no entity or table |
-| Warehouses | none | **Mock only** — full CRUD, all of it invented; no entity or table |
+| Featured collections | none | **Mock only** — add, edit, activate and deactivate; no entity or table |
+| Warehouses | none | **Mock only** — full CRUD plus per-warehouse stock, all of it invented; no entity or table |
 | Trucks | none | **Mock only** — full CRUD, all of it invented; no entity or table |
-| Availability | none | **Mock only** — derived, and the derivation is unread |
+| Availability | none | **Mock only** — derived, and the real derivation is unread |
 
 The middle tier works against the real backend: those four modules expose a
 record by id but have no query that lists them, so each screen looks one up
@@ -202,9 +203,10 @@ The bottom tier has nothing to call at all, and renders seeded mock data.
 **None of this is said on screen.** The screens carried explanatory notes until
 they were removed by request, so this table is now the only record of which of
 them are real. Nothing in the running app distinguishes a figure the backend
-produced from one the mock invented, and nothing tells a user that a product
-cannot be edited, that a quotation's status will never move, or that the
-availability numbers are a placeholder calculation. Keep this table current: it
+produced from one the mock invented, and nothing tells a user that editing a
+product, cancelling an order or applying credit works only in mock mode, that a
+quotation's status never moves except to converted, or that the availability
+numbers are this UI's own calculation. Keep this table current: it
 is load-bearing in a way a README does not normally have to be.
 
 ### Known gaps
@@ -213,97 +215,120 @@ These are backend limits. They used to be surfaced in the UI; they are now
 recorded only here, so someone using the app will meet each of them as a
 surprise rather than as an explanation:
 
-- **Products are list-and-create only.** `listActiveProducts` returns active
-  products, and there is no update, deactivate or get-by-id endpoint exposed. A
-  product cannot be corrected or retired from the back office.
+- **Products are list-and-create only on the backend.** `listActiveProducts`
+  returns active products, and there is no update, deactivate or get-by-id
+  endpoint exposed. The back office edits products anyway — name, rates,
+  category, media, variants and warehouse stock — but every one of those writes
+  is mock-only and 404s in api mode. There is still no way to retire a product.
 - **Categories have no endpoint.** `md_category` exists and `ProductView`
   resolves a `categoryName`, but nothing lists, creates or edits categories, so
-  the Categories screen is mock-only and the product create form still takes a
-  category **id** rather than offering a picker. `category_id` is also not a
-  foreign key by design (the legacy data has orphans), so a product with an
-  unresolvable category renders as "Uncategorised" rather than as an error.
-- **The master-data CRUD is a proposal, not a mirror.** Categories, bundles,
-  warehouses and trucks can be added, edited and removed, and customers added
-  and edited, but every one of those calls points at a path no controller
+  the Categories screen and the product form's category and sub-category
+  pickers are mock-only. `category_id` is also not a foreign key by design (the
+  legacy data has orphans), so a product with an unresolvable category renders
+  as "Uncategorised" rather than as an error.
+- **The master-data CRUD is a proposal, not a mirror.** Categories can be added,
+  edited and deactivated; bundles, warehouses and trucks added, edited and
+  removed; customers and featured collections added and edited, and collections
+  switched on and off; product variants added, edited and removed; stock added
+  to a warehouse. Every one of those calls points at a path no controller
   serves — they work in mock mode and 404 in api mode. The rules they enforce
   were invented here rather than copied from anywhere: names unique per company
   (case-insensitive), a warehouse refusing to be deleted while a stock movement
   refers to it, a category deactivating rather than being deleted because
-  products point at it, and no delete at all for a customer, whose account is
-  what quotations and orders were raised against. `mock-data/store.ts` states
-  each one and why. When the backend defines these modules it may decide
-  differently, and the point of writing them down is that the disagreement is
-  visible.
-- **Products are the exception, deliberately.** They have a real controller that
-  exposes `GET` and `POST` and nothing else, so no edit or deactivate was added
-  — a mock-only product edit would be the one thing this whole arrangement is
-  meant to prevent, a demo that does something the real app cannot.
+  products point at it, no delete at all for a customer, whose account is what
+  quotations and orders were raised against, and for variants — Has variants
+  cannot be switched off while a product has variants, or on while any of it is
+  held or out on rent without one, and a variant cannot be deleted while any of
+  it is in a warehouse or on rent. `mock-data/store.ts` states each one and why.
+  When the backend defines these modules it may decide differently, and the
+  point of writing them down is that the disagreement is visible.
+- **Product editing is mock-only by request.** The real controller exposes `GET`
+  and `POST` and nothing else. Editing was added anyway, as a PUT following the
+  other master-data writes, so it is exactly the thing this arrangement warns
+  about: a demo that does something the real app cannot yet.
 - **Users cannot be reactivated.** Deactivation is one-way from here.
 - **The dashboard is six scalars.** Reporting owns no tables and assembles them
   from other modules' APIs. The counts cover four of the six quotation statuses
   — rejected and expired are not returned — so a true win rate cannot be shown,
-  and order value is a lifetime total with no period to compare against.
+  and order value is a lifetime total with no period to compare against. It
+  counts every order, cancelled ones included, and says nothing about dispatch,
+  return or completion.
 - **Deposits are per-order only.** There is no list, so the back office cannot
   answer "which deposits are waiting to be refunded?"; you look one up by order
-  id. Note also that `recordRefund`/`recordForfeit` do **not** check the amount
-  against what is held, so the settle dialog warns when you exceed it — that
-  warning is the only guard there is.
+  id, or open it from its order. Note also that `recordRefund`/`recordForfeit`
+  do **not** check the amount against what is held, so the settle dialog warns
+  when you exceed it — that warning is the only guard there is. What happens to
+  the rest of a deposit that is only partly forfeited is not defined. In mock
+  mode a HELD deposit is opened when an order is converted; whether the real
+  conversion does the same has not been checked.
 - **No quotation or order list endpoints.** Both screens therefore look a
   record up by id rather than browsing, the same shape Deposits settled on.
   This is still the main thing blocking the back office: the counts on the
   dashboard are the only company-wide view of either. It bites hardest now that
   quotations can be raised here — a quotation is reachable straight after
   creation, because the response carries its id, and effectively unreachable
-  the next morning unless someone kept the id.
-- **A back-office quotation carries no customer id.** `POST /admin/quotations`
-  accepts an optional `customerId`, but nothing lists storefront accounts for
-  the back office, so the form takes a typed name and email and leaves the id
-  null. The quotation is therefore not joined to any account: the name on it is
-  a string, and two quotations for the same person are related only by having
-  been typed the same way.
-- **Quotation and order status barely move.** Neither enum has a state machine
-  in code — the transition rules live in stored procedures that have not been
-  read. A quotation has exactly one transition, DRAFT/SENT/ACCEPTED →
-  CONVERTED, and only as a side effect of creating an order from it, because
-  `markConverted` is the single status change either module implements. There
-  is no way to mark a quotation sent, accepted, rejected or expired from the
-  back office, so those statuses are only ever reached by seeded data. An order
-  has none at all: it sits at CONFIRMED even once it has been dispatched and
-  returned, and it cannot be cancelled.
+  the next morning unless someone kept the id. The credit-notes screen lists one
+  customer's orders through a proposed `by-customer` path that is mock-only.
+- **A quotation's customer comes from a mock-only list.** A quotation references
+  an existing customer by id, chosen from the Customers list, and copies the
+  name and email from that record. But nothing lists storefront accounts on the
+  real backend, so in api mode the picker has nothing to offer.
+- **Quotation status barely moves.** The enum has no state machine in code — the
+  transition rules live in stored procedures that have not been read. A
+  quotation has exactly one transition, DRAFT/SENT/ACCEPTED → CONVERTED, and
+  only as a side effect of creating an order from it. There is no way to mark a
+  quotation sent, accepted, rejected or expired from the back office, so those
+  statuses are only ever reached by seeded data. Until it is converted, a
+  quotation can be edited in mock mode.
+- **Order status follows the flow in mock mode only.** The real `OrderStatus`
+  has no state machine either, so against the backend an order still sits at
+  CONFIRMED however far it gets, and cancel and complete 404. In mock mode an
+  outward movement makes it DISPATCHED, the inward movement that brings the
+  last of it back makes it RETURNED, completing needs RETURNED and a refunded or
+  forfeited deposit, and only a CONFIRMED order can be cancelled — which moves a
+  HELD deposit to REFUND_PENDING and no stock. Nothing sets a status directly.
 - **Conversion cannot be undone.** `createOrderFromQuotation` creates the order
   and marks the quotation converted in one transaction, and nothing reverses
-  either half — there is no delete, no cancel and no transition back. The
+  the quotation half — cancelling the order does not reopen it. The
   confirmation dialog on the quotation screen is the only thing between a
-  misclick and a permanent order, which is why it is a dialog rather than a
+  misclick and a converted quotation, which is why it is a dialog rather than a
   button that just fires.
 - **Stock movements cannot be browsed**, only read per order. A movement also
   carries no sub-event id, so a multi-event order cannot attribute stock.
-- **A recorded movement is barely validated.** `recordMovement` checks three
-  things: that there is at least one line, that the order exists in this
-  company, and that each quantity is at least 1. It does **not** compare the
-  movement against what the order contains or against what is in the warehouse —
-  its own TODO says those rules are in unread stored procedures. So the back
-  office will happily dispatch a product the order never included, return more
-  than went out, or record the same dispatch twice. The record-movement form
-  pre-fills from the order to make the right answer the easy one, but that is a
-  convenience, not a guard: every row stays editable and nothing refuses a
-  wrong one.
-- **Availability goes negative.** It is derived in mock mode as outward minus
-  inward across all movements, so returning more than was dispatched produces a
-  negative count, which the screen renders as "In store" rather than as the
-  contradiction it is. The real derivation is unread, so there is nothing to
-  check this against.
-- **Credit notes are never applied.** `appliedAmount` is initialised to zero
-  and nothing moves it: apply, cancel and reverse are unimplemented, so a
-  customer's balance only ever grows and three of the four statuses are
-  unreachable.
-- **Customers, bundles, warehouses, trucks and availability have no backend at
-  all.** Customers do at least have a real entity — identity's
-  `StorefrontAccount`, which notably has no `companyId` — but no admin endpoint
-  reaches it. The other four have neither entity nor table, and availability is
-  derived rather than stored, by a calculation nobody has read. Those five
-  screens exist as mock-only sketches — four of them now editable ones, which
-  makes them a more useful sketch and no less of one.
+- **Movement validation is the mock's, not the backend's.** The real
+  `recordMovement` checks three things: at least one line, an order that exists
+  in this company, and each quantity at least 1 — its own TODO says the rest is
+  in unread stored procedures. In mock mode a movement must also name a
+  warehouse; its lines must be products on the order, with the variant named for
+  a product that has variants; an outward one may not send more than was
+  ordered or more than that warehouse holds; an inward one may only bring back
+  what is still out from that same warehouse. A refused movement changes
+  nothing. Outward takes stock off the shelf, inward puts it back. None of this
+  applies against the real backend. Adjustment, write-off, transfers between
+  warehouses, reservation and reversing a movement do not exist, and there is no
+  way to close an order whose goods never all come back — it stays DISPATCHED.
+- **Availability is this UI's own calculation.** The real derivation is unread.
+  In mock mode "in stock" is the warehouse shelf counts and "on rent" is outward
+  minus inward; since a return can never exceed what went out, on rent cannot go
+  negative. Nothing is reserved for confirmed orders, dates are not considered,
+  and inactive products are left out even when some of one is on rent.
+- **Credit notes are applied, cancelled and reversed in mock mode only.** The real
+  controller issues and reads them and nothing else. In mock mode a note must
+  name an existing customer and, optionally, one of that customer's orders; it
+  can be applied in parts to any of the customer's orders that is not
+  cancelled, never beyond what remains, and becomes APPLIED when nothing does;
+  it can be cancelled only while nothing has been applied; and reversing it
+  voids only the unapplied remainder. A reversed note counts nothing toward the
+  balance, where the backend's `LIVE_STATUSES` still lists REVERSED. Applying
+  credit changes no order, stock or deposit, and whether it should be capped at
+  an order's total, expire, or relate to deposits is not defined.
+- **Customers, bundles, featured collections, product variants, warehouses and
+  their stock, trucks and availability have no backend at all.** Customers do
+  at least have a real entity — identity's `StorefrontAccount`, which notably has
+  no `companyId` — but no admin endpoint reaches it. The others have neither
+  entity nor table, and availability is derived rather than stored. Those
+  screens exist as mock-only sketches — editable ones now, which makes them a
+  more useful sketch and no less of one.
 
 Business rules the backend enforces are also pre-empted in the UI so a refusal
 is explained before it is attempted rather than arriving as a 422: you cannot
@@ -334,6 +359,12 @@ suite**: the Vitest suite that once covered `mock-data/store.ts` was removed, so
 `npm run build` is the only gate, and the flows below were checked by hand rather
 than pinned by assertions. Re-adding tests means re-adding `vitest` and a config;
 nothing in the app depends on them.
+
+The figures quoted below — order and movement numbers, counts, which seeded
+quotation already had an order — come from the seed as it stood when each flow
+was driven. The seed has changed since, so they will not all reproduce. The
+order flow past conversion, the inventory rules, variant stock and credit-note
+application came later and are not described here.
 
 In **mock mode**, the flows were driven in headless Chrome: signing in as each
 role and confirming the menu narrows accordingly (WAREHOUSE loses the dashboard

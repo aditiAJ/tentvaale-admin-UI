@@ -1,6 +1,11 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
-import { mockCreateQuotation, mockGetQuotation, mockUpdateQuotation } from "@/mock-data/store";
+import {
+  mockCreateQuotation,
+  mockGetQuotation,
+  mockListQuotations,
+  mockUpdateQuotation,
+} from "@/mock-data/store";
 import type {
   CreateQuotationRequest,
   QuotationView,
@@ -54,6 +59,16 @@ export function updateQuotation(
   });
 }
 
+/**
+ * Proposed: there is no list endpoint, so this 404s in api mode. Every
+ * quotation for the company, for the quotation workspace to browse.
+ */
+export function listQuotations(signal?: AbortSignal): Promise<QuotationView[]> {
+  if (IS_MOCK) return mockListQuotations();
+  return apiFetch<QuotationView[]>("/admin/quotations/list", { signal });
+}
+
 export const quotationKeys = {
   byId: (quotationId: string) => ["quotations", quotationId] as const,
+  list: ["quotations", "list"] as const,
 };

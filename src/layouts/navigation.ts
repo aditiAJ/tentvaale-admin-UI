@@ -20,8 +20,9 @@ import type { Permission } from "@/services/permissions";
 /**
  * The whole back-office information architecture, not just the parts that work.
  *
- * `status: "ready"` means the screen exists and talks to a real endpoint.
- * `status: "planned"` means the backend has no endpoint for it yet — those
+ * `status: "ready"` means the screen exists. Whether a real endpoint is behind
+ * it, or only the mock, is recorded in the README's table, not here.
+ * `status: "planned"` means there is no screen for it yet — those
  * render as disabled rows carrying the reason, rather than as links to a page
  * that would only apologise. Showing them is deliberate: the shape of the
  * finished system stays visible, and the gap between it and today stays

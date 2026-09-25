@@ -226,7 +226,7 @@ export const SEED_SUB_CATEGORIES: SubCategoryView[] = [
 export interface SeedQuotation {
   id: string;
   number: string;
-  status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "CONVERTED" | "EXPIRED";
+  status: QuotationView["status"];
 }
 
 /** UUID-shaped for the same reason order ids are: the quotation screen looks
@@ -489,7 +489,7 @@ interface SeedLine {
  * too rather than derived on read. Line rates are retail, as a new quotation
  * is priced. The deposit is passed in, because it is set per booking now that
  * products carry none; each is the figure the old per-product deposits added
- * up to, so the seeded orders and ledger are unchanged.
+ * up to, and the deposit ledger below holds exactly these amounts.
  */
 function quotationDetail(
   source: SeedQuotation,
@@ -629,6 +629,74 @@ export const SEED_QUOTATION_DETAILS: QuotationView[] = [
     "admin-ui",
     5000,
   ),
+  // New, reviewed and discarded quotations for the workspace's filters. They
+  // are built from sources of their own rather than from SEED_QUOTATIONS, so
+  // the dashboard, which counts that list, is unchanged. Numbered from 400 to
+  // stay clear of every number the stub list already uses.
+  quotationDetail(
+    { id: quotationId(7, 0), number: "QT-2026-400", status: "NEW" },
+    SEED_CUSTOMERS[0],
+    52,
+    [
+      { sku: "TENT-10X10", quantity: 2, rentalDays: 1 },
+      { sku: "CHR-WHITE", quantity: 40, rentalDays: 1 },
+    ],
+    "storefront-plan:99999999-9999-9999-9999-999999999902",
+    3000,
+  ),
+  quotationDetail(
+    { id: quotationId(7, 1), number: "QT-2026-401", status: "NEW" },
+    SEED_CUSTOMERS[4],
+    60,
+    [
+      { sku: "SOFA-VELVET", quantity: 4, rentalDays: 2 },
+      { sku: "TBL-COCKTAIL", quantity: 10, rentalDays: 2 },
+    ],
+    "admin-ui",
+    8000,
+  ),
+  quotationDetail(
+    { id: quotationId(8, 0), number: "QT-2026-402", status: "REVIEWED" },
+    SEED_CUSTOMERS[1],
+    33,
+    [
+      { sku: "TENT-20X40", quantity: 1, rentalDays: 2 },
+      { sku: "CHR-GOLD", quantity: 60, rentalDays: 2 },
+      { sku: "LIGHT-FAIRY", quantity: 4, rentalDays: 2 },
+    ],
+    "admin-ui",
+    6000,
+  ),
+  quotationDetail(
+    { id: quotationId(8, 1), number: "QT-2026-403", status: "REVIEWED" },
+    SEED_CUSTOMERS[2],
+    45,
+    [
+      { sku: "STAGE-8X12", quantity: 1, rentalDays: 1 },
+      { sku: "GEN-15KVA", quantity: 1, rentalDays: 1 },
+    ],
+    "admin-ui",
+    4000,
+  ),
+  quotationDetail(
+    { id: quotationId(9, 0), number: "QT-2026-404", status: "DISCARDED" },
+    SEED_CUSTOMERS[3],
+    12,
+    [{ sku: "TBL-ROUND-6", quantity: 6, rentalDays: 1 }],
+    "admin-ui",
+    1000,
+  ),
+  quotationDetail(
+    { id: quotationId(9, 1), number: "QT-2026-405", status: "DISCARDED" },
+    SEED_CUSTOMERS[1],
+    8,
+    [
+      { sku: "TENT-30X60", quantity: 1, rentalDays: 2 },
+      { sku: "LIGHT-UPLIGHT", quantity: 8, rentalDays: 2 },
+    ],
+    "storefront-plan:99999999-9999-9999-9999-999999999903",
+    12000,
+  ),
 ];
 
 /**
@@ -761,10 +829,11 @@ export const SEED_STOCK_MOVEMENTS: StockMovementView[] = [
 ];
 
 /**
- * Credit notes are read per customer, never company-wide. appliedAmount is
- * zero on every one of them because nothing in the rebuild applies a credit —
- * the apply/cancel/reverse transitions live in stored procedures that have
- * not been read, so ISSUED is the only status any of these can be in.
+ * Credit notes are read per customer. Each one names an order of that same
+ * customer where it names one at all, and is dated after the event it credits:
+ * 0088 came back three days ago with two chairs scuffed, and 0090's pole tent
+ * went up late yesterday. None has been applied yet, so each is ISSUED with its
+ * full amount available.
  */
 export const SEED_CREDIT_NOTES: CreditNoteView[] = [
   {
@@ -775,9 +844,10 @@ export const SEED_CREDIT_NOTES: CreditNoteView[] = [
     againstOrderId: SEED_ORDERS[0].id,
     amount: inr(4500),
     appliedAmount: inr(0),
+    applications: [],
     status: "ISSUED",
-    issuedOn: new Date(Date.now() - 86_400_000 * 11).toISOString().slice(0, 10),
-    reason: "Two uplights failed on the night; partial credit agreed",
+    issuedOn: daysAgo(2),
+    reason: "Two chairs scuffed on delivery; partial credit agreed",
   },
   {
     id: "cn-02",
@@ -787,8 +857,9 @@ export const SEED_CREDIT_NOTES: CreditNoteView[] = [
     againstOrderId: null,
     amount: inr(2000),
     appliedAmount: inr(0),
+    applications: [],
     status: "ISSUED",
-    issuedOn: new Date(Date.now() - 86_400_000 * 4).toISOString().slice(0, 10),
+    issuedOn: daysAgo(1),
     reason: "Goodwill credit after late dispatch",
   },
   {
@@ -799,9 +870,10 @@ export const SEED_CREDIT_NOTES: CreditNoteView[] = [
     againstOrderId: SEED_ORDERS[2].id,
     amount: inr(11750),
     appliedAmount: inr(0),
+    applications: [],
     status: "ISSUED",
-    issuedOn: new Date(Date.now() - 86_400_000 * 22).toISOString().slice(0, 10),
-    reason: "Stage deck shortfall, one section never delivered",
+    issuedOn: daysAgo(0),
+    reason: "Pole tent went up two hours late on the event day",
   },
 ];
 
@@ -888,12 +960,12 @@ export const DEMO_DEPOSIT_EXAMPLES = SEED_DEPOSITS.map((deposit) => ({
  *  only the records the mock actually holds in full are offered. */
 export const DEMO_QUOTATION_EXAMPLES = SEED_QUOTATION_DETAILS.map((quotation) => ({
   id: quotation.id,
-  label: `${quotation.quotationNumber} · ${quotation.status}`,
+  label: `${quotation.customerName} · ${quotation.status}`,
 }));
 
 export const DEMO_ORDER_EXAMPLES = SEED_ORDER_DETAILS.map((order) => ({
   id: order.id,
-  label: order.orderNumber,
+  label: order.customerName,
 }));
 
 export const DEMO_MOVEMENT_ORDER_EXAMPLES = [
@@ -901,11 +973,4 @@ export const DEMO_MOVEMENT_ORDER_EXAMPLES = [
 ].map((orderId) => ({
   id: orderId,
   label: SEED_ORDERS.find((order) => order.id === orderId)?.number ?? orderId.slice(0, 8),
-}));
-
-export const DEMO_CREDIT_CUSTOMER_EXAMPLES = [
-  ...new Set(SEED_CREDIT_NOTES.map((note) => note.customerId)),
-].map((customerId) => ({
-  id: customerId,
-  label: SEED_CUSTOMERS.find((customer) => customer.id === customerId)?.fullName ?? customerId,
 }));

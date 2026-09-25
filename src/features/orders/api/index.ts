@@ -5,6 +5,8 @@ import {
   mockCompleteOrder,
   mockCreateOrderFromQuotation,
   mockGetOrder,
+  mockListOrders,
+  mockListOrdersByCustomer,
 } from "@/mock-data/store";
 import type { OrderView } from "@/features/orders/types";
 
@@ -64,6 +66,28 @@ export function completeOrder(orderId: string): Promise<OrderView> {
   });
 }
 
+/**
+ * Proposed: there is no list endpoint, so this 404s in api mode. One
+ * customer's orders, for the screens that pick an order for a customer.
+ */
+export function listOrdersByCustomer(customerId: string, signal?: AbortSignal): Promise<OrderView[]> {
+  if (IS_MOCK) return mockListOrdersByCustomer(customerId);
+  return apiFetch<OrderView[]>(`/admin/orders/by-customer/${encodeURIComponent(customerId)}`, {
+    signal,
+  });
+}
+
+/**
+ * Proposed: there is no list endpoint, so this 404s in api mode. Every order
+ * for the company, for the order workspace to browse.
+ */
+export function listOrders(signal?: AbortSignal): Promise<OrderView[]> {
+  if (IS_MOCK) return mockListOrders();
+  return apiFetch<OrderView[]>("/admin/orders/list", { signal });
+}
+
 export const orderKeys = {
   byId: (orderId: string) => ["orders", orderId] as const,
+  list: ["orders", "list"] as const,
+  byCustomer: (customerId: string) => ["orders", "by-customer", customerId] as const,
 };

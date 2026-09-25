@@ -1,12 +1,12 @@
 "use client";
 
-import { Fragment, useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CornerDownRight, EyeOff, Plus, Search, Tags } from "lucide-react";
+import { Plus, Search, SearchX, Tags, X } from "lucide-react";
 import { deactivateCategory, listCategories, masterDataKeys } from "@/features/master-data/api";
 import type { CategoryView } from "@/features/master-data/types";
+import { CategoryCard } from "@/features/master-data/components/CategoryCard";
 import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
-import { RowActions } from "@/features/master-data/components/RowActions";
 import { useCan } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TableSkeleton } from "@/components/ui/skeleton";
-import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const GRID = "grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
 export function CategoriesPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
@@ -26,7 +27,7 @@ export function CategoriesPage() {
   const queryClient = useQueryClient();
 
   const deferredSearch = useDeferredValue(search);
-  const columns = canWrite ? 2 : 1;
+  const term = deferredSearch.trim().toLowerCase();
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery({
     queryKey: masterDataKeys.categories,
@@ -34,7 +35,6 @@ export function CategoriesPage() {
   });
 
   const visible = useMemo(() => {
-    const term = deferredSearch.trim().toLowerCase();
     if (!term) return data ?? [];
     // A match on a sub-category keeps its parent in view, so a search for
     // "chandeliers" shows where they are filed.
@@ -43,33 +43,43 @@ export function CategoriesPage() {
         category.name.toLowerCase().includes(term) ||
         category.subCategories.some((sub) => sub.name.toLowerCase().includes(term)),
     );
-  }, [data, deferredSearch]);
+  }, [data, term]);
+
+  const newButton = canWrite ? (
+    <Button onClick={() => setCreating(true)}>
+      <Plus />
+      New category
+    </Button>
+  ) : null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Categories"
         description="Groupings used to organise the product catalogue."
-        actions={
-          canWrite ? (
-            <Button onClick={() => setCreating(true)}>
-              <Plus />
-              New category
-            </Button>
-          ) : null
-        }
+        actions={newButton}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-56 flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="relative w-full sm:max-w-md">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search categories and sub-categories"
-            className="pl-8"
+            className="h-10 pr-9 pl-9"
             aria-label="Search categories"
           />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+              aria-label="Clear search"
+            >
+              <X className="size-4" />
+            </button>
+          ) : null}
         </div>
         <p className="text-xs text-muted-foreground tabular" aria-live="polite">
           {isPending ? "Loading…" : `${visible.length} of ${data?.length ?? 0} categories`}
@@ -77,64 +87,16 @@ export function CategoriesPage() {
         </p>
       </div>
 
-      <Card>
-        <TableWrapper>
-          <Table>
-            <THead>
-              <tr>
-                <TH>Name</TH>
-                {canWrite ? <TH className="text-right">Actions</TH> : null}
-              </tr>
-            </THead>
-            <TBody>
-              {isPending ? <TableSkeleton columns={columns} /> : null}
+      {isPending ? (
+        <div className={GRID}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-60 rounded-lg" />
+          ))}
+        </div>
+      ) : null}
 
-              {!isPending && visible.length > 0
-                ? visible.map((category: CategoryView) => (
-                    <Fragment key={category.id}>
-                      <TR>
-                        <TD>
-                          <span className="font-medium">{category.name}</span>
-                          <span className="ml-2 text-xs text-muted-foreground tabular">
-                            {category.subCategories.length
-                              ? `${category.subCategories.length} sub-${
-                                  category.subCategories.length === 1 ? "category" : "categories"
-                                }`
-                              : "No sub-categories"}
-                          </span>
-                        </TD>
-                        {canWrite ? (
-                          <TD>
-                            <RowActions
-                              label={category.name}
-                              onEdit={() => setEditing(category)}
-                              onRemove={() => setDeactivating(category)}
-                              removeLabel="Deactivate"
-                              removeIcon={<EyeOff />}
-                            />
-                          </TD>
-                        ) : null}
-                      </TR>
-                      {/* Sub-categories are edited through their category, so
-                          their rows carry no actions of their own. */}
-                      {category.subCategories.map((sub) => (
-                        <TR key={sub.id}>
-                          <TD colSpan={columns} className="py-1.5 pl-6 text-muted-foreground">
-                            <span className="flex items-center gap-2">
-                              <CornerDownRight className="size-3.5 shrink-0" aria-hidden="true" />
-                              {sub.name}
-                            </span>
-                          </TD>
-                        </TR>
-                      ))}
-                    </Fragment>
-                  ))
-                : null}
-            </TBody>
-          </Table>
-        </TableWrapper>
-
-        {isError ? (
+      {isError ? (
+        <Card>
           <EmptyState
             title="Could not load categories"
             description={error instanceof Error ? error.message : undefined}
@@ -144,28 +106,43 @@ export function CategoriesPage() {
               </Button>
             }
           />
-        ) : null}
+        </Card>
+      ) : null}
 
-        {!isPending && !isError && visible.length === 0 ? (
-          <EmptyState
-            icon={<Tags />}
-            title={data?.length ? "No categories match that search" : "No categories yet"}
-            description={
-              data?.length
-                ? "Try a different category or sub-category name."
-                : "Add the first grouping for this company's catalogue."
-            }
-            action={
-              !data?.length && canWrite ? (
-                <Button onClick={() => setCreating(true)}>
-                  <Plus />
-                  New category
+      {data && visible.length === 0 ? (
+        <Card>
+          {data.length ? (
+            <EmptyState
+              icon={<SearchX />}
+              title={`No categories match “${deferredSearch.trim()}”`}
+              description="Neither a category nor any of its sub-categories has that in its name."
+              action={
+                <Button variant="outline" onClick={() => setSearch("")}>
+                  Clear search
                 </Button>
-              ) : null
-            }
-          />
-        ) : null}
-      </Card>
+              }
+            />
+          ) : (
+            <EmptyState icon={<Tags />} title="No categories yet" action={newButton} />
+          )}
+        </Card>
+      ) : null}
+
+      {visible.length > 0 ? (
+        <div className={GRID}>
+          {visible.map((category: CategoryView) => (
+            <CategoryCard
+              key={category.id}
+              category={category}
+              term={term}
+              onEdit={canWrite ? () => setEditing(category) : undefined}
+              onDeactivate={
+                canWrite && category.active ? () => setDeactivating(category) : undefined
+              }
+            />
+          ))}
+        </div>
+      ) : null}
 
       {creating ? <CategoryDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <CategoryDialog existing={editing} onClose={() => setEditing(null)} /> : null}

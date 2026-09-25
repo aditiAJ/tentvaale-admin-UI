@@ -10,6 +10,12 @@ import type { Money } from "@/lib/money";
  * offers no transitions — there is no server contract to drive them from.
  */
 export const QUOTATION_STATUSES = [
+  // NEW, REVIEWED and DISCARDED are this UI's own, for the quotation
+  // workspace's filters; the backend enum does not have them, and nothing here
+  // moves a quotation into them — only seeded data carries them.
+  "NEW",
+  "REVIEWED",
+  "DISCARDED",
   "DRAFT",
   "SENT",
   "ACCEPTED",

@@ -47,10 +47,12 @@ import type {
   StockMovementView,
 } from "@/features/inventory/types";
 import type {
+  ApplyCreditNoteRequest,
   CreditNoteView,
   CustomerCreditBalance,
   IssueCreditNoteRequest,
 } from "@/features/credit-notes/types";
+import { remainingCredit } from "@/features/credit-notes/types";
 import type { AdminUserView, CreateAdminUserRequest } from "@/features/users/types";
 import type { AdminDashboardView } from "@/features/dashboard/types";
 import type { NotificationLogView } from "@/features/notifications/types";
@@ -98,6 +100,8 @@ import {
  * would. Bump STORAGE_KEY's version suffix when the seed shape changes.
  */
 
+// v14: credit notes carry their applications, and the seeded notes were made
+// to agree with the orders they name.
 // v13: movement lines carry a variantId, and the seeded orders, movements,
 // deposits and warehouse stock were made to agree with one another.
 // v12: bundles store { productId, quantity } components instead of product names.
@@ -112,7 +116,7 @@ import {
 // the fields quotation pricing and the products table now read.
 // v4: MockState gained `warehouseProducts`. A v3 payload has no such array, and
 // reading a warehouse's products from it would throw rather than come back empty.
-const STORAGE_KEY = "tentvaale.admin.mock.v13";
+const STORAGE_KEY = "tentvaale.admin.mock.v15";
 
 /** Enough delay to make loading states real, little enough to feel instant. */
 const LATENCY_MS = 220;
@@ -924,9 +928,10 @@ export async function mockUpdateProductVariant(
 
 /**
  * Removes the variant and nothing else: the product and its other variants
- * are untouched. Refused while a warehouse holds stock of it, because there is
- * no way to take stock out of a warehouse, so deleting would leave counts
- * pointing at a variant that no longer exists.
+ * are untouched. Refused while a warehouse holds stock of it or any of it is
+ * out on rent: stock leaves a warehouse only by being dispatched, and comes
+ * back by a return that names the variant, so deleting would leave counts and
+ * movements pointing at a variant that no longer exists.
  */
 export async function mockDeleteProductVariant(
   productId: string,
@@ -1470,6 +1475,18 @@ export async function mockUpdateCustomer(
 // Quotations and orders
 // ---------------------------------------------------------------------------
 
+/**
+ * No list endpoint exists — QuotationRepository has no company-scoped
+ * find-all — so this is proposed, like the by-customer order list. Every
+ * quotation held, newest number first. Read-only.
+ */
+export async function mockListQuotations(): Promise<QuotationView[]> {
+  await delay();
+  const numberOf = (quotation: QuotationView) =>
+    Number(/(\d+)$/.exec(quotation.quotationNumber)?.[1] ?? 0);
+  return [...state().quotations].sort((a, b) => numberOf(b) - numberOf(a));
+}
+
 export async function mockGetQuotation(quotationId: string): Promise<QuotationView> {
   await delay();
   const found = state().quotations.find((quotation) => quotation.id === quotationId);
@@ -1835,6 +1852,27 @@ function nextOrderNumber(current: MockState): string {
   return `ORD-2026-${String(highest + 1).padStart(4, "0")}`;
 }
 
+/**
+ * No list endpoint exists — SalesOrderRepository cannot return orders — so
+ * this is proposed, like the by-customer list below. Every order held, newest
+ * number first. Read-only.
+ */
+export async function mockListOrders(): Promise<OrderView[]> {
+  await delay();
+  return [...state().orders].sort((a, b) => b.orderNumber.localeCompare(a.orderNumber));
+}
+
+/**
+ * No list endpoint exists — SalesOrderRepository cannot return orders — so
+ * this is proposed, like cancel. One customer's orders, newest number first.
+ */
+export async function mockListOrdersByCustomer(customerId: string): Promise<OrderView[]> {
+  await delay();
+  return state()
+    .orders.filter((order) => order.customerId === customerId)
+    .sort((a, b) => b.orderNumber.localeCompare(a.orderNumber));
+}
+
 function requireOrderIndex(current: MockState, orderId: string): number {
   const index = current.orders.findIndex((order) => order.id === orderId);
   if (index === -1) throw notFound(`Order ${orderId} not found`);
@@ -2174,7 +2212,44 @@ export async function mockDeriveAvailability(): Promise<AvailabilityRow[]> {
 
 // ---------------------------------------------------------------------------
 // Credit notes
+//
+// A note is credit a customer holds. It can be issued against one of their
+// orders or stand alone, applied in parts to any of their orders until nothing
+// remains, cancelled while untouched, or reversed — which voids whatever has
+// not been applied and leaves the applications as they were. Money is compared
+// in paise so repeated partial applications never drift.
 // ---------------------------------------------------------------------------
+
+const toPaise = (amount: number | string) => Math.round(Number(amount) * 100);
+
+/** Positive, finite and at most two decimal places. */
+function checkCreditAmount(amount: unknown, label: string): number {
+  if (
+    typeof amount !== "number" ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6
+  ) {
+    throw businessRule(`${label} must be a positive amount with at most two decimal places`);
+  }
+  return amount;
+}
+
+function requireCreditNoteIndex(current: MockState, creditNoteId: string): number {
+  const index = current.creditNotes.findIndex((note) => note.id === creditNoteId);
+  if (index === -1) throw notFound(`Credit note ${creditNoteId} not found`);
+  return index;
+}
+
+/** An order of this customer's, or a refusal saying why it is not one. */
+function customerOrder(current: MockState, customerId: string, orderId: string): OrderView {
+  const order = current.orders.find((candidate) => candidate.id === orderId);
+  if (!order) throw notFound(`Order ${orderId} not found`);
+  if (order.customerId !== customerId) {
+    throw businessRule(`${order.orderNumber} belongs to another customer`);
+  }
+  return order;
+}
 
 export async function mockListCreditNotesByCustomer(
   customerId: string,
@@ -2182,23 +2257,23 @@ export async function mockListCreditNotesByCustomer(
   await delay();
   return state()
     .creditNotes.filter((note) => note.customerId === customerId)
-    .sort((a, b) => Date.parse(b.issuedOn) - Date.parse(a.issuedOn));
+    .sort(
+      (a, b) =>
+        Date.parse(b.issuedOn) - Date.parse(a.issuedOn) ||
+        b.creditNoteNumber.localeCompare(a.creditNoteNumber),
+    );
 }
 
-/** Sums amount - appliedAmount across LIVE_STATUSES only, as the service does. */
+/** Sums what remains on the customer's live notes — see LIVE_STATUSES. */
 export async function mockGetCustomerCreditBalance(
   customerId: string,
 ): Promise<CustomerCreditBalance> {
   await delay();
   const available = state()
-    .creditNotes.filter(
-      (note) =>
-        note.customerId === customerId &&
-        (note.status === "ISSUED" || note.status === "REVERSED"),
-    )
-    .reduce((sum, note) => sum + Number(note.amount.amount) - Number(note.appliedAmount.amount), 0);
+    .creditNotes.filter((note) => note.customerId === customerId)
+    .reduce((sum, note) => sum + toPaise(remainingCredit(note)), 0);
 
-  return { availableCredit: { amount: available, currency: "INR" } };
+  return { availableCredit: { amount: available / 100, currency: "INR" } };
 }
 
 export async function mockIssueCreditNote(
@@ -2207,27 +2282,160 @@ export async function mockIssueCreditNote(
   await delay();
   const current = state();
 
-  if (!(request.amount > 0)) {
-    throw businessRule("A credit note amount must be positive");
+  const customerId = typeof request.customerId === "string" ? request.customerId.trim() : "";
+  if (!customerId) throw businessRule("Choose a customer");
+  if (!current.customers.some((customer) => customer.id === customerId)) {
+    throw notFound(`Customer ${customerId} not found`);
   }
+
+  const amount = checkCreditAmount(request.amount, "A credit note amount");
+
+  const againstOrderId =
+    typeof request.againstOrderId === "string" && request.againstOrderId.trim()
+      ? request.againstOrderId.trim()
+      : null;
+  if (againstOrderId) customerOrder(current, customerId, againstOrderId);
+
+  const reason = typeof request.reason === "string" ? request.reason.trim() : "";
+  if (reason.length > 1000) throw businessRule("Reason is over 1000 characters");
 
   const created: CreditNoteView = {
     id: crypto.randomUUID(),
     companyId: COMPANY_ID,
-    creditNoteNumber: `CN-2026-${String(current.creditNotes.length + 20).padStart(4, "0")}`,
-    customerId: request.customerId,
-    againstOrderId: request.againstOrderId?.trim() ? request.againstOrderId : null,
-    amount: { amount: request.amount, currency: "INR" },
+    creditNoteNumber: nextCreditNoteNumber(current),
+    customerId,
+    againstOrderId,
+    amount: { amount, currency: "INR" },
     appliedAmount: { amount: 0, currency: "INR" },
+    applications: [],
     status: "ISSUED",
     issuedOn: new Date().toISOString().slice(0, 10),
-    reason: request.reason?.trim() ? request.reason : null,
+    reason: reason || null,
   };
 
   current.creditNotes.push(created);
   persist();
   return created;
 }
+
+/**
+ * Uses part or all of what remains on an ISSUED note against one of the same
+ * customer's orders — any of them, including one converted after the note was
+ * issued, except a cancelled one. The note stays ISSUED until nothing remains,
+ * then becomes APPLIED. Nothing about the order, its stock or its deposit moves.
+ */
+export async function mockApplyCreditNote(
+  creditNoteId: string,
+  request: ApplyCreditNoteRequest,
+): Promise<CreditNoteView> {
+  await delay();
+  const current = state();
+  const index = requireCreditNoteIndex(current, creditNoteId);
+  const note = current.creditNotes[index];
+
+  if (note.status !== "ISSUED") {
+    throw businessRule(
+      `${note.creditNoteNumber} is ${note.status.toLowerCase()}; only issued credit can be applied`,
+    );
+  }
+
+  const amount = checkCreditAmount(request.amount, "The amount to apply");
+
+  const orderId = typeof request.orderId === "string" ? request.orderId.trim() : "";
+  if (!orderId) throw businessRule("Choose the order to apply the credit to");
+  const order = customerOrder(current, note.customerId, orderId);
+  if (order.status === "CANCELLED") {
+    throw businessRule(`${order.orderNumber} is cancelled; credit cannot be applied to it`);
+  }
+
+  const remaining = toPaise(note.amount.amount) - toPaise(note.appliedAmount.amount);
+  if (toPaise(amount) > remaining) {
+    throw businessRule(
+      `Only ${formatRupees(remaining)} remains on ${note.creditNoteNumber}; ${formatRupees(toPaise(amount))} cannot be applied`,
+    );
+  }
+
+  const applied = toPaise(note.appliedAmount.amount) + toPaise(amount);
+  const updated: CreditNoteView = {
+    ...note,
+    appliedAmount: { amount: applied / 100, currency: note.amount.currency },
+    applications: [
+      ...note.applications,
+      {
+        id: `${note.id}-A${note.applications.length + 1}`,
+        orderId: order.id,
+        amount: { amount, currency: note.amount.currency },
+        appliedOn: new Date().toISOString().slice(0, 10),
+      },
+    ],
+    status: applied === toPaise(note.amount.amount) ? "APPLIED" : "ISSUED",
+  };
+  // Replaced rather than mutated: the credit-notes screen holds this object.
+  current.creditNotes[index] = updated;
+  persist();
+  return updated;
+}
+
+/** ISSUED with nothing applied → CANCELLED. */
+export async function mockCancelCreditNote(creditNoteId: string): Promise<CreditNoteView> {
+  await delay();
+  const current = state();
+  const index = requireCreditNoteIndex(current, creditNoteId);
+  const note = current.creditNotes[index];
+
+  if (note.status !== "ISSUED") {
+    throw businessRule(
+      `${note.creditNoteNumber} is ${note.status.toLowerCase()}; only issued credit can be cancelled`,
+    );
+  }
+  if (toPaise(note.appliedAmount.amount) > 0) {
+    throw businessRule(
+      `${note.creditNoteNumber} has already been partly applied; reverse it instead`,
+    );
+  }
+
+  const updated: CreditNoteView = { ...note, status: "CANCELLED" };
+  current.creditNotes[index] = updated;
+  persist();
+  return updated;
+}
+
+/**
+ * ISSUED → REVERSED, used or not. What remains stops counting; what was
+ * applied stays applied. A fully applied note has nothing left to reverse.
+ */
+export async function mockReverseCreditNote(creditNoteId: string): Promise<CreditNoteView> {
+  await delay();
+  const current = state();
+  const index = requireCreditNoteIndex(current, creditNoteId);
+  const note = current.creditNotes[index];
+
+  if (note.status !== "ISSUED") {
+    throw businessRule(
+      note.status === "APPLIED"
+        ? `${note.creditNoteNumber} has been applied in full; there is nothing left to reverse`
+        : `${note.creditNoteNumber} is ${note.status.toLowerCase()}; only issued credit can be reversed`,
+    );
+  }
+
+  const updated: CreditNoteView = { ...note, status: "REVERSED" };
+  current.creditNotes[index] = updated;
+  persist();
+  return updated;
+}
+
+/** CN-<year>-<n>, continuing the highest number held, like every other sequence here. */
+function nextCreditNoteNumber(current: MockState): string {
+  const highest = current.creditNotes.reduce((max, note) => {
+    const tail = /(\d+)$/.exec(note.creditNoteNumber);
+    const value = tail ? Number(tail[1]) : 0;
+    return value > max ? value : max;
+  }, 0);
+  return `CN-2026-${String(highest + 1).padStart(4, "0")}`;
+}
+
+const formatRupees = (paise: number) =>
+  `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // ---------------------------------------------------------------------------
 // Users

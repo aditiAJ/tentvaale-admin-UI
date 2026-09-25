@@ -68,8 +68,9 @@ export interface ProductView {
   retailRate: Money;
   /**
    * Whether the product comes in selectable variations (colour, size,
-   * finish). Only a product with this set can have variants, and it cannot be
-   * unset while any exist.
+   * finish). Only a product with this set can have variants. It cannot be
+   * unset while any exist, nor set while any of the product is held in a
+   * warehouse or out on rent without a variant.
    */
   hasVariants: boolean;
   /** Its variants, sorted by name. Always empty when hasVariants is false. */
@@ -290,8 +291,8 @@ export interface WarehouseProductView {
   productId: string;
   /**
    * The variant this stock is of, for a product that has variants. Null for a
-   * product without them — and for stock recorded before its product gained
-   * variants, which stays as it was rather than being guessed into one.
+   * product without them. A product cannot gain variants while it has stock
+   * like this, so it is never left stranded under a product that demands one.
    */
   variantId: string | null;
   productName: string;

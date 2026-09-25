@@ -24,7 +24,10 @@ import { Alert } from "@/components/ui/alert";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const schema = z.object({
-  customerId: z.string().min(1, "Choose a customer"),
+  customerName: z.string().trim().min(1, "Enter the customer's name"),
+  // Only filled in when more than one customer has the typed name; otherwise
+  // the name alone resolves the customer on submit.
+  customerId: z.string(),
   eventDate: z
     .string()
     .refine((value) => value === "" || isIsoDate(value), "Enter a valid date")
@@ -50,6 +53,10 @@ type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
 
 const emptyLine = () => ({ lineId: "", productId: "", quantity: "1", rentalDays: "1" });
+
+/** Names compared the way a person would: ignoring case and extra spaces. */
+const normaliseName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
+const sameName = (a: string, b: string) => normaliseName(a) === normaliseName(b);
 
 /**
  * Raises a quotation, or edits one that has not been converted.
@@ -90,12 +97,14 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     register,
     handleSubmit,
     setValue,
+    setError,
     formState: { errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: existing
       ? {
-          customerId: existing.customerId ?? "",
+          customerName: existing.customerName,
+          customerId: "",
           eventDate: existing.eventDate ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
           lines: existing.lines.map((line) => ({
@@ -105,7 +114,13 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             rentalDays: String(line.rentalDays),
           })),
         }
-      : { customerId: "", eventDate: "", securityDeposit: "", lines: [emptyLine()] },
+      : {
+          customerName: "",
+          customerId: "",
+          eventDate: "",
+          securityDeposit: "",
+          lines: [emptyLine()],
+        },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "lines" });
@@ -115,6 +130,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   // than form.watch: watch() hands back a function the React Compiler cannot
   // memoize safely, so using it opts this whole component out of compilation.
   const watchedLines = useWatch({ control, name: "lines" });
+  const watchedCustomerName = useWatch({ control, name: "customerName" });
   const watchedCustomerId = useWatch({ control, name: "customerId" });
 
   /** The per-day rate a line is priced at, or null until it has a product. */
@@ -137,13 +153,30 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   const estimate = watchedLines.reduce((running, line) => running + (priceLine(line) ?? 0), 0);
 
-  const selectedCustomer = customers.data?.find((customer) => customer.id === watchedCustomerId);
+  // The name is typed, but a quotation still belongs to a customer record by
+  // id — its order, deposit and credit notes all hang off that id — so the
+  // name is resolved to an existing customer rather than stored on its own.
+  // Names are not unique (emails are), so several matches ask which one.
+  // Editing keeps the quotation's customer while its name is left as it was,
+  // even if the customer has since been renamed.
+  const keepsExistingCustomer = Boolean(
+    existing?.customerId &&
+      sameName(watchedCustomerName ?? "", existing.customerName),
+  );
+  const nameMatches = (customers.data ?? []).filter((customer) =>
+    sameName(customer.fullName, watchedCustomerName ?? ""),
+  );
+  const selectedCustomer = keepsExistingCustomer
+    ? customers.data?.find((customer) => customer.id === existing?.customerId)
+    : nameMatches.length === 1
+      ? nameMatches[0]
+      : nameMatches.find((customer) => customer.id === watchedCustomerId);
 
   const mutation = useMutation({
-    mutationFn: (values: FormOutput) => {
+    mutationFn: ({ values, customerId }: { values: FormOutput; customerId: string }) => {
       if (existing) {
         return updateQuotation(existing.id, {
-          customerId: values.customerId,
+          customerId,
           eventDate: values.eventDate,
           securityDeposit: values.securityDeposit,
           lines: values.lines.map((line) => ({
@@ -154,9 +187,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           })),
         });
       }
-      const customer = customers.data?.find((candidate) => candidate.id === values.customerId);
+      const customer = customers.data?.find((candidate) => candidate.id === customerId);
       return createQuotation({
-        customerId: values.customerId,
+        customerId,
         // The controller takes a name and email too; the mock copies them from
         // the customer record, and these are the same values.
         customerName: customer?.fullName ?? "",
@@ -198,7 +231,25 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   const onSubmit = handleSubmit((values) => {
     setFormError(null);
-    mutation.mutate(values);
+    if (keepsExistingCustomer && existing?.customerId) {
+      mutation.mutate({ values, customerId: existing.customerId });
+      return;
+    }
+    if (!customers.data) {
+      setError("customerName", { message: "Customers are still loading; try again" });
+      return;
+    }
+    if (nameMatches.length === 0) {
+      setError("customerName", {
+        message: `No customer named '${values.customerName}'. Add them under Customers first.`,
+      });
+      return;
+    }
+    if (!selectedCustomer) {
+      setError("customerId", { message: "Choose which customer this is" });
+      return;
+    }
+    mutation.mutate({ values, customerId: selectedCustomer.id });
   });
 
   const linesError = errors.lines?.root?.message ?? errors.lines?.message;
@@ -260,27 +311,31 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-3">
           <Field
-            label="Customer"
+            label="Customer name"
             required
-            error={errors.customerId?.message}
+            error={errors.customerName?.message}
             className="sm:col-span-2"
           >
             {(props) => (
-              <Select
-                {...props}
-                {...register("customerId")}
-                disabled={customers.isPending || mutation.isPending}
-                autoFocus={!existing}
-              >
-                <option value="">
-                  {customers.isPending ? "Loading customers" : "Choose a customer"}
-                </option>
-                {(customers.data ?? []).map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.fullName} · {customer.email}
-                  </option>
-                ))}
-              </Select>
+              <>
+                <Input
+                  {...props}
+                  {...register("customerName")}
+                  list="quotation-customer-names"
+                  autoComplete="off"
+                  placeholder="Amit Shah"
+                  maxLength={200}
+                  disabled={mutation.isPending}
+                  autoFocus={!existing}
+                />
+                <datalist id="quotation-customer-names">
+                  {[...new Set((customers.data ?? []).map((customer) => customer.fullName))].map(
+                    (name) => (
+                      <option key={name} value={name} />
+                    ),
+                  )}
+                </datalist>
+              </>
             )}
           </Field>
 
@@ -295,8 +350,29 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             )}
           </Field>
 
+          {!keepsExistingCustomer && nameMatches.length > 1 ? (
+            <Field
+              label={`${nameMatches.length} customers have this name`}
+              required
+              error={errors.customerId?.message}
+              className="sm:col-span-2"
+            >
+              {(props) => (
+                <Select {...props} {...register("customerId")} disabled={mutation.isPending}>
+                  <option value="">Choose which one</option>
+                  {nameMatches.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.fullName} · {customer.email}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+
           {selectedCustomer ? (
             <p className="text-xs text-muted-foreground sm:col-span-3">
+              {selectedCustomer.email} ·{" "}
               {selectedCustomer.accountType === "EVENT_PLANNER" ? "Event planner" : "Customer"}
               {selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""} ·{" "}
               <span className="font-mono">{selectedCustomer.id}</span>

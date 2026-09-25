@@ -26,9 +26,9 @@ export function StockMovementsPage({ initialOrderId = "" }: { initialOrderId?: s
   const canWrite = useCan("INVENTORY_WRITE");
 
   /**
-   * A movement line carries only a product id — the backend does not
-   * denormalise the name the way quotation and order lines do, so resolving it
-   * is the UI's job. It reads the catalogue rather than the seed so a product
+   * A movement line carries a product id and, for a product with variants, a
+   * variant id — the backend does not denormalise names the way quotation and
+   * order lines do, so resolving them is the UI's job. It reads the catalogue rather than the seed so a product
    * added in this session resolves too, and an id with no match renders as the
    * id rather than as an error, the same way an orphaned category does on the
    * products screen. A retired product falls into that case honestly: the list
