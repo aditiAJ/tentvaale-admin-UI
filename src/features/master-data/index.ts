@@ -17,6 +17,11 @@ export {
   createBundle,
   updateBundle,
   deleteBundle,
+  listBundleOccasions,
+  createBundleOccasion,
+  updateBundleOccasion,
+  setBundleOccasionActive,
+  reorderBundleOccasions,
   listFeaturedCollections,
   createFeaturedCollection,
   updateFeaturedCollection,
@@ -49,6 +54,8 @@ export { FeaturedCollectionDialog } from "./components/FeaturedCollectionDialog"
 export { WarehouseDialog } from "./components/WarehouseDialog";
 export { WarehouseProductsDialog } from "./components/WarehouseProductsDialog";
 export { TruckDialog } from "./components/TruckDialog";
+export { MediaThumb } from "./components/MediaThumb";
+export { useProductMedia } from "./useProductMedia";
 export type {
   ProductView,
   ProductVariantView,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,7 +13,14 @@ import {
   masterDataKeys,
   updateFeaturedCollection,
 } from "@/features/master-data/api";
-import type { FeaturedCollectionView } from "@/features/master-data/types";
+import {
+  CATALOGUE_MEDIA_LIMITS,
+  type FeaturedCollectionView,
+  type MediaAsset,
+} from "@/features/master-data/types";
+import { MediaField } from "@/features/master-data/components/MediaField";
+import { OCCASIONS } from "@/features/master-data/storefront";
+import { TagInput } from "@/components/ui/tag-input";
 import { ApiError } from "@/services/api-client";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -27,6 +34,8 @@ const FORM_ID = "featured-collection-form";
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(150, "Maximum 150 characters"),
   description: z.string().trim().max(500, "Maximum 500 characters"),
+  bestFor: z.array(z.string()).max(8, "At most 8 occasions"),
+  palette: z.string().trim().max(120, "Maximum 120 characters"),
   products: z
     .array(z.object({ productId: z.string() }))
     .min(1, "Add at least one product"),
@@ -51,6 +60,8 @@ export function FeaturedCollectionDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  const [media, setMedia] = useState<MediaAsset[]>(existing?.media ?? []);
+  const [mediaBusy, setMediaBusy] = useState(false);
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -67,6 +78,8 @@ export function FeaturedCollectionDialog({
     defaultValues: {
       name: existing?.name ?? "",
       description: existing?.description ?? "",
+      bestFor: existing?.bestFor ?? [],
+      palette: existing?.palette ?? "",
       products: (existing?.products ?? []).map((product) => ({ productId: product.productId })),
     },
   });
@@ -95,6 +108,9 @@ export function FeaturedCollectionDialog({
         name: values.name,
         description: values.description,
         productIds: values.products.map((entry) => entry.productId),
+        media,
+        bestFor: values.bestFor,
+        palette: values.palette,
       };
       return existing
         ? updateFeaturedCollection(existing.id, request)
@@ -128,7 +144,7 @@ export function FeaturedCollectionDialog({
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
             Cancel
           </Button>
-          <Button form={FORM_ID} type="submit" disabled={mutation.isPending}>
+          <Button form={FORM_ID} type="submit" disabled={mutation.isPending || mediaBusy}>
             {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
             {existing ? "Save changes" : "Create collection"}
           </Button>
@@ -140,6 +156,7 @@ export function FeaturedCollectionDialog({
         className="space-y-4"
         noValidate
         onSubmit={handleSubmit((values) => {
+          if (mediaBusy) return;
           setFormError(null);
           mutation.mutate(values);
         })}
@@ -166,6 +183,37 @@ export function FeaturedCollectionDialog({
             />
           )}
         </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Best for" error={errors.bestFor?.message}>
+            {(props) => (
+              <Controller
+                control={control}
+                name="bestFor"
+                render={({ field }) => (
+                  <TagInput
+                    {...props}
+                    value={field.value}
+                    onChange={field.onChange}
+                    suggestions={OCCASIONS}
+                    placeholder="Wedding, Reception"
+                    disabled={mutation.isPending}
+                  />
+                )}
+              />
+            )}
+          </Field>
+
+          <Field label="Palette" error={errors.palette?.message}>
+            {(props) => (
+              <Input
+                {...props}
+                {...register("palette")}
+                placeholder="Crimson · Antique gold · Ivory"
+              />
+            )}
+          </Field>
+        </div>
 
         <div className="space-y-2">
           <p className="text-xs font-medium">
@@ -235,6 +283,14 @@ export function FeaturedCollectionDialog({
 
           {productsError ? <p className="text-xs text-destructive">{productsError}</p> : null}
         </div>
+
+        <MediaField
+          media={media}
+          limits={CATALOGUE_MEDIA_LIMITS}
+          onChange={setMedia}
+          onBusyChange={setMediaBusy}
+          disabled={mutation.isPending}
+        />
       </form>
     </Dialog>
   );

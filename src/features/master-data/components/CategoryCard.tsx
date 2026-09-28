@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, EyeOff, FolderTree, Plus } from "lucide-react";
+import { ChevronRight, EyeOff, Plus } from "lucide-react";
 import type { CategoryView } from "@/features/master-data/types";
+import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,12 +55,7 @@ export function CategoryCard({
     >
       <div className="flex flex-1 flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-3">
-          <span
-            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
-            aria-hidden="true"
-          >
-            <FolderTree className="size-5" />
-          </span>
+          <MediaThumb media={category.media} className="size-12 rounded-lg" />
           {!category.active ? <Badge>Inactive</Badge> : null}
         </div>
 

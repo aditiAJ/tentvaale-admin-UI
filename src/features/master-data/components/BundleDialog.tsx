@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,20 +9,31 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createBundle,
+  createBundleOccasion,
+  listBundleOccasions,
   listProducts,
   masterDataKeys,
   updateBundle,
 } from "@/features/master-data/api";
 import { addBundleComponent } from "@/features/master-data/bundles";
-import type { BundleView } from "@/features/master-data/types";
+import {
+  BUNDLE_HIGHLIGHT_LIMIT,
+  BUNDLE_OCCASION_LIMIT,
+  CATALOGUE_MEDIA_LIMITS,
+  type BundleOccasionView,
+  type BundleView,
+  type MediaAsset,
+} from "@/features/master-data/types";
+import { MediaField } from "@/features/master-data/components/MediaField";
 import { ApiError } from "@/services/api-client";
 import { amountField, positiveIntegerField } from "@/lib/forms";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { ToggleChips } from "@/components/ui/tag-input";
 
 const FORM_ID = "bundle-form";
 
@@ -32,6 +43,22 @@ const schema = z.object({
   components: z
     .array(z.object({ productId: z.string(), quantity: positiveIntegerField("Quantity") }))
     .min(1, "A bundle needs at least one product"),
+
+  // What the storefront shows on the bundle's page. All optional.
+  tagline: z.string().trim().max(150, "Maximum 150 characters"),
+  occasionIds: z
+    .array(z.string())
+    .max(BUNDLE_OCCASION_LIMIT, `At most ${BUNDLE_OCCASION_LIMIT} occasions`),
+  description: z.string().trim().max(2000, "Maximum 2000 characters"),
+  guests: z.string().trim().max(60, "Maximum 60 characters"),
+  setupTime: z.string().trim().max(40, "Maximum 40 characters"),
+  highlights: z
+    .array(
+      z.object({
+        text: z.string().trim().min(1, "Write the highlight").max(150, "Maximum 150 characters"),
+      }),
+    )
+    .max(BUNDLE_HIGHLIGHT_LIMIT, `At most ${BUNDLE_HIGHLIGHT_LIMIT} highlights`),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -60,10 +87,19 @@ export function BundleDialog({
   const [pickProductId, setPickProductId] = useState("");
   const [pickQuantity, setPickQuantity] = useState("1");
   const [pickError, setPickError] = useState<string | null>(null);
+  const [media, setMedia] = useState<MediaAsset[]>(existing?.media ?? []);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const [newOccasion, setNewOccasion] = useState("");
+  const [occasionError, setOccasionError] = useState<string | null>(null);
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
     queryFn: ({ signal }) => listProducts(signal),
+  });
+
+  const occasions = useQuery({
+    queryKey: masterDataKeys.bundleOccasions,
+    queryFn: ({ signal }) => listBundleOccasions(signal),
   });
 
   const {
@@ -71,6 +107,7 @@ export function BundleDialog({
     register,
     handleSubmit,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
@@ -81,8 +118,54 @@ export function BundleDialog({
         productId: component.productId,
         quantity: String(component.quantity),
       })),
+      tagline: existing?.tagline ?? "",
+      occasionIds: (existing?.occasions ?? []).map((occasion) => occasion.id),
+      description: existing?.description ?? "",
+      guests: existing?.guests ?? "",
+      setupTime: existing?.setupTime ?? "",
+      highlights: (existing?.highlights ?? []).map((text) => ({ text })),
     },
   });
+
+  const highlightRows = useFieldArray({ control, name: "highlights" });
+  const pickedOccasions = useWatch({ control, name: "occasionIds" });
+
+  // Shown occasions can be picked; a hidden one is offered only while this
+  // bundle already has it, so it can be taken off but not newly added.
+  const occasionOptions = (occasions.data ?? []).filter(
+    (occasion) => occasion.active || pickedOccasions.includes(occasion.id),
+  );
+  const occasionLabel = (occasionId: string) => {
+    const occasion = occasions.data?.find((candidate) => candidate.id === occasionId);
+    if (!occasion) return occasionId;
+    return occasion.active ? occasion.name : `${occasion.name} (hidden)`;
+  };
+
+  const addOccasion = useMutation({
+    mutationFn: (name: string) => createBundleOccasion({ name }),
+    onSuccess: (occasion) => {
+      // Into the list at once, so it is a chip before the refetch lands; a
+      // picked id missing from the chips would be dropped by the next toggle.
+      queryClient.setQueryData<BundleOccasionView[]>(masterDataKeys.bundleOccasions, (list) =>
+        list ? [...list, occasion] : list,
+      );
+      queryClient.invalidateQueries({ queryKey: masterDataKeys.bundleOccasions });
+      setValue("occasionIds", [...getValues("occasionIds"), occasion.id], { shouldValidate: true });
+      setNewOccasion("");
+      setOccasionError(null);
+    },
+    onError: (error) =>
+      setOccasionError(error instanceof ApiError ? error.message : "Could not add the occasion."),
+  });
+
+  const submitNewOccasion = () => {
+    const name = newOccasion.trim();
+    if (!name) {
+      setOccasionError("Name the occasion");
+      return;
+    }
+    addOccasion.mutate(name);
+  };
 
   const { fields, remove, replace } = useFieldArray({ control, name: "components" });
   const watched = useWatch({ control, name: "components" });
@@ -134,6 +217,13 @@ export function BundleDialog({
         name: values.name,
         rentalRate: values.rentalRate,
         components: values.components,
+        media,
+        tagline: values.tagline || null,
+        occasionIds: values.occasionIds,
+        description: values.description || null,
+        guests: values.guests || null,
+        setupTime: values.setupTime || null,
+        highlights: values.highlights.map((row) => row.text),
       };
       return existing ? updateBundle(existing.id, request) : createBundle(request);
     },
@@ -165,7 +255,7 @@ export function BundleDialog({
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
             Cancel
           </Button>
-          <Button form={FORM_ID} type="submit" disabled={mutation.isPending}>
+          <Button form={FORM_ID} type="submit" disabled={mutation.isPending || mediaBusy}>
             {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
             {existing ? "Save changes" : "Create bundle"}
           </Button>
@@ -177,6 +267,7 @@ export function BundleDialog({
         className="space-y-4"
         noValidate
         onSubmit={handleSubmit((values) => {
+          if (mediaBusy) return;
           setFormError(null);
           mutation.mutate(values);
         })}
@@ -205,6 +296,131 @@ export function BundleDialog({
               />
             )}
           </Field>
+        </div>
+
+        <Field label="Tagline" error={errors.tagline?.message}>
+          {(props) => (
+            <Input
+              {...props}
+              {...register("tagline")}
+              placeholder="The ceremony stage, styled end to end"
+            />
+          )}
+        </Field>
+
+        <Field label="Occasions" error={errors.occasionIds?.message ?? occasionError ?? undefined}>
+          {(props) => (
+            <div className="space-y-2">
+              <Controller
+                control={control}
+                name="occasionIds"
+                render={({ field }) => (
+                  <ToggleChips
+                    id={props.id}
+                    aria-label="Occasions"
+                    options={occasionOptions.map((occasion) => occasion.id)}
+                    labelFor={occasionLabel}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={mutation.isPending}
+                  />
+                )}
+              />
+              <div className="flex items-center gap-2">
+                <Input
+                  value={newOccasion}
+                  onChange={(event) => {
+                    setNewOccasion(event.target.value);
+                    setOccasionError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      submitNewOccasion();
+                    }
+                  }}
+                  aria-label="New occasion"
+                  placeholder="New occasion"
+                  className="h-8 max-w-48"
+                  disabled={mutation.isPending || addOccasion.isPending}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={submitNewOccasion}
+                  disabled={mutation.isPending || addOccasion.isPending}
+                >
+                  {addOccasion.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+                  Add occasion
+                </Button>
+              </div>
+            </div>
+          )}
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Guests" error={errors.guests?.message}>
+            {(props) => <Input {...props} {...register("guests")} placeholder="200–500" />}
+          </Field>
+
+          <Field label="Setup time" error={errors.setupTime?.message}>
+            {(props) => <Input {...props} {...register("setupTime")} placeholder="10 hours" />}
+          </Field>
+        </div>
+
+        <Field label="Description" error={errors.description?.message}>
+          {(props) => (
+            <Textarea
+              {...props}
+              {...register("description")}
+              placeholder="A complete styled stage for the main ceremony"
+            />
+          )}
+        </Field>
+
+        <div className="space-y-2">
+          <p className="text-xs font-medium">Highlights</p>
+          {highlightRows.fields.map((row, index) => {
+            const rowError = errors.highlights?.[index]?.text?.message;
+            return (
+              <div key={row.id}>
+                <div className="flex items-center gap-2">
+                  <Input
+                    {...register(`highlights.${index}.text`)}
+                    aria-label={`Highlight ${index + 1}`}
+                    aria-invalid={Boolean(rowError)}
+                    placeholder="Floral mandap with gold throne chairs"
+                    disabled={mutation.isPending}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => highlightRows.remove(index)}
+                    disabled={mutation.isPending}
+                    aria-label={`Remove highlight ${index + 1}`}
+                    title="Remove"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+                {rowError ? <p className="mt-1 text-xs text-destructive">{rowError}</p> : null}
+              </div>
+            );
+          })}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => highlightRows.append({ text: "" })}
+            disabled={
+              mutation.isPending || highlightRows.fields.length >= BUNDLE_HIGHLIGHT_LIMIT
+            }
+          >
+            <Plus />
+            Add highlight
+          </Button>
         </div>
 
         <div className="space-y-2">
@@ -307,6 +523,14 @@ export function BundleDialog({
 
           {componentsError ? <p className="text-xs text-destructive">{componentsError}</p> : null}
         </div>
+
+        <MediaField
+          media={media}
+          limits={CATALOGUE_MEDIA_LIMITS}
+          onChange={setMedia}
+          onBusyChange={setMediaBusy}
+          disabled={mutation.isPending}
+        />
       </form>
     </Dialog>
   );

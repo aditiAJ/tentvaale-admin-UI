@@ -1,19 +1,22 @@
 import type { Money } from "@/lib/money";
+import type { ProductSetting, RateType } from "@/features/master-data/storefront";
 
 /**
- * One image or video attached to a product.
+ * One image or video attached to a catalogue record — a product, a category,
+ * a bundle or a featured collection. Nothing transactional carries media.
  *
  * Shaped like what an upload endpoint would hand back — an id and a URL to
  * render, plus the file's own name, type and size — so a real upload API can
- * replace features/master-data/media without the product model changing.
+ * replace features/master-data/media without the models changing.
  *
- * There is no upload endpoint yet, so in the mock `url` is local to the
- * browser: an image is downscaled into a data URL that is saved with the
- * product, and a video is an object URL that lasts only as long as the page.
- * `url` is null for a video whose preview did not survive a reload; its
- * name, type and size still did.
+ * There is no upload endpoint yet, so in the mock `url` is one of two things:
+ * a seeded image under /mock-media (see mock-data/media), or one the admin
+ * picked, which is local to the browser — an image downscaled into a data URL
+ * saved with the product, or a video as an object URL that lasts only as long
+ * as the page. `url` is null for a video whose preview did not survive a
+ * reload; its name, type and size still did.
  */
-export interface ProductMedia {
+export interface MediaAsset {
   id: string;
   kind: "IMAGE" | "VIDEO";
   fileName: string;
@@ -22,8 +25,46 @@ export interface ProductMedia {
   url: string | null;
 }
 
+/** Shown wherever a record has no image — including every product in api mode. */
+export const FALLBACK_IMAGE = "/mock-media/placeholder.svg";
+
 /** The most a product can carry, enforced by the form and the mock alike. */
 export const PRODUCT_MEDIA_LIMITS = { images: 6, videos: 1 } as const;
+
+/** A category, bundle or featured collection: one representative image, no video. */
+export const CATALOGUE_MEDIA_LIMITS = { images: 1, videos: 0 } as const;
+
+export interface MediaLimits {
+  images: number;
+  videos: number;
+}
+
+/**
+ * What the storefront shows about a product beyond its name, price and images:
+ * the spec table on a product page and the facets its catalogue filters by.
+ * The names are the storefront's own, so one can be passed to the other as is.
+ */
+export interface ProductStorefrontDetails {
+  /** What the retail rate is counted in: per unit, per running foot or per square foot. */
+  rateType: RateType;
+  /** Free text, as the storefront shows it: "40 × 45 × 92 cm". */
+  size: string | null;
+  setting: ProductSetting | null;
+  colours: string[];
+  materials: string[];
+  /** Upholstery or drape fabrics it can be ordered in. Empty for most products. */
+  fabrics: string[];
+  /** From MOODS; the storefront filters on these. */
+  moods: string[];
+  /** From THEMES; the storefront filters on these. */
+  themes: string[];
+  /**
+   * The rest of the spec table, which differs by kind of product — "Seating
+   * capacity" for a chair, "Power source" for a light. Keys are shown as
+   * labels, in the order they were entered.
+   */
+  attributes: Record<string, string>;
+}
 
 /**
  * Started as a mirror of com.tentvaale.masterdata.api.ProductView, and has
@@ -40,7 +81,7 @@ export const PRODUCT_MEDIA_LIMITS = { images: 6, videos: 1 } as const;
  * reference categories in the legacy data, which has orphans"), so a product
  * with no category must still render. Saving one requires choosing both.
  */
-export interface ProductView {
+export interface ProductView extends Partial<ProductStorefrontDetails> {
   id: string;
   companyId: string;
   sku: string;
@@ -75,8 +116,12 @@ export interface ProductView {
   hasVariants: boolean;
   /** Its variants, sorted by name. Always empty when hasVariants is false. */
   variants: ProductVariantView[];
-  /** Images first, in the order they were added, then the video if any. */
-  media: ProductMedia[];
+  /**
+   * Images first, in the order they were added, then the video if any.
+   * Optional because the real ProductView has no media: in api mode it is
+   * always absent, so every reader must fall back rather than assume it.
+   */
+  media?: MediaAsset[];
   active: boolean;
 }
 
@@ -109,7 +154,8 @@ export interface CreateProductVariantRequest {
 
 export type UpdateProductVariantRequest = CreateProductVariantRequest;
 
-export interface CreateProductRequest {
+/** Every storefront detail is sent in full: on update, a list left empty is cleared. */
+export interface CreateProductRequest extends ProductStorefrontDetails {
   /** An existing category. Must be active, unless the product is already in it. */
   categoryId: string;
   /** One of that category's sub-categories. */
@@ -124,7 +170,7 @@ export interface CreateProductRequest {
   retailRate: number;
   hasVariants: boolean;
   /** The full set to keep: on update, anything left out is removed. */
-  media: ProductMedia[];
+  media: MediaAsset[];
 }
 
 /** The same fields as a create; every one is replaced. */
@@ -143,6 +189,8 @@ export interface CategoryView {
   companyId: string;
   name: string;
   active: boolean;
+  /** One representative image, or none. Sub-categories carry no media. */
+  media: MediaAsset[];
   /**
    * Its sub-categories, sorted by name. Stored apart from the category, each
    * pointing back by categoryId, and gathered here when categories are
@@ -166,6 +214,8 @@ export interface CreateCategoryRequest {
   name: string;
   /** Names of sub-categories to create with it. Optional; none is valid. */
   subCategories?: string[];
+  /** At most one image. On update, the full set to keep: an empty list removes it. */
+  media: MediaAsset[];
 }
 
 /**
@@ -195,7 +245,7 @@ export interface CustomerView {
  * UI's own invention, kept minimal so there is little to unpick when the
  * backend defines the real ones.
  */
-export interface BundleView {
+export interface BundleView extends BundleStorefrontDetails {
   id: string;
   companyId: string;
   name: string;
@@ -212,7 +262,68 @@ export interface BundleView {
    * pricing decision rather than a sum.
    */
   rentalRate: Money;
+  /** The bundle's own representative image, not a composite of its products'. */
+  media: MediaAsset[];
+  /**
+   * The occasions it is styled for, in the occasions' own display order.
+   * Stored as ids, so renaming an occasion renames it on every bundle.
+   */
+  occasions: BundleOccasionRef[];
 }
+
+/**
+ * An occasion a bundle can be filed under — Haldi, Reception, Diwali. The
+ * storefront's bundles page shows the active ones as its filter row, in
+ * `sortOrder`. Switched off rather than deleted, like a category: bundles keep
+ * an inactive occasion, it just stops being offered as a filter.
+ *
+ * This UI's own invention, like bundles: there is no backend for it.
+ */
+export interface BundleOccasionView {
+  id: string;
+  companyId: string;
+  name: string;
+  active: boolean;
+  /** Position in the storefront's filter row, from 1. */
+  sortOrder: number;
+  /** How many bundles are filed under it. */
+  bundleCount: number;
+}
+
+/** An occasion as a bundle shows it. */
+export interface BundleOccasionRef {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface CreateBundleOccasionRequest {
+  name: string;
+}
+
+export type UpdateBundleOccasionRequest = CreateBundleOccasionRequest;
+
+/** How many occasions one bundle can be filed under. */
+export const BUNDLE_OCCASION_LIMIT = 6;
+
+/**
+ * A bundle's storefront page: a one-line tagline under the name, a paragraph,
+ * the guest range and setup time shown as facts, and a few highlight bullets.
+ * The piece count the page also shows is the number of products in the
+ * bundle, so it is not stored.
+ */
+export interface BundleStorefrontDetails {
+  tagline: string | null;
+  description: string | null;
+  /** Free text, since the storefront says "200–500" as readily as "Home · up to 40". */
+  guests: string | null;
+  /** Free text: "10 hours". */
+  setupTime: string | null;
+  /** At most BUNDLE_HIGHLIGHT_LIMIT short lines, in display order. */
+  highlights: string[];
+}
+
+export const BUNDLE_HIGHLIGHT_LIMIT = 6;
 
 /** One product in a bundle, resolved from the catalogue for display. */
 export interface BundleComponentView {
@@ -244,6 +355,12 @@ export interface FeaturedCollectionView {
   description: string | null;
   /** Inactive collections stay listed here, so they can be switched back on. */
   active: boolean;
+  /** The collection's hero image, separate from its products' own. */
+  media: MediaAsset[];
+  /** The occasions the storefront recommends it for — "Wedding", "Sangeet". */
+  bestFor: string[];
+  /** Its colour story, as one line: "Crimson · Antique gold · Ivory". */
+  palette: string | null;
   products: FeaturedCollectionProduct[];
 }
 
@@ -335,6 +452,7 @@ export interface TruckView {
 export interface UpdateCategoryRequest {
   name: string;
   subCategories: { id?: string; name: string }[];
+  media: MediaAsset[];
 }
 
 export interface CreateWarehouseRequest {
@@ -366,7 +484,8 @@ export interface CreateTruckRequest {
 
 export type UpdateTruckRequest = CreateTruckRequest;
 
-export interface CreateBundleRequest {
+/** The storefront details are replaced in full, like the component list. */
+export interface CreateBundleRequest extends BundleStorefrontDetails {
   name: string;
   /**
    * The complete component list. At least one; each product at most once —
@@ -375,6 +494,13 @@ export interface CreateBundleRequest {
    */
   components: { productId: string; quantity: number }[];
   rentalRate: number;
+  /** At most one image. On update, the full set to keep: an empty list removes it. */
+  media: MediaAsset[];
+  /**
+   * Existing occasion ids, at most BUNDLE_OCCASION_LIMIT, none twice. An
+   * occasion must be active to be added; one already on the bundle may stay.
+   */
+  occasionIds: string[];
 }
 
 export type UpdateBundleRequest = CreateBundleRequest;
@@ -384,6 +510,10 @@ export interface CreateFeaturedCollectionRequest {
   description?: string;
   /** Existing product ids, in display order. At least one; no repeats. */
   productIds: string[];
+  /** The hero: at most one image. On update, an empty list removes it. */
+  media: MediaAsset[];
+  bestFor: string[];
+  palette?: string;
 }
 
 /** The full product list to keep: a product left out is removed from the collection only. */

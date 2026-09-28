@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Warehouse } from "lucide-react";
 import { deriveAvailability, inventoryKeys } from "@/features/inventory/api";
+import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,6 +20,7 @@ export function AvailabilityPage() {
     queryFn: () => deriveAvailability(),
     retry: false,
   });
+  const productMedia = useProductMedia();
 
   return (
     <div className="space-y-4">
@@ -45,7 +47,12 @@ export function AvailabilityPage() {
                 ? data.map((row) => (
                     <TR key={row.productId}>
                       <TD className="font-mono text-xs">{row.sku}</TD>
-                      <TD className="font-medium">{row.productName}</TD>
+                      <TD>
+                        <div className="flex items-center gap-2.5">
+                          <MediaThumb media={productMedia.get(row.productId)} />
+                          <span className="font-medium">{row.productName}</span>
+                        </div>
+                      </TD>
                       <TD className="text-right tabular">{row.inStock}</TD>
                       <TD className="text-right">
                         {row.onRent > 0 ? (

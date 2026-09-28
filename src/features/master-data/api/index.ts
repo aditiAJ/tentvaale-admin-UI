@@ -3,6 +3,7 @@ import { IS_MOCK } from "@/services/data-source";
 import {
   mockAddProductToWarehouse,
   mockCreateBundle,
+  mockCreateBundleOccasion,
   mockCreateCategory,
   mockCreateCustomer,
   mockCreateFeaturedCollection,
@@ -16,6 +17,7 @@ import {
   mockDeleteTruck,
   mockDeleteWarehouse,
   mockGetCustomer,
+  mockListBundleOccasions,
   mockListBundles,
   mockListCategories,
   mockListCustomers,
@@ -24,7 +26,10 @@ import {
   mockListTrucks,
   mockListWarehouseProducts,
   mockListWarehouses,
+  mockReorderBundleOccasions,
+  mockSetBundleOccasionActive,
   mockUpdateBundle,
+  mockUpdateBundleOccasion,
   mockUpdateCategory,
   mockSetFeaturedCollectionActive,
   mockUpdateCustomer,
@@ -36,8 +41,10 @@ import {
 } from "@/mock-data/store";
 import type {
   AddWarehouseProductRequest,
+  BundleOccasionView,
   BundleView,
   CategoryView,
+  CreateBundleOccasionRequest,
   CreateBundleRequest,
   CreateCategoryRequest,
   CreateCustomerRequest,
@@ -51,6 +58,7 @@ import type {
   ProductVariantView,
   ProductView,
   TruckView,
+  UpdateBundleOccasionRequest,
   UpdateBundleRequest,
   UpdateCategoryRequest,
   UpdateCustomerRequest,
@@ -326,6 +334,59 @@ export function deleteBundle(bundleId: string): Promise<void> {
 }
 
 /**
+ * The storefront's bundle filter row. No backend, like bundles: these paths
+ * follow the same /admin/master-data/{resource} shape and 404 in api mode.
+ * Every occasion is returned, shown or hidden, in display order.
+ */
+export function listBundleOccasions(signal?: AbortSignal): Promise<BundleOccasionView[]> {
+  if (IS_MOCK) return mockListBundleOccasions();
+  return apiFetch<BundleOccasionView[]>("/admin/master-data/bundle-occasions", { signal });
+}
+
+/** 422 for a blank or taken name. A new occasion is shown, at the end of the row. */
+export function createBundleOccasion(
+  request: CreateBundleOccasionRequest,
+): Promise<BundleOccasionView> {
+  if (IS_MOCK) return mockCreateBundleOccasion(request);
+  return apiFetch<BundleOccasionView>("/admin/master-data/bundle-occasions", {
+    method: "POST",
+    body: request,
+  });
+}
+
+export function updateBundleOccasion(
+  occasionId: string,
+  request: UpdateBundleOccasionRequest,
+): Promise<BundleOccasionView> {
+  if (IS_MOCK) return mockUpdateBundleOccasion(occasionId, request);
+  return apiFetch<BundleOccasionView>(`/admin/master-data/bundle-occasions/${occasionId}`, {
+    method: "PUT",
+    body: request,
+  });
+}
+
+/** Same activate/deactivate shape as featured collections. */
+export function setBundleOccasionActive(
+  occasionId: string,
+  active: boolean,
+): Promise<BundleOccasionView> {
+  if (IS_MOCK) return mockSetBundleOccasionActive(occasionId, active);
+  return apiFetch<BundleOccasionView>(
+    `/admin/master-data/bundle-occasions/${occasionId}/${active ? "activate" : "deactivate"}`,
+    { method: "POST" },
+  );
+}
+
+/** Every occasion id, in the new display order. */
+export function reorderBundleOccasions(occasionIds: string[]): Promise<BundleOccasionView[]> {
+  if (IS_MOCK) return mockReorderBundleOccasions(occasionIds);
+  return apiFetch<BundleOccasionView[]>("/admin/master-data/bundle-occasions/order", {
+    method: "PUT",
+    body: { occasionIds },
+  });
+}
+
+/**
  * Featured collections have no backend either; these paths follow the same
  * /admin/master-data/{resource} shape and 404 in api mode. Every collection is
  * returned, active or not, sorted by name.
@@ -401,6 +462,8 @@ export const masterDataKeys = {
   // Nested under `customers`, so refreshing the list refreshes every lookup too.
   customer: (customerId: string) => ["master-data", "customers", customerId] as const,
   bundles: ["master-data", "bundles"] as const,
+  // Nested under `bundles`, so a bundle save refreshes the occasions' counts.
+  bundleOccasions: ["master-data", "bundles", "occasions"] as const,
   featuredCollections: ["master-data", "featured-collections"] as const,
   warehouses: ["master-data", "warehouses"] as const,
   // Nested under `warehouses`, so invalidating the warehouse list refreshes

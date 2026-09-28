@@ -1,11 +1,11 @@
-import type { ProductMedia } from "@/features/master-data/types";
+import type { MediaAsset } from "@/features/master-data/types";
 
 /**
- * Turns a file the admin picked into a ProductMedia the product can carry.
+ * Turns a file the admin picked into a MediaAsset a catalogue record can carry.
  *
  * This is the one place a real upload API would slot in: today it validates
  * the file and makes a browser-local URL for it; with a backend it would send
- * the file and return the server's ProductMedia instead, and nothing that
+ * the file and return the server's MediaAsset instead, and nothing that
  * consumes the result would change.
  *
  * The mock's state lives in one localStorage entry with a quota of a few
@@ -13,7 +13,7 @@ import type { ProductMedia } from "@/features/master-data/types";
  *
  * - An image is downscaled to at most IMAGE_MAX_EDGE px and re-encoded, then
  *   kept as a data URL. That is typically 50–150 KB, small enough to be saved
- *   with the product and survive a reload.
+ *   with the record and survive a reload.
  * - A video cannot be shrunk in the browser and would not fit, so it gets an
  *   object URL that lasts as long as the page. Its name, type and size are
  *   saved; the preview is not.
@@ -40,7 +40,7 @@ export function formatBytes(bytes: number): string {
 }
 
 /** Throws MediaError when the file is the wrong kind or too large. */
-export function checkMediaFile(file: File, kind: ProductMedia["kind"]): void {
+export function checkMediaFile(file: File, kind: MediaAsset["kind"]): void {
   if (kind === "IMAGE") {
     if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) {
       throw new MediaError(`${file.name} is not a JPEG, PNG or WebP image.`);
@@ -78,10 +78,10 @@ async function downscaleImage(file: File): Promise<string> {
   return canvas.toDataURL("image/webp", IMAGE_QUALITY);
 }
 
-export async function readProductMedia(
+export async function readMedia(
   file: File,
-  kind: ProductMedia["kind"],
-): Promise<ProductMedia> {
+  kind: MediaAsset["kind"],
+): Promise<MediaAsset> {
   checkMediaFile(file, kind);
 
   if (kind === "IMAGE") {

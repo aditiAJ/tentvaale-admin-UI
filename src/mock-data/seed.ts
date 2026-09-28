@@ -1,5 +1,8 @@
 import type {
+  BundleOccasionView,
   BundleView,
+  MediaAsset,
+  ProductStorefrontDetails,
   CategoryView,
   CustomerView,
   FeaturedCollectionView,
@@ -17,6 +20,12 @@ import type { OrderView } from "@/features/orders/types";
 import type { StockMovementView } from "@/features/inventory/types";
 import type { CreditNoteView } from "@/features/credit-notes/types";
 import type { Role } from "@/services/permissions";
+import {
+  withBundleMedia,
+  withCategoryMedia,
+  withCollectionMedia,
+  withProductMedia,
+} from "@/mock-data/media";
 
 /**
  * Seed data for the mock build.
@@ -96,6 +105,29 @@ export const DEMO_LOGINS: { username: string; role: Role; blurb: string }[] = [
 const inr = (amount: number) => ({ amount, currency: "INR" });
 
 /**
+ * What the storefront shows about each seeded product: the spec table and the
+ * facets it filters by. Kept apart from SEED_PRODUCTS so the business fields
+ * there stay one line each. The chiavari chair's values are the storefront's
+ * own for its chiavari; the rest are written to match what each item is.
+ * Every rate is per unit — nothing seeded is priced by the foot.
+ */
+const SEED_PRODUCT_DETAILS: Record<string, ProductStorefrontDetails> = {
+  "p-01": { rateType: "Qty", size: "20 × 40 ft", setting: "Outdoor", colours: ["White"], materials: ["Aluminium", "PVC fabric"], fabrics: [], moods: ["Classic"], themes: ["Corporate", "Floral garden"], attributes: { "Seating capacity": "80 banquet", Sidewalls: "Clear window panels" } },
+  "p-02": { rateType: "Qty", size: "30 × 60 ft", setting: "Outdoor", colours: ["White"], materials: ["Steel", "Canvas"], fabrics: [], moods: ["Traditional"], themes: ["Royal heritage", "Festive & puja"], attributes: { "Seating capacity": "180 banquet", "Centre poles": "3" } },
+  "p-03": { rateType: "Qty", size: "10 × 10 ft", setting: "Outdoor", colours: ["White"], materials: ["Aluminium", "PVC fabric"], fabrics: [], moods: ["Minimal"], themes: ["Floral garden", "Beach"], attributes: { "Install time": "15 minutes" } },
+  "p-04": { rateType: "Qty", size: "40 × 45 × 92 cm", setting: "Indoor & outdoor", colours: ["Gold"], materials: ["Resin"], fabrics: ["Satin", "Velvet", "Linen"], moods: ["Classic"], themes: ["Modern luxe", "Floral garden"], attributes: { "Seating capacity": "1", "Frame material": "Resin" } },
+  "p-05": { rateType: "Qty", size: "44 × 46 × 80 cm", setting: "Indoor & outdoor", colours: ["White"], materials: ["Polypropylene", "Steel"], fabrics: [], moods: ["Minimal"], themes: ["Corporate"], attributes: { "Seating capacity": "1", "Frame material": "Steel" } },
+  "p-06": { rateType: "Qty", size: "210 × 85 × 80 cm", setting: "Indoor", colours: ["Ivory"], materials: ["Wood"], fabrics: ["Velvet", "Boucle"], moods: ["Glam", "Romantic"], themes: ["Modern luxe", "Royal heritage"], attributes: { "Seating capacity": "3", "Frame material": "Wood" } },
+  "p-07": { rateType: "Qty", size: "183 cm Ø × 76 cm", setting: "Indoor & outdoor", colours: ["White"], materials: ["MDF", "Steel"], fabrics: [], moods: ["Classic"], themes: ["Corporate", "Modern luxe"], attributes: { "Seating capacity": "10", Shape: "Round" } },
+  "p-08": { rateType: "Qty", size: "60 cm Ø × 110 cm", setting: "Indoor & outdoor", colours: ["White", "Black"], materials: ["Steel", "MDF"], fabrics: [], moods: ["Minimal"], themes: ["Corporate", "Floral garden"], attributes: { Shape: "Round", Height: "110 cm" } },
+  "p-09": { rateType: "Qty", size: "8 × 12 ft, 600 mm rise", setting: "Indoor & outdoor", colours: ["Black"], materials: ["Aluminium", "Wood"], fabrics: [], moods: ["Classic"], themes: ["Corporate", "Royal heritage"], attributes: { "Load rating": "750 kg/m²", "Panel size": "4 × 8 ft" } },
+  "p-10": { rateType: "Qty", size: "4 × 3 m", setting: "Indoor & outdoor", colours: ["Warm white"], materials: ["Copper wire"], fabrics: [], moods: ["Romantic", "Festive"], themes: ["Floral garden", "Haldi & mehendi"], attributes: { "Mounting type": "Draped", "Power source": "Mains", "Colour temperature": "Warm white", Dimmable: "Yes" } },
+  "p-11": { rateType: "Qty", size: "15 × 15 × 20 cm", setting: "Indoor", colours: ["Black"], materials: ["Aluminium"], fabrics: [], moods: ["Glam"], themes: ["Modern luxe", "Corporate"], attributes: { "Mounting type": "Floor", "Power source": "Battery", "Colour temperature": "RGB", Dimmable: "Yes" } },
+  "p-12": { rateType: "Qty", size: "190 × 90 × 120 cm", setting: "Outdoor", colours: [], materials: ["Steel"], fabrics: [], moods: [], themes: [], attributes: { Output: "15 kVA", Fuel: "Diesel", Cabling: "40 m included" } },
+  "p-13": { rateType: "Qty", size: "15 × 30 ft", setting: "Outdoor", colours: ["White"], materials: ["Aluminium", "PVC fabric"], fabrics: [], moods: ["Classic"], themes: ["Corporate"], attributes: { "Seating capacity": "40 banquet" } },
+};
+
+/**
  * Retail rates are the old single rental rate carried over unchanged, so the
  * seeded quotations and orders below keep the totals they were built with.
  * Wholesale sits at roughly 80% of retail. Every product but the stage deck
@@ -105,39 +137,39 @@ const inr = (amount: number) => ({ amount, currency: "INR" });
  *
  * hasVariants is set where the item plausibly comes in versions — the gold
  * chair in other finishes, the sofa in other fabrics, the light curtain in
- * warm or cool white. No media is seeded: there are no images in the repo to
- * seed it with, and a product with none is the case the table has to handle.
+ * warm or cool white. Each gets its image from mock-data/media, which leaves a
+ * few unmatched so the fallback image is on screen too.
  *
  * Tentvaale owns almost everything; the stage deck and the generator are
  * sub-hired from partners, so an SKU owner other than the company shows up.
  */
-export const SEED_PRODUCTS: ProductRecord[] = [
-  { id: "p-01", companyId: COMPANY_ID, sku: "TENT-20X40", skuOwner: "Tentvaale", name: "20x40 Frame Tent", genericName: "Frame Tent", description: "Heavy-duty frame tent, seats 80 banquet style", categoryId: "cat-01", subCategoryId: "sub-13", tag: "Tents", wholesaleRate: inr(10000), retailRate: inr(12500), hasVariants: false, media: [], active: true },
-  { id: "p-02", companyId: COMPANY_ID, sku: "TENT-30X60", skuOwner: "Tentvaale", name: "30x60 Pole Tent", genericName: "Pole Tent", description: "Large pole tent for open ground", categoryId: "cat-01", subCategoryId: "sub-14", tag: "Tents", wholesaleRate: inr(19500), retailRate: inr(24000), hasVariants: false, media: [], active: true },
-  { id: "p-03", companyId: COMPANY_ID, sku: "TENT-10X10", skuOwner: "Tentvaale", name: "10x10 Canopy", genericName: "Canopy", description: null, categoryId: "cat-01", subCategoryId: "sub-15", tag: "Tents", wholesaleRate: inr(1400), retailRate: inr(1800), hasVariants: false, media: [], active: true },
-  { id: "p-04", companyId: COMPANY_ID, sku: "CHR-GOLD", skuOwner: "Tentvaale", name: "Gold Chiavari Chair", genericName: "Chair", description: "Banquet seating, stackable", categoryId: "cat-06", subCategoryId: "sub-02", tag: "Furniture", wholesaleRate: inr(95), retailRate: inr(120.5), hasVariants: true, media: [], active: true },
-  { id: "p-05", companyId: COMPANY_ID, sku: "CHR-WHITE", skuOwner: "Tentvaale", name: "White Folding Chair", genericName: "Chair", description: null, categoryId: "cat-06", subCategoryId: "sub-04", tag: "Furniture", wholesaleRate: inr(35), retailRate: inr(45), hasVariants: false, media: [], active: true },
-  { id: "p-06", companyId: COMPANY_ID, sku: "SOFA-VELVET", skuOwner: "Tentvaale", name: "Velvet Lounge Sofa", genericName: "Sofa", description: "Three-seater, ivory velvet", categoryId: "cat-06", subCategoryId: "sub-03", tag: "Furniture", wholesaleRate: inr(2600), retailRate: inr(3200), hasVariants: true, media: [], active: true },
-  { id: "p-07", companyId: COMPANY_ID, sku: "TBL-ROUND-6", skuOwner: "Tentvaale", name: "6ft Round Table", genericName: "Table", description: "Seats 10", categoryId: "cat-03", subCategoryId: "sub-16", tag: "Tables", wholesaleRate: inr(320), retailRate: inr(400), hasVariants: false, media: [], active: true },
-  { id: "p-08", companyId: COMPANY_ID, sku: "TBL-COCKTAIL", skuOwner: "Tentvaale", name: "Cocktail Table", genericName: "Table", description: null, categoryId: "cat-03", subCategoryId: "sub-17", tag: "Tables", wholesaleRate: inr(200), retailRate: inr(250), hasVariants: false, media: [], active: true },
+export const SEED_PRODUCTS: ProductRecord[] = withProductMedia([
+  { id: "p-01", companyId: COMPANY_ID, sku: "TENT-20X40", skuOwner: "Tentvaale", name: "20x40 Frame Tent", genericName: "Frame Tent", description: "Heavy-duty frame tent, seats 80 banquet style", categoryId: "cat-01", subCategoryId: "sub-13", tag: "Tents", wholesaleRate: inr(10000), retailRate: inr(12500), hasVariants: false, active: true },
+  { id: "p-02", companyId: COMPANY_ID, sku: "TENT-30X60", skuOwner: "Tentvaale", name: "30x60 Pole Tent", genericName: "Pole Tent", description: "Large pole tent for open ground", categoryId: "cat-01", subCategoryId: "sub-14", tag: "Tents", wholesaleRate: inr(19500), retailRate: inr(24000), hasVariants: false, active: true },
+  { id: "p-03", companyId: COMPANY_ID, sku: "TENT-10X10", skuOwner: "Tentvaale", name: "10x10 Canopy", genericName: "Canopy", description: null, categoryId: "cat-01", subCategoryId: "sub-15", tag: "Tents", wholesaleRate: inr(1400), retailRate: inr(1800), hasVariants: false, active: true },
+  { id: "p-04", companyId: COMPANY_ID, sku: "CHR-GOLD", skuOwner: "Tentvaale", name: "Gold Chiavari Chair", genericName: "Chair", description: "Banquet seating, stackable", categoryId: "cat-06", subCategoryId: "sub-02", tag: "Furniture", wholesaleRate: inr(95), retailRate: inr(120.5), hasVariants: true, active: true },
+  { id: "p-05", companyId: COMPANY_ID, sku: "CHR-WHITE", skuOwner: "Tentvaale", name: "White Folding Chair", genericName: "Chair", description: null, categoryId: "cat-06", subCategoryId: "sub-04", tag: "Furniture", wholesaleRate: inr(35), retailRate: inr(45), hasVariants: false, active: true },
+  { id: "p-06", companyId: COMPANY_ID, sku: "SOFA-VELVET", skuOwner: "Tentvaale", name: "Velvet Lounge Sofa", genericName: "Sofa", description: "Three-seater, ivory velvet", categoryId: "cat-06", subCategoryId: "sub-03", tag: "Furniture", wholesaleRate: inr(2600), retailRate: inr(3200), hasVariants: true, active: true },
+  { id: "p-07", companyId: COMPANY_ID, sku: "TBL-ROUND-6", skuOwner: "Tentvaale", name: "6ft Round Table", genericName: "Table", description: "Seats 10", categoryId: "cat-03", subCategoryId: "sub-16", tag: "Tables", wholesaleRate: inr(320), retailRate: inr(400), hasVariants: false, active: true },
+  { id: "p-08", companyId: COMPANY_ID, sku: "TBL-COCKTAIL", skuOwner: "Tentvaale", name: "Cocktail Table", genericName: "Table", description: null, categoryId: "cat-03", subCategoryId: "sub-17", tag: "Tables", wholesaleRate: inr(200), retailRate: inr(250), hasVariants: false, active: true },
   // Deliberately uncategorised: md_product.category_id is not a foreign key, so
   // orphans are normal and the UI must render them without complaint. It still
   // has a tag, which is required.
-  { id: "p-09", companyId: COMPANY_ID, sku: "STAGE-8X12", skuOwner: "StageCraft Rentals", name: "8x12 Stage Deck", genericName: "Stage Deck", description: "Modular decking, 600mm rise", categoryId: null, subCategoryId: null, tag: "Staging", wholesaleRate: inr(6000), retailRate: inr(7500), hasVariants: false, media: [], active: true },
-  { id: "p-10", companyId: COMPANY_ID, sku: "LIGHT-FAIRY", skuOwner: "Tentvaale", name: "Fairy Light Curtain", genericName: "Light Curtain", description: "4m x 3m warm white", categoryId: "cat-04", subCategoryId: "sub-12", tag: "Lighting", wholesaleRate: inr(700), retailRate: inr(900), hasVariants: true, media: [], active: true },
-  { id: "p-11", companyId: COMPANY_ID, sku: "LIGHT-UPLIGHT", skuOwner: "Tentvaale", name: "LED Uplight", genericName: "Uplight", description: "Battery, colour selectable", categoryId: "cat-04", subCategoryId: "sub-11", tag: "Lighting", wholesaleRate: inr(280), retailRate: inr(350), hasVariants: false, media: [], active: true },
-  { id: "p-12", companyId: COMPANY_ID, sku: "GEN-15KVA", skuOwner: "Shakti Power Hire", name: "15 kVA Silent Generator", genericName: "Generator", description: "Diesel, includes 40m cabling", categoryId: "cat-05", subCategoryId: "sub-18", tag: "Power", wholesaleRate: inr(5200), retailRate: inr(6500), hasVariants: false, media: [], active: true },
+  { id: "p-09", companyId: COMPANY_ID, sku: "STAGE-8X12", skuOwner: "StageCraft Rentals", name: "8x12 Stage Deck", genericName: "Stage Deck", description: "Modular decking, 600mm rise", categoryId: null, subCategoryId: null, tag: "Staging", wholesaleRate: inr(6000), retailRate: inr(7500), hasVariants: false, active: true },
+  { id: "p-10", companyId: COMPANY_ID, sku: "LIGHT-FAIRY", skuOwner: "Tentvaale", name: "Fairy Light Curtain", genericName: "Light Curtain", description: "4m x 3m warm white", categoryId: "cat-04", subCategoryId: "sub-12", tag: "Lighting", wholesaleRate: inr(700), retailRate: inr(900), hasVariants: true, active: true },
+  { id: "p-11", companyId: COMPANY_ID, sku: "LIGHT-UPLIGHT", skuOwner: "Tentvaale", name: "LED Uplight", genericName: "Uplight", description: "Battery, colour selectable", categoryId: "cat-04", subCategoryId: "sub-11", tag: "Lighting", wholesaleRate: inr(280), retailRate: inr(350), hasVariants: false, active: true },
+  { id: "p-12", companyId: COMPANY_ID, sku: "GEN-15KVA", skuOwner: "Shakti Power Hire", name: "15 kVA Silent Generator", genericName: "Generator", description: "Diesel, includes 40m cabling", categoryId: "cat-05", subCategoryId: "sub-18", tag: "Power", wholesaleRate: inr(5200), retailRate: inr(6500), hasVariants: false, active: true },
   // Inactive, so it should NOT appear in the list: the real endpoint is
   // findByCompanyIdAndActiveTrue.
-  { id: "p-13", companyId: COMPANY_ID, sku: "TENT-RETIRED", skuOwner: "Tentvaale", name: "15x30 Frame Tent (retired)", genericName: "Frame Tent", description: "Withdrawn after storm damage", categoryId: "cat-01", subCategoryId: "sub-13", tag: "Tents", wholesaleRate: inr(7200), retailRate: inr(9000), hasVariants: false, media: [], active: false },
-];
+  { id: "p-13", companyId: COMPANY_ID, sku: "TENT-RETIRED", skuOwner: "Tentvaale", name: "15x30 Frame Tent (retired)", genericName: "Frame Tent", description: "Withdrawn after storm damage", categoryId: "cat-01", subCategoryId: "sub-13", tag: "Tents", wholesaleRate: inr(7200), retailRate: inr(9000), hasVariants: false, active: false },
+]).map((product) => ({ ...product, ...SEED_PRODUCT_DETAILS[product.id] }));
 
 /**
  * Products point at these by id (see SEED_PRODUCTS). Seating is kept with no
  * sub-categories and no products, so a category that cannot yet take a
  * product shows up in the product form's picker.
  */
-export const SEED_CATEGORIES: CategoryRecord[] = [
+export const SEED_CATEGORIES: CategoryRecord[] = withCategoryMedia([
   { id: "cat-01", companyId: COMPANY_ID, name: "Tents", active: true },
   { id: "cat-02", companyId: COMPANY_ID, name: "Seating", active: true },
   { id: "cat-03", companyId: COMPANY_ID, name: "Tables", active: true },
@@ -145,13 +177,16 @@ export const SEED_CATEGORIES: CategoryRecord[] = [
   { id: "cat-05", companyId: COMPANY_ID, name: "Power", active: true },
   { id: "cat-06", companyId: COMPANY_ID, name: "Furniture", active: true },
   { id: "cat-07", companyId: COMPANY_ID, name: "Carpets and rugs", active: true },
-];
+]);
 
 /**
  * A product as stored: category and sub-category by id only. Their names are
  * resolved into ProductView when products are listed.
  */
-export type ProductRecord = Omit<ProductView, "categoryName" | "subCategoryName" | "variants">;
+export type ProductRecord = Omit<
+  ProductView,
+  "categoryName" | "subCategoryName" | "variants" | "media"
+> & { media: MediaAsset[] } & ProductStorefrontDetails;
 
 /** A variant as stored; its stock is summed from the warehouses on read. */
 export type ProductVariantRecord = Omit<ProductVariantView, "stock">;
@@ -276,13 +311,15 @@ export type FeaturedCollectionRecord = Omit<FeaturedCollectionView, "products"> 
  * uplight each sit in more than one collection, and the corporate gala set is
  * inactive, so both of those cases are on screen from the start.
  */
-export const SEED_FEATURED_COLLECTIONS: FeaturedCollectionRecord[] = [
+export const SEED_FEATURED_COLLECTIONS: FeaturedCollectionRecord[] = withCollectionMedia([
   {
     id: "fc-01",
     companyId: COMPANY_ID,
     name: "Royal Wedding Collection",
     description: "Gilded seating, velvet lounges and a grand frame tent for a palace-style wedding.",
     active: true,
+    bestFor: ["Wedding", "Reception", "Engagement"],
+    palette: "Gold · Ivory · Champagne",
     productIds: ["p-04", "p-06", "p-01", "p-07", "p-10"],
   },
   {
@@ -291,6 +328,8 @@ export const SEED_FEATURED_COLLECTIONS: FeaturedCollectionRecord[] = [
     name: "Luxury Garden Collection",
     description: "Canopies, cocktail tables and warm lighting for an evening on the lawn.",
     active: true,
+    bestFor: ["Cocktail", "Sundowner", "Engagement"],
+    palette: "Ivory · Sage · Warm white",
     productIds: ["p-03", "p-08", "p-10", "p-11"],
   },
   {
@@ -299,6 +338,8 @@ export const SEED_FEATURED_COLLECTIONS: FeaturedCollectionRecord[] = [
     name: "Sangeet Night Collection",
     description: "A stage, uplighting and banquet chairs for a night of performances.",
     active: true,
+    bestFor: ["Sangeet", "Mehendi"],
+    palette: "Fuchsia · Gold · Warm white",
     productIds: ["p-09", "p-11", "p-04"],
   },
   {
@@ -307,17 +348,51 @@ export const SEED_FEATURED_COLLECTIONS: FeaturedCollectionRecord[] = [
     name: "Corporate Gala Collection",
     description: null,
     active: false,
+    bestFor: ["Corporate gala", "Award night"],
+    palette: "Black · White · Crystal",
     productIds: ["p-02", "p-05", "p-12"],
   },
-];
+]);
 
 /**
  * A bundle as stored: product ids and quantities, resolved into
  * BundleComponentView (name, SKU, active) when bundles are listed.
  */
-export type BundleRecord = Omit<BundleView, "components"> & {
+export type BundleRecord = Omit<BundleView, "components" | "occasions"> & {
   components: { productId: string; quantity: number }[];
+  /** Occasion ids; resolved into names, in the occasions' own order, on read. */
+  occasionIds: string[];
 };
+
+/** An occasion as stored; its bundle count is worked out on read. */
+export type BundleOccasionRecord = Omit<BundleOccasionView, "bundleCount">;
+
+/**
+ * The storefront's bundle filter row, in its order. Invented, like bundles.
+ * Navratri is inactive and Haldi, Baby shower and a few more have no bundle
+ * yet, so both of those cases are on screen from the start.
+ */
+export const SEED_BUNDLE_OCCASIONS: BundleOccasionRecord[] = [
+  "Wedding",
+  "Reception",
+  "Haldi",
+  "Mehendi",
+  "Sangeet",
+  "Cocktail",
+  "Sufi night",
+  "Baby shower",
+  "Diwali",
+  "Ganesh Chaturthi",
+  "Corporate",
+  "Corporate gala",
+  "Navratri",
+].map((name, index) => ({
+  id: `bo-${String(index + 1).padStart(2, "0")}`,
+  companyId: COMPANY_ID,
+  name,
+  active: name !== "Navratri",
+  sortOrder: index + 1,
+}));
 
 /**
  * Invented outright — no bundle table or endpoint exists to be faithful to.
@@ -325,7 +400,7 @@ export type BundleRecord = Omit<BundleView, "components"> & {
  * The fairy light curtain is in two of them, so a product shared between
  * bundles is on screen from the start. Rates are the bundles' own, unchanged.
  */
-export const SEED_BUNDLES: BundleRecord[] = [
+export const SEED_BUNDLES: BundleRecord[] = withBundleMedia([
   {
     id: "b-01",
     companyId: COMPANY_ID,
@@ -337,6 +412,16 @@ export const SEED_BUNDLES: BundleRecord[] = [
       { productId: "p-10", quantity: 4 },
     ],
     rentalRate: inr(28000),
+    tagline: "The ceremony, tented and seated end to end",
+    occasionIds: ["bo-01", "bo-02"],
+    description: "A frame tent over the ceremony, gold chiavari seating at eight round tables and fairy-light curtains behind the couple.",
+    guests: "80",
+    setupTime: "8 hours",
+    highlights: [
+      "20 × 40 ft frame tent over the ceremony",
+      "80 gold chiavari chairs at eight round tables",
+      "Fairy-light curtains behind the couple",
+    ],
   },
   {
     id: "b-02",
@@ -348,6 +433,16 @@ export const SEED_BUNDLES: BundleRecord[] = [
       { productId: "p-09", quantity: 2 },
     ],
     rentalRate: inr(41000),
+    tagline: "A tented hall for a full-day conference",
+    occasionIds: ["bo-11", "bo-12"],
+    description: "A 30 × 60 ft pole tent seated theatre-style, with two stage decks for the speakers.",
+    guests: "150",
+    setupTime: "10 hours",
+    highlights: [
+      "30 × 60 ft pole tent",
+      "150 white folding chairs, theatre style",
+      "Two 8 × 12 ft stage decks for speakers",
+    ],
   },
   {
     id: "b-03",
@@ -359,8 +454,18 @@ export const SEED_BUNDLES: BundleRecord[] = [
       { productId: "p-10", quantity: 6 },
     ],
     rentalRate: inr(6400),
+    tagline: "Canopies and warm light for an evening on the lawn",
+    occasionIds: ["bo-06", "bo-04"],
+    description: "Four canopies, standing cocktail tables and fairy-light curtains for a relaxed garden evening.",
+    guests: "40–100",
+    setupTime: "4 hours",
+    highlights: [
+      "Four 10 × 10 ft canopies",
+      "Ten cocktail tables",
+      "Six fairy-light curtains",
+    ],
   },
-];
+]);
 
 /** Invented outright — warehouses are an opaque UUID on StockMovement only. */
 export const SEED_WAREHOUSES: WarehouseView[] = [

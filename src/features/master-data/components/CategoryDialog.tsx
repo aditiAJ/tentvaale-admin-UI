@@ -8,7 +8,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createCategory, masterDataKeys, updateCategory } from "@/features/master-data/api";
-import type { CategoryView } from "@/features/master-data/types";
+import {
+  CATALOGUE_MEDIA_LIMITS,
+  type CategoryView,
+  type MediaAsset,
+} from "@/features/master-data/types";
+import { MediaField } from "@/features/master-data/components/MediaField";
 import { ApiError } from "@/services/api-client";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -75,6 +80,8 @@ export function CategoryDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  const [media, setMedia] = useState<MediaAsset[]>(existing?.media ?? []);
+  const [mediaBusy, setMediaBusy] = useState(false);
 
   const {
     control,
@@ -103,10 +110,12 @@ export function CategoryDialog({
               id: row.subCategoryId || undefined,
               name: row.name,
             })),
+            media,
           })
         : createCategory({
             name: values.name,
             subCategories: values.subCategories.map((row) => row.name),
+            media,
           }),
     onSuccess: (category) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.categories });
@@ -135,7 +144,7 @@ export function CategoryDialog({
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
             Cancel
           </Button>
-          <Button form={FORM_ID} type="submit" disabled={mutation.isPending}>
+          <Button form={FORM_ID} type="submit" disabled={mutation.isPending || mediaBusy}>
             {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
             {existing ? "Save changes" : "Create category"}
           </Button>
@@ -147,6 +156,7 @@ export function CategoryDialog({
         className="space-y-4"
         noValidate
         onSubmit={handleSubmit((values) => {
+          if (mediaBusy) return;
           setFormError(null);
           mutation.mutate(values);
         })}
@@ -200,6 +210,14 @@ export function CategoryDialog({
             Add sub-category
           </Button>
         </div>
+
+        <MediaField
+          media={media}
+          limits={CATALOGUE_MEDIA_LIMITS}
+          onChange={setMedia}
+          onBusyChange={setMediaBusy}
+          disabled={mutation.isPending}
+        />
       </form>
     </Dialog>
   );

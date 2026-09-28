@@ -5,8 +5,10 @@ import { readSession } from "@/services/jwt";
 import type { Role } from "@/services/permissions";
 import type {
   AddWarehouseProductRequest,
+  BundleOccasionView,
   BundleView,
   CategoryView,
+  CreateBundleOccasionRequest,
   CreateBundleRequest,
   CreateCategoryRequest,
   CreateCustomerRequest,
@@ -20,20 +22,30 @@ import type {
   ProductVariantView,
   ProductView,
   TruckView,
+  UpdateBundleOccasionRequest,
   UpdateBundleRequest,
   UpdateCategoryRequest,
   UpdateCustomerRequest,
   UpdateFeaturedCollectionRequest,
   UpdateProductRequest,
   UpdateProductVariantRequest,
-  ProductMedia,
+  MediaAsset,
   SubCategoryView,
   UpdateTruckRequest,
   UpdateWarehouseRequest,
   WarehouseProductView,
   WarehouseView,
 } from "@/features/master-data/types";
-import { PRODUCT_MEDIA_LIMITS } from "@/features/master-data/types";
+import {
+  BUNDLE_HIGHLIGHT_LIMIT,
+  BUNDLE_OCCASION_LIMIT,
+  CATALOGUE_MEDIA_LIMITS,
+  PRODUCT_MEDIA_LIMITS,
+  type BundleStorefrontDetails,
+  type MediaLimits,
+  type ProductStorefrontDetails,
+} from "@/features/master-data/types";
+import { MOODS, PRODUCT_SETTINGS, RATE_TYPES, THEMES } from "@/features/master-data/storefront";
 import type {
   CreateQuotationRequest,
   QuotationLineView,
@@ -61,6 +73,7 @@ import { mintMockToken } from "@/mock-data/token";
 import {
   COMPANY_ID,
   SEED_BUNDLES,
+  SEED_BUNDLE_OCCASIONS,
   SEED_CATEGORIES,
   SEED_CREDIT_NOTES,
   SEED_CUSTOMERS,
@@ -79,6 +92,7 @@ import {
   SEED_WAREHOUSES,
   SEED_WAREHOUSE_PRODUCTS,
   SEED_USERS,
+  type BundleOccasionRecord,
   type BundleRecord,
   type CategoryRecord,
   type ProductRecord,
@@ -100,6 +114,12 @@ import {
  * would. Bump STORAGE_KEY's version suffix when the seed shape changes.
  */
 
+// v17 → v18: MockState gained `bundleOccasions`, and bundles store occasionIds
+// in place of a free-text occasion.
+// v16 → v17: products, bundles and featured collections gained the storefront
+// details (specs and facets, bundle facts and highlights, best-for and palette).
+// v15 → v16: categories, bundles and featured collections gained media, and
+// seeded products got theirs from mock-data/media.
 // v14: credit notes carry their applications, and the seeded notes were made
 // to agree with the orders they name.
 // v13: movement lines carry a variantId, and the seeded orders, movements,
@@ -116,7 +136,7 @@ import {
 // the fields quotation pricing and the products table now read.
 // v4: MockState gained `warehouseProducts`. A v3 payload has no such array, and
 // reading a warehouse's products from it would throw rather than come back empty.
-const STORAGE_KEY = "tentvaale.admin.mock.v15";
+const STORAGE_KEY = "tentvaale.admin.mock.v18";
 
 /** Enough delay to make loading states real, little enough to feel instant. */
 const LATENCY_MS = 220;
@@ -133,6 +153,7 @@ interface MockState {
   subCategories: SubCategoryView[];
   customers: CustomerView[];
   bundles: BundleRecord[];
+  bundleOccasions: BundleOccasionRecord[];
   featuredCollections: FeaturedCollectionRecord[];
   warehouses: WarehouseView[];
   warehouseProducts: WarehouseProduct[];
@@ -155,6 +176,7 @@ function seedState(): MockState {
     subCategories: SEED_SUB_CATEGORIES,
     customers: SEED_CUSTOMERS,
     bundles: SEED_BUNDLES,
+    bundleOccasions: SEED_BUNDLE_OCCASIONS,
     featuredCollections: SEED_FEATURED_COLLECTIONS,
     warehouses: SEED_WAREHOUSES,
     warehouseProducts: SEED_WAREHOUSE_PRODUCTS,
@@ -206,7 +228,7 @@ function forgetDeadMediaUrls(stored: MockState): MockState {
  * Returns false when the write did not land. Most callers ignore that: quota or
  * private-mode failures leave the in-memory copy authoritative, which is fine
  * for a mock. Product writes do not, because images make them the one write
- * large enough to hit the quota — see saveProducts.
+ * large enough to hit the quota — see saveWithMedia.
  */
 function persist(): boolean {
   if (typeof window === "undefined" || !cache) return true;
@@ -353,7 +375,7 @@ function checkProductRequest(request: CreateProductRequest | UpdateProductReques
   if (typeof request.hasVariants !== "boolean") {
     throw businessRule("Say whether the product has variants");
   }
-  checkProductMedia(request.media);
+  checkMedia(request.media, PRODUCT_MEDIA_LIMITS, "A product");
   if (!request.genericName?.trim()) throw businessRule("Generic name is required");
   if (!request.skuOwner?.trim()) throw businessRule("SKU owner is required");
   if (!request.tag?.trim()) throw businessRule("Tag is required");
@@ -368,33 +390,152 @@ function checkProductRequest(request: CreateProductRequest | UpdateProductReques
 }
 
 /**
- * The media a product may carry. A data URL for images and an object URL for
+ * The media a catalogue record may carry, within its limits. A data URL for images and an object URL for
  * video are the only URLs the mock can have made itself (see
- * features/master-data/media); anything else is refused rather than stored.
+ * features/master-data/media), and a seeded image lives under /mock-media (see
+ * mock-data/media); anything else is refused rather than stored.
  */
-function checkProductMedia(media: ProductMedia[]): void {
+function checkMedia(media: MediaAsset[], limits: MediaLimits, owner: string): void {
   if (!Array.isArray(media)) throw businessRule("Media must be a list");
   const images = media.filter((item) => item.kind === "IMAGE").length;
   const videos = media.filter((item) => item.kind === "VIDEO").length;
   if (images + videos !== media.length) throw businessRule("Media must be an image or a video");
-  if (images > PRODUCT_MEDIA_LIMITS.images) {
-    throw businessRule(`A product can have at most ${PRODUCT_MEDIA_LIMITS.images} images`);
+  if (images > limits.images) {
+    throw businessRule(
+      `${owner} can have at most ${limits.images} ${limits.images === 1 ? "image" : "images"}`,
+    );
   }
-  if (videos > PRODUCT_MEDIA_LIMITS.videos) {
-    throw businessRule(`A product can have at most ${PRODUCT_MEDIA_LIMITS.videos} video`);
+  if (videos > limits.videos) {
+    throw businessRule(
+      limits.videos ? `${owner} can have at most ${limits.videos} video` : `${owner} cannot have a video`,
+    );
   }
   for (const item of media) {
-    const expected = item.kind === "IMAGE" ? "data:image/" : "blob:";
+    const expected = item.kind === "IMAGE" ? ["data:image/", "/mock-media/"] : ["blob:"];
     // A video whose preview was lost on reload is kept with a null url.
     const lostVideo = item.kind === "VIDEO" && item.url === null;
-    if (!lostVideo && !item.url?.startsWith(expected)) {
+    if (!lostVideo && !expected.some((prefix) => item.url?.startsWith(prefix))) {
       throw businessRule(`${item.fileName} was not added through the media picker`);
     }
   }
 }
 
+// ---------------------------------------------------------------------------
+// Storefront details
+//
+// Descriptive fields the storefront shows and filters by. None of them affects
+// pricing, stock or any other rule, so checking them is only about keeping
+// them tidy: trimmed, blanks dropped, repeats merged, lengths bounded, and the
+// closed vocabularies (moods, themes, settings, rate types) held to their lists
+// so the storefront never gets a facet it cannot filter on.
+// ---------------------------------------------------------------------------
+
+/** Trimmed text, or null when blank. */
+function optionalText(value: unknown, max: number, label: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw businessRule(`${label} must be text`);
+  const trimmed = value.trim();
+  if (trimmed.length > max) throw businessRule(`${label} can be at most ${max} characters`);
+  return trimmed || null;
+}
+
+/**
+ * Trimmed, blanks dropped, and a repeat that differs only in case merged into
+ * the first spelling. With `allowed`, each entry must be one of those values
+ * and is stored in its canonical spelling.
+ */
+function textList(
+  value: unknown,
+  label: string,
+  { max, maxLength = 40, allowed }: { max: number; maxLength?: number; allowed?: readonly string[] },
+): string[] {
+  if (!Array.isArray(value)) throw businessRule(`${label} must be a list`);
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") throw businessRule(`${label} must be text`);
+    let item = entry.trim();
+    if (!item) continue;
+    if (item.length > maxLength) {
+      throw businessRule(`Each of the ${label.toLowerCase()} can be at most ${maxLength} characters`);
+    }
+    if (allowed) {
+      const match = allowed.find((option) => option.toLowerCase() === item.toLowerCase());
+      if (!match) throw businessRule(`'${item}' is not one of the storefront's ${label.toLowerCase()}`);
+      item = match;
+    }
+    if (!out.some((kept) => kept.toLowerCase() === item.toLowerCase())) out.push(item);
+  }
+  if (out.length > max) throw businessRule(`At most ${max} ${label.toLowerCase()}`);
+  return out;
+}
+
+const ATTRIBUTE_LIMIT = 12;
+
+function productDetails(request: ProductStorefrontDetails): ProductStorefrontDetails {
+  if (!(RATE_TYPES as readonly string[]).includes(request.rateType)) {
+    throw businessRule("Choose whether the rate is per unit, per running foot or per square foot");
+  }
+  const setting = request.setting ?? null;
+  if (setting !== null && !(PRODUCT_SETTINGS as readonly string[]).includes(setting)) {
+    throw businessRule("Choose indoor, outdoor, or both");
+  }
+
+  const raw = request.attributes;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw businessRule("Specifications must be a list of names and values");
+  }
+  const attributes: Record<string, string> = {};
+  for (const [rawName, rawValue] of Object.entries(raw)) {
+    const name = rawName.trim();
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    if (!name) throw businessRule("Every specification needs a name");
+    if (!value) throw businessRule(`Give '${name}' a value`);
+    if (name.length > 60) throw businessRule("A specification name can be at most 60 characters");
+    if (value.length > 120) throw businessRule(`'${name}' can be at most 120 characters`);
+    if (Object.keys(attributes).some((kept) => kept.toLowerCase() === name.toLowerCase())) {
+      throw businessRule(`'${name}' is listed twice`);
+    }
+    attributes[name] = value;
+  }
+  if (Object.keys(attributes).length > ATTRIBUTE_LIMIT) {
+    throw businessRule(`At most ${ATTRIBUTE_LIMIT} specifications`);
+  }
+
+  return {
+    rateType: request.rateType,
+    size: optionalText(request.size, 80, "Size"),
+    setting,
+    colours: textList(request.colours, "Colours", { max: 12 }),
+    materials: textList(request.materials, "Materials", { max: 12 }),
+    fabrics: textList(request.fabrics, "Fabrics", { max: 12 }),
+    moods: textList(request.moods, "Moods", { max: MOODS.length, allowed: MOODS }),
+    themes: textList(request.themes, "Themes", { max: THEMES.length, allowed: THEMES }),
+    attributes,
+  };
+}
+
+function bundleDetails(request: BundleStorefrontDetails): BundleStorefrontDetails {
+  return {
+    tagline: optionalText(request.tagline, 150, "Tagline"),
+    description: optionalText(request.description, 2000, "Description"),
+    guests: optionalText(request.guests, 60, "Guests"),
+    setupTime: optionalText(request.setupTime, 40, "Setup time"),
+    highlights: textList(request.highlights, "Highlights", {
+      max: BUNDLE_HIGHLIGHT_LIMIT,
+      maxLength: 150,
+    }),
+  };
+}
+
+function collectionDetails(request: { bestFor: unknown; palette?: unknown }) {
+  return {
+    bestFor: textList(request.bestFor, "Occasions", { max: 8 }),
+    palette: optionalText(request.palette, 120, "Palette"),
+  };
+}
+
 /** Images first, then video, each group in the order given. */
-function orderedMedia(media: ProductMedia[]): ProductMedia[] {
+function orderedMedia(media: MediaAsset[]): MediaAsset[] {
   return [
     ...media.filter((item) => item.kind === "IMAGE"),
     ...media.filter((item) => item.kind === "VIDEO"),
@@ -409,16 +550,18 @@ function orderedMedia(media: ProductMedia[]): ProductMedia[] {
 }
 
 /**
- * Persists a product write, or undoes it and says why. Images are the one
- * thing in this mock large enough to exhaust the browser's storage quota, and
- * a save that looked successful but was gone after a reload would be worse
- * than a refusal.
+ * Persists a write that can carry images, or undoes it and says why. Images
+ * are the one thing in this mock large enough to exhaust the browser's storage
+ * quota, and a save that looked successful but was gone after a reload would
+ * be worse than a refusal. `previous` holds the collections as they were
+ * before the write, which is why these writes replace arrays rather than
+ * mutate them.
  */
-function saveProducts(current: MockState, previous: ProductRecord[]): void {
+function saveWithMedia(current: MockState, previous: Partial<MockState>): void {
   if (persist()) return;
-  current.products = previous;
+  Object.assign(current, previous);
   throw businessRule(
-    "The browser's storage for this demo is full. Remove some images, here or on other products, and try again.",
+    "The browser's storage for this demo is full. Remove some images, here or on other records, and try again.",
   );
 }
 
@@ -447,12 +590,13 @@ export async function mockCreateProduct(request: CreateProductRequest): Promise<
     retailRate: { amount: request.retailRate, currency: "INR" },
     hasVariants: request.hasVariants,
     media: orderedMedia(request.media),
+    ...productDetails(request),
     active: true,
   };
 
   const previous = current.products;
   current.products = [...previous, created];
-  saveProducts(current, previous);
+  saveWithMedia(current, { products: previous });
   return toProductView(created, current);
 }
 
@@ -523,11 +667,12 @@ export async function mockUpdateProduct(
     retailRate: { amount: request.retailRate, currency: "INR" },
     hasVariants: request.hasVariants,
     media: orderedMedia(request.media),
+    ...productDetails(request),
     active: existing.active,
   };
   const previous = current.products;
   current.products = previous.map((product, i) => (i === index ? updated : product));
-  saveProducts(current, previous);
+  saveWithMedia(current, { products: previous });
   return toProductView(updated, current);
 }
 
@@ -577,24 +722,28 @@ export async function mockCreateCategory(request: CreateCategoryRequest): Promis
     throw businessRule(`A category named '${request.name}' already exists for this company`);
   }
   const subNames = checkSubCategoryNames(request.subCategories ?? []);
+  checkMedia(request.media, CATALOGUE_MEDIA_LIMITS, "A category");
 
   const created: CategoryRecord = {
     id: crypto.randomUUID(),
     companyId: COMPANY_ID,
     name: request.name,
     active: true,
+    media: orderedMedia(request.media),
   };
 
-  current.categories.push(created);
-  current.subCategories.push(
+  const previous = { categories: current.categories, subCategories: current.subCategories };
+  current.categories = [...current.categories, created];
+  current.subCategories = [
+    ...current.subCategories,
     ...subNames.map((name) => ({
       id: crypto.randomUUID(),
       companyId: COMPANY_ID,
       categoryId: created.id,
       name,
     })),
-  );
-  persist();
+  ];
+  saveWithMedia(current, previous);
   return toCategoryView(created, current);
 }
 
@@ -612,8 +761,15 @@ export async function mockListCustomers(): Promise<CustomerView[]> {
 
 /** A stored bundle with each component's product resolved from the catalogue. */
 function toBundleView(bundle: BundleRecord, current: MockState): BundleView {
+  const { occasionIds, ...rest } = bundle;
   return {
-    ...bundle,
+    ...rest,
+    // Occasions are never deleted, so every id resolves; listed in the
+    // occasions' own order, not the order they were picked in.
+    occasions: current.bundleOccasions
+      .filter((occasion) => occasionIds.includes(occasion.id))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(({ id, name, active }) => ({ id, name, active })),
     components: bundle.components.map(({ productId, quantity }) => {
       const product = current.products.find((candidate) => candidate.id === productId);
       // Products are only deactivated, never deleted, so this should always
@@ -693,6 +849,7 @@ export async function mockUpdateCategory(
   // the list cannot leave the category half-updated.
   const entries = request.subCategories ?? [];
   const names = checkSubCategoryNames(entries.map((entry) => entry.name));
+  checkMedia(request.media, CATALOGUE_MEDIA_LIMITS, "A category");
   const owned = new Set(
     current.subCategories.filter((sub) => sub.categoryId === categoryId).map((sub) => sub.id),
   );
@@ -720,13 +877,18 @@ export async function mockUpdateCategory(
     categoryId,
     name: names[i],
   }));
-  const updated: CategoryRecord = { ...current.categories[index], name: request.name };
-  current.categories[index] = updated;
+  const updated: CategoryRecord = {
+    ...current.categories[index],
+    name: request.name,
+    media: orderedMedia(request.media),
+  };
+  const previous = { categories: current.categories, subCategories: current.subCategories };
+  current.categories = current.categories.map((category, i) => (i === index ? updated : category));
   current.subCategories = [
     ...current.subCategories.filter((sub) => sub.categoryId !== categoryId),
     ...kept,
   ];
-  persist();
+  saveWithMedia(current, previous);
   return toCategoryView(updated, current);
 }
 
@@ -1186,6 +1348,8 @@ export async function mockCreateBundle(request: CreateBundleRequest): Promise<Bu
     throw businessRule(`A bundle named '${name}' already exists for this company`);
   }
   const components = checkBundleRequest(request, current, []);
+  const occasionIds = checkBundleOccasions(request.occasionIds, [], current);
+  checkMedia(request.media, CATALOGUE_MEDIA_LIMITS, "A bundle");
 
   const created: BundleRecord = {
     id: crypto.randomUUID(),
@@ -1193,10 +1357,14 @@ export async function mockCreateBundle(request: CreateBundleRequest): Promise<Bu
     name,
     components,
     rentalRate: { amount: request.rentalRate, currency: "INR" },
+    media: orderedMedia(request.media),
+    ...bundleDetails(request),
+    occasionIds,
   };
 
-  current.bundles.push(created);
-  persist();
+  const previous = { bundles: current.bundles };
+  current.bundles = [...current.bundles, created];
+  saveWithMedia(current, previous);
   return toBundleView(created, current);
 }
 
@@ -1227,16 +1395,187 @@ export async function mockUpdateBundle(
     current,
     existing.components.map((component) => component.productId),
   );
+  const occasionIds = checkBundleOccasions(request.occasionIds, existing.occasionIds, current);
+  checkMedia(request.media, CATALOGUE_MEDIA_LIMITS, "A bundle");
 
   const updated: BundleRecord = {
     ...existing,
     name,
     components,
     rentalRate: { amount: request.rentalRate, currency: "INR" },
+    media: orderedMedia(request.media),
+    ...bundleDetails(request),
+    occasionIds,
   };
-  current.bundles[index] = updated;
-  persist();
+  const previous = { bundles: current.bundles };
+  current.bundles = current.bundles.map((bundle, i) => (i === index ? updated : bundle));
+  saveWithMedia(current, previous);
   return toBundleView(updated, current);
+}
+
+/**
+ * The occasions a bundle write carries: real, none twice, within the limit. An
+ * occasion must be active to be added, but one already on the bundle may stay
+ * after it is switched off, so an unrelated edit does not force it out.
+ */
+function checkBundleOccasions(
+  occasionIds: string[],
+  alreadyOn: string[],
+  current: MockState,
+): string[] {
+  if (!Array.isArray(occasionIds)) throw businessRule("Occasions must be a list");
+  if (new Set(occasionIds).size !== occasionIds.length) {
+    throw businessRule("An occasion can be picked only once");
+  }
+  if (occasionIds.length > BUNDLE_OCCASION_LIMIT) {
+    throw businessRule(`A bundle can have at most ${BUNDLE_OCCASION_LIMIT} occasions`);
+  }
+  for (const occasionId of occasionIds) {
+    const occasion = current.bundleOccasions.find((candidate) => candidate.id === occasionId);
+    if (!occasion) throw notFound(`Occasion ${occasionId} not found`);
+    if (!occasion.active && !alreadyOn.includes(occasionId)) {
+      throw businessRule(`'${occasion.name}' is hidden and cannot be added to a bundle`);
+    }
+  }
+  return [...occasionIds];
+}
+
+// ---------------------------------------------------------------------------
+// Bundle occasions
+//
+// The storefront's bundle filter row: a name, whether it is shown, and where
+// in the row. Bundles hold occasion ids, so a rename reaches every bundle, and
+// an occasion is hidden rather than deleted, which leaves its bundles filed
+// under it and only stops the storefront offering it as a filter. Like
+// bundles, all of it is invented; there is no backend to mirror.
+// ---------------------------------------------------------------------------
+
+const OCCASION_NAME_MAX = 40;
+
+function toBundleOccasionView(
+  occasion: BundleOccasionRecord,
+  current: MockState,
+): BundleOccasionView {
+  return {
+    ...occasion,
+    bundleCount: current.bundles.filter((bundle) => bundle.occasionIds.includes(occasion.id))
+      .length,
+  };
+}
+
+function occasionName(request: CreateBundleOccasionRequest, others: BundleOccasionRecord[]) {
+  const name = typeof request.name === "string" ? request.name.trim() : "";
+  if (!name) throw businessRule("Name is required");
+  if (name.length > OCCASION_NAME_MAX) {
+    throw businessRule(`An occasion name can be at most ${OCCASION_NAME_MAX} characters`);
+  }
+  if (nameTaken(others.map((occasion) => occasion.name), name)) {
+    throw businessRule(`An occasion named '${name}' already exists`);
+  }
+  return name;
+}
+
+/** Every occasion, shown or hidden, in display order. */
+export async function mockListBundleOccasions(): Promise<BundleOccasionView[]> {
+  await delay();
+  const current = state();
+  return [...current.bundleOccasions]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((occasion) => toBundleOccasionView(occasion, current));
+}
+
+/** A new occasion is shown, and goes to the end of the row. */
+export async function mockCreateBundleOccasion(
+  request: CreateBundleOccasionRequest,
+): Promise<BundleOccasionView> {
+  await delay();
+  const current = state();
+
+  const created: BundleOccasionRecord = {
+    id: crypto.randomUUID(),
+    companyId: COMPANY_ID,
+    name: occasionName(request, current.bundleOccasions),
+    active: true,
+    sortOrder: Math.max(0, ...current.bundleOccasions.map((occasion) => occasion.sortOrder)) + 1,
+  };
+  current.bundleOccasions = [...current.bundleOccasions, created];
+  persist();
+  return toBundleOccasionView(created, current);
+}
+
+/** Renames it on every bundle too, since bundles hold the id. */
+export async function mockUpdateBundleOccasion(
+  occasionId: string,
+  request: UpdateBundleOccasionRequest,
+): Promise<BundleOccasionView> {
+  await delay();
+  const current = state();
+
+  const index = current.bundleOccasions.findIndex((occasion) => occasion.id === occasionId);
+  if (index === -1) throw notFound(`Occasion ${occasionId} not found`);
+  const others = current.bundleOccasions.filter((occasion) => occasion.id !== occasionId);
+
+  const updated: BundleOccasionRecord = {
+    ...current.bundleOccasions[index],
+    name: occasionName(request, others),
+  };
+  current.bundleOccasions = current.bundleOccasions.map((occasion, i) =>
+    i === index ? updated : occasion,
+  );
+  persist();
+  return toBundleOccasionView(updated, current);
+}
+
+export async function mockSetBundleOccasionActive(
+  occasionId: string,
+  active: boolean,
+): Promise<BundleOccasionView> {
+  await delay();
+  const current = state();
+
+  const index = current.bundleOccasions.findIndex((occasion) => occasion.id === occasionId);
+  if (index === -1) throw notFound(`Occasion ${occasionId} not found`);
+  const existing = current.bundleOccasions[index];
+  if (existing.active === active) {
+    throw businessRule(`'${existing.name}' is already ${active ? "shown" : "hidden"}`);
+  }
+
+  const updated: BundleOccasionRecord = { ...existing, active };
+  current.bundleOccasions = current.bundleOccasions.map((occasion, i) =>
+    i === index ? updated : occasion,
+  );
+  persist();
+  return toBundleOccasionView(updated, current);
+}
+
+/**
+ * Sets the display order. The list must name every occasion exactly once, so
+ * a reorder made from a stale list is refused rather than half-applied.
+ */
+export async function mockReorderBundleOccasions(
+  occasionIds: string[],
+): Promise<BundleOccasionView[]> {
+  await delay();
+  const current = state();
+
+  const known = new Set(current.bundleOccasions.map((occasion) => occasion.id));
+  if (
+    !Array.isArray(occasionIds) ||
+    occasionIds.length !== known.size ||
+    new Set(occasionIds).size !== occasionIds.length ||
+    occasionIds.some((occasionId) => !known.has(occasionId))
+  ) {
+    throw businessRule("The occasions have changed since the list was loaded; reload and try again");
+  }
+
+  current.bundleOccasions = current.bundleOccasions.map((occasion) => ({
+    ...occasion,
+    sortOrder: occasionIds.indexOf(occasion.id) + 1,
+  }));
+  persist();
+  return [...current.bundleOccasions]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((occasion) => toBundleOccasionView(occasion, current));
 }
 
 // ---------------------------------------------------------------------------
@@ -1314,6 +1653,7 @@ export async function mockCreateFeaturedCollection(
     throw businessRule(`A featured collection named '${request.name}' already exists`);
   }
   checkCollectionProducts(request.productIds, [], current);
+  checkMedia(request.media, CATALOGUE_MEDIA_LIMITS, "A featured collection");
 
   const created: FeaturedCollectionRecord = {
     id: crypto.randomUUID(),
@@ -1321,10 +1661,13 @@ export async function mockCreateFeaturedCollection(
     name: request.name.trim(),
     description: request.description?.trim() ? request.description.trim() : null,
     active: true,
+    media: orderedMedia(request.media),
+    ...collectionDetails(request),
     productIds: [...request.productIds],
   };
-  current.featuredCollections.push(created);
-  persist();
+  const previous = { featuredCollections: current.featuredCollections };
+  current.featuredCollections = [...current.featuredCollections, created];
+  saveWithMedia(current, previous);
   return toFeaturedCollectionView(created, current);
 }
 
@@ -1344,15 +1687,21 @@ export async function mockUpdateFeaturedCollection(
     throw businessRule(`A featured collection named '${request.name}' already exists`);
   }
   checkCollectionProducts(request.productIds, existing.productIds, current);
+  checkMedia(request.media, CATALOGUE_MEDIA_LIMITS, "A featured collection");
 
   const updated: FeaturedCollectionRecord = {
     ...existing,
     name: request.name.trim(),
     description: request.description?.trim() ? request.description.trim() : null,
     productIds: [...request.productIds],
+    media: orderedMedia(request.media),
+    ...collectionDetails(request),
   };
-  current.featuredCollections[index] = updated;
-  persist();
+  const previous = { featuredCollections: current.featuredCollections };
+  current.featuredCollections = current.featuredCollections.map((collection, i) =>
+    i === index ? updated : collection,
+  );
+  saveWithMedia(current, previous);
   return toFeaturedCollectionView(updated, current);
 }
 

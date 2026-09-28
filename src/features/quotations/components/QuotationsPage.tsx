@@ -9,24 +9,27 @@ import {
   FileText,
   Pencil,
   Plus,
-  Search,
   SearchX,
-  X,
 } from "lucide-react";
 import { getQuotation, listQuotations, quotationKeys } from "@/features/quotations/api";
 import type { QuotationStatus, QuotationView } from "@/features/quotations/types";
 import { useCan } from "@/features/auth";
 import { ConvertToOrderDialog } from "@/features/orders";
+import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
+import {
+  WorkspaceLayout,
+  WorkspaceListSkeleton,
+  WorkspaceSearch,
+  workspaceHref as sharedWorkspaceHref,
+} from "@/components/workspace";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
@@ -74,13 +77,8 @@ const formatEventDate = (value: string | null) => {
 };
 
 /** The workspace URL for a filter, optionally with a quotation open in it. */
-const workspaceHref = (filterKey: string, quotationId?: string) => {
-  const params = new URLSearchParams();
-  if (filterKey) params.set("status", filterKey);
-  if (quotationId) params.set("id", quotationId);
-  const query = params.toString();
-  return query ? `/quotations?${query}` : "/quotations";
-};
+const workspaceHref = (filterKey: string, id?: string) =>
+  sharedWorkspaceHref("/quotations", filterKey, id);
 
 /**
  * The quotation workspace: a filter sidebar of its own beside a list, or the
@@ -129,49 +127,15 @@ export function QuotationsPage({ quotationId, status }: { quotationId: string; s
         }
       />
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
-        <nav aria-label="Quotation filters" className="md:sticky md:top-4 md:w-52 md:shrink-0">
-          <p className="mb-1 hidden px-2 text-[0.65rem] font-semibold tracking-wider text-muted-foreground uppercase md:block">
-            Quotations
-          </p>
-          {/* A row of tabs on a narrow screen, a column beside the list on a wide one. */}
-          <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-col md:overflow-visible md:px-0 md:pb-0">
-            {FILTERS.map((option) => {
-              const active = option.key === filter.key;
-              const count = option.status
-                ? (counts.get(option.status) ?? 0)
-                : (list.data?.length ?? 0);
-              return (
-                <li key={option.key} className="shrink-0">
-                  <Link
-                    href={workspaceHref(option.key)}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors",
-                      active
-                        ? "bg-primary/10 font-medium text-primary"
-                        : "text-foreground hover:bg-muted",
-                    )}
-                  >
-                    {option.label}
-                    {list.data ? (
-                      <span
-                        className={cn(
-                          "tabular text-xs",
-                          active ? "text-primary" : "text-muted-foreground",
-                        )}
-                      >
-                        {count}
-                      </span>
-                    ) : null}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        <div className="min-w-0 flex-1 space-y-4">
+      <WorkspaceLayout
+        navLabel="Quotation filters"
+        heading="Quotations"
+        filters={FILTERS}
+        activeKey={filter.key}
+        counts={list.data ? counts : undefined}
+        total={list.data?.length}
+        hrefFor={(key) => workspaceHref(key)}
+      >
           {quotationId ? (
             <QuotationDetail
               key={quotationId}
@@ -190,8 +154,7 @@ export function QuotationsPage({ quotationId, status }: { quotationId: string; s
               onSearch={setSearch}
             />
           )}
-        </div>
-      </div>
+      </WorkspaceLayout>
     </div>
   );
 }
@@ -241,34 +204,20 @@ function QuotationList({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="relative w-full sm:max-w-md">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search quotations…"
-            className="h-10 pr-9 pl-9"
-            aria-label="Search quotations by customer, email or quotation number"
-          />
-          {search ? (
-            <button
-              type="button"
-              onClick={() => onSearch("")}
-              className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-              aria-label="Clear search"
-            >
-              <X className="size-4" />
-            </button>
-          ) : null}
-        </div>
-        {quotations ? (
-          <p className="text-xs text-muted-foreground tabular" aria-live="polite">
-            {visible.length} of {inFilter.length}{" "}
-            {filter.status ? filter.label.toLowerCase() : ""} quotations
-          </p>
-        ) : null}
-      </div>
+      <WorkspaceSearch
+        value={search}
+        onChange={onSearch}
+        placeholder="Search quotations…"
+        label="Search quotations by customer, email or quotation number"
+        summary={
+          quotations ? (
+            <>
+              {visible.length} of {inFilter.length}{" "}
+              {filter.status ? filter.label.toLowerCase() : ""} quotations
+            </>
+          ) : undefined
+        }
+      />
 
       {pastedId && !visible.some((quotation) => quotation.id === pastedId) ? (
         <Link
@@ -282,16 +231,7 @@ function QuotationList({
         </Link>
       ) : null}
 
-      {isPending ? (
-        <Card className="divide-y divide-border">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="space-y-2 px-4 py-3.5">
-              <Skeleton className="h-4 w-48" />
-              <Skeleton className="h-3 w-32" />
-            </div>
-          ))}
-        </Card>
-      ) : null}
+      {isPending ? <WorkspaceListSkeleton /> : null}
 
       {error ? (
         <Card>
@@ -422,6 +362,7 @@ function QuotationDetail({
     queryFn: ({ signal }) => getQuotation(quotationId, signal),
     retry: false,
   });
+  const productMedia = useProductMedia();
 
   const notFound = isError && error instanceof ApiError && error.status === 404;
 
@@ -548,7 +489,12 @@ function QuotationDetail({
                 <TBody>
                   {data.lines.map((line) => (
                     <TR key={line.id}>
-                      <TD className="font-medium">{line.productName}</TD>
+                      <TD>
+                        <div className="flex items-center gap-2.5">
+                          <MediaThumb media={productMedia.get(line.productId)} />
+                          <span className="font-medium">{line.productName}</span>
+                        </div>
+                      </TD>
                       <TD className="text-right tabular">{line.quantity}</TD>
                       <TD className="text-right tabular">{line.rentalDays}</TD>
                       <TD className="text-right tabular">{formatMoney(line.unitRatePerDay)}</TD>

@@ -106,6 +106,17 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Tailwind v4's preflight leaves buttons and selects on the browser's
+     default arrow. Restored here, once, for every enabled one — the Button
+     primitive, the raw <button>s and the Select primitive alike — rather than
+     per component. Disabled ones keep their own cursor: the Button primitive
+     passes pointer events through, and Select shows not-allowed. Links are
+     real <a href>s and get the pointer natively. */
+  button:not(:disabled),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
   /* Tabular figures everywhere money and counts are shown, so columns of
      numbers line up digit-for-digit instead of shimmering between rows. */
   .tabular {

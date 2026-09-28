@@ -1,20 +1,37 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   createProduct,
   listCategories,
+  listProducts,
   masterDataKeys,
   updateProduct,
 } from "@/features/master-data/api";
-import type { CategoryView, ProductMedia, ProductView } from "@/features/master-data/types";
-import { ProductMediaField } from "@/features/master-data/components/ProductMediaField";
+import {
+  ATTRIBUTE_SUGGESTIONS,
+  COLOUR_SUGGESTIONS,
+  FABRIC_SUGGESTIONS,
+  MATERIAL_SUGGESTIONS,
+  MOODS,
+  PRODUCT_SETTINGS,
+  RATE_TYPE_LABEL,
+  RATE_TYPES,
+  THEMES,
+} from "@/features/master-data/storefront";
+import {
+  PRODUCT_MEDIA_LIMITS,
+  type CategoryView,
+  type MediaAsset,
+  type ProductView,
+} from "@/features/master-data/types";
+import { MediaField } from "@/features/master-data/components/MediaField";
 import { ApiError } from "@/services/api-client";
 import { amountField } from "@/lib/forms";
 import { Dialog } from "@/components/ui/dialog";
@@ -22,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { TagInput, ToggleChips } from "@/components/ui/tag-input";
 
 const FORM_ID = "product-form";
 
@@ -49,6 +67,36 @@ const schema = z.object({
   // A select's value is a string, so Yes/No travel as text and become the
   // boolean the product stores only once they leave the form.
   hasVariants: z.enum(["yes", "no"]).transform((value) => value === "yes"),
+
+  // Storefront details. Lists are edited as chips and arrive already trimmed.
+  rateType: z.enum(RATE_TYPES),
+  size: z.string().trim().max(80, "Maximum 80 characters"),
+  // "" is "not said"; the product stores null for it.
+  setting: z.enum(["", ...PRODUCT_SETTINGS]),
+  colours: z.array(z.string()).max(12, "At most 12 colours"),
+  materials: z.array(z.string()).max(12, "At most 12 materials"),
+  fabrics: z.array(z.string()).max(12, "At most 12 fabrics"),
+  moods: z.array(z.string()),
+  themes: z.array(z.string()),
+  attributes: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1, "Name the specification").max(60, "Maximum 60 characters"),
+        value: z.string().trim().min(1, "Give it a value").max(120, "Maximum 120 characters"),
+      }),
+    )
+    .max(12, "At most 12 specifications")
+    // Flagged on the later duplicate, so the first reads as the original.
+    .superRefine((rows, ctx) => {
+      const seen = new Set<string>();
+      rows.forEach((row, index) => {
+        const key = row.name.trim().toLowerCase();
+        if (key && seen.has(key)) {
+          ctx.addIssue({ code: "custom", path: [index, "name"], message: "Already listed" });
+        }
+        seen.add(key);
+      });
+    }),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -75,12 +123,17 @@ export function ProductDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
-  const [media, setMedia] = useState<ProductMedia[]>(existing?.media ?? []);
+  const [media, setMedia] = useState<MediaAsset[]>(existing?.media ?? []);
   const [mediaBusy, setMediaBusy] = useState(false);
 
   const categories = useQuery({
     queryKey: masterDataKeys.categories,
     queryFn: ({ signal }) => listCategories(signal),
+  });
+  // Only for suggesting specification names other products already use.
+  const products = useQuery({
+    queryKey: masterDataKeys.products,
+    queryFn: ({ signal }) => listProducts(signal),
   });
 
   const {
@@ -105,8 +158,24 @@ export function ProductDialog({
       // No, unless the product already says otherwise: most catalogue items
       // come in one version, so that is the answer that saves a click.
       hasVariants: existing?.hasVariants ? "yes" : "no",
+      // Every storefront detail may be absent — always so in api mode, where
+      // the backend does not know them — so each falls back to empty.
+      rateType: existing?.rateType ?? "Qty",
+      size: existing?.size ?? "",
+      setting: existing?.setting ?? "",
+      colours: existing?.colours ?? [],
+      materials: existing?.materials ?? [],
+      fabrics: existing?.fabrics ?? [],
+      moods: existing?.moods ?? [],
+      themes: existing?.themes ?? [],
+      attributes: Object.entries(existing?.attributes ?? {}).map(([name, value]) => ({
+        name,
+        value,
+      })),
     },
   });
+
+  const attributeRows = useFieldArray({ control, name: "attributes" });
 
   // The list returns active categories only. A product already filed under a
   // category that has since been deactivated keeps it as an option — the mock
@@ -123,6 +192,7 @@ export function ProductDialog({
         companyId: existing.companyId,
         name: existing.categoryName ?? existing.categoryId,
         active: false,
+        media: [],
         subCategories: existing.subCategoryId
           ? [
               {
@@ -142,9 +212,24 @@ export function ProductDialog({
   const subCategoryOptions =
     categoryOptions.find((category) => category.id === selectedCategoryId)?.subCategories ?? [];
 
+  // Names other products in the same category use come first, since those are
+  // what this kind of product most likely needs; then the storefront's own.
+  const attributeNames = useMemo(() => {
+    const inCategory = (products.data ?? [])
+      .filter((product) => product.categoryId === selectedCategoryId && product.id !== existing?.id)
+      .flatMap((product) => Object.keys(product.attributes ?? {}));
+    return [...new Set([...inCategory, ...ATTRIBUTE_SUGGESTIONS])];
+  }, [products.data, selectedCategoryId, existing?.id]);
+
   const mutation = useMutation({
     mutationFn: (values: FormOutput) => {
-      const request = { ...values, media };
+      const request = {
+        ...values,
+        size: values.size || null,
+        setting: values.setting || null,
+        attributes: Object.fromEntries(values.attributes.map((row) => [row.name, row.value])),
+        media,
+      };
       return existing ? updateProduct(existing.id, request) : createProduct(request);
     },
     onSuccess: (product) => {
@@ -276,6 +361,11 @@ export function ProductDialog({
           <Field label="Category" required error={errors.categoryId?.message}>
             {(props) => (
               <Select
+                // Remounted once the categories arrive: a select given its
+                // value before its options exist shows the placeholder, and a
+                // fresh mount is what makes react-hook-form set it again. Kept
+                // ahead of the spread, which React requires of a key.
+                key={categories.isPending ? "loading" : "ready"}
                 {...props}
                 {...register("categoryId", {
                   // A sub-category belongs to one category, so a new category
@@ -306,6 +396,7 @@ export function ProductDialog({
           <Field label="Sub-category" required error={errors.subCategoryId?.message}>
             {(props) => (
               <Select
+                key={categories.isPending ? "loading" : "ready"}
                 {...props}
                 {...register("subCategoryId")}
                 disabled={!subCategoryOptions.length}
@@ -323,8 +414,156 @@ export function ProductDialog({
           </Field>
         </div>
 
-        <ProductMediaField
+        <div className="space-y-4 border-t border-border pt-4">
+          <h3 className="text-sm font-semibold">Storefront details</h3>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Rate counted" required error={errors.rateType?.message}>
+              {(props) => (
+                <Select {...props} {...register("rateType")}>
+                  {RATE_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {RATE_TYPE_LABEL[type]}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+
+            <Field label="Indoor / outdoor" error={errors.setting?.message}>
+              {(props) => (
+                <Select {...props} {...register("setting")}>
+                  <option value="">Not specified</option>
+                  {PRODUCT_SETTINGS.map((setting) => (
+                    <option key={setting} value={setting}>
+                      {setting}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
+
+          <Field label="Size" error={errors.size?.message}>
+            {(props) => <Input {...props} {...register("size")} placeholder="40 × 45 × 92 cm" />}
+          </Field>
+
+          {(
+            [
+              ["colours", "Colours", COLOUR_SUGGESTIONS, "Gold, Ivory"],
+              ["materials", "Materials", MATERIAL_SUGGESTIONS, "Teak, Brass"],
+              ["fabrics", "Upholstery fabrics", FABRIC_SUGGESTIONS, "Velvet, Satin"],
+            ] as const
+          ).map(([name, label, suggestions, placeholder]) => (
+            <Field key={name} label={label} error={errors[name]?.message}>
+              {(props) => (
+                <Controller
+                  control={control}
+                  name={name}
+                  render={({ field }) => (
+                    <TagInput
+                      {...props}
+                      value={field.value}
+                      onChange={field.onChange}
+                      suggestions={suggestions}
+                      placeholder={placeholder}
+                      disabled={mutation.isPending}
+                    />
+                  )}
+                />
+              )}
+            </Field>
+          ))}
+
+          {(
+            [
+              ["moods", "Mood", MOODS],
+              ["themes", "Theme fit", THEMES],
+            ] as const
+          ).map(([name, label, options]) => (
+            <Field key={name} label={label} error={errors[name]?.message}>
+              {(props) => (
+                <Controller
+                  control={control}
+                  name={name}
+                  render={({ field }) => (
+                    <ToggleChips
+                      id={props.id}
+                      aria-label={label}
+                      options={options}
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={mutation.isPending}
+                    />
+                  )}
+                />
+              )}
+            </Field>
+          ))}
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium">Specifications</p>
+            <datalist id="product-attribute-names">
+              {attributeNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            {attributeRows.fields.map((row, index) => {
+              const rowErrors = errors.attributes?.[index];
+              const rowError = rowErrors?.name?.message ?? rowErrors?.value?.message;
+              return (
+                <div key={row.id}>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      {...register(`attributes.${index}.name`)}
+                      list="product-attribute-names"
+                      aria-label={`Specification ${index + 1} name`}
+                      aria-invalid={Boolean(rowErrors?.name)}
+                      placeholder="Seating capacity"
+                      disabled={mutation.isPending}
+                    />
+                    <Input
+                      {...register(`attributes.${index}.value`)}
+                      aria-label={`Specification ${index + 1} value`}
+                      aria-invalid={Boolean(rowErrors?.value)}
+                      placeholder="2"
+                      disabled={mutation.isPending}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => attributeRows.remove(index)}
+                      disabled={mutation.isPending}
+                      aria-label={`Remove specification ${index + 1}`}
+                      title="Remove"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                  {rowError ? <p className="mt-1 text-xs text-destructive">{rowError}</p> : null}
+                </div>
+              );
+            })}
+            {errors.attributes?.root?.message ? (
+              <p className="text-xs text-destructive">{errors.attributes.root.message}</p>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => attributeRows.append({ name: "", value: "" })}
+              disabled={mutation.isPending || attributeRows.fields.length >= 12}
+            >
+              <Plus />
+              Add specification
+            </Button>
+          </div>
+        </div>
+
+        <MediaField
           media={media}
+          limits={PRODUCT_MEDIA_LIMITS}
           onChange={setMedia}
           onBusyChange={setMediaBusy}
           disabled={mutation.isPending}

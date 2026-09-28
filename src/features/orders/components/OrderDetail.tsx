@@ -33,6 +33,7 @@ import {
   type SettleAction,
 } from "@/features/deposits/components/SettleDepositDialog";
 import { useCan } from "@/features/auth";
+import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -116,6 +117,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const canReadDeposit = useCan("DEPOSIT_READ");
   const canWriteDeposit = useCan("DEPOSIT_WRITE");
   const canReadQuotation = useCan("QUOTATION_READ");
+  const productMedia = useProductMedia();
 
   // The workspace's list and counts are keyed apart from this order, so a
   // status change made here (a dispatch, a return, a cancel) reaches them too.
@@ -350,7 +352,12 @@ function OrderWorkspace({ order }: { order: OrderView }) {
                 const progress = first ? fulfilment?.byProduct.get(line.productId) : undefined;
                 return (
                   <TR key={line.id}>
-                    <TD className="font-medium">{line.productName}</TD>
+                    <TD>
+                      <div className="flex items-center gap-2.5">
+                        <MediaThumb media={productMedia.get(line.productId)} />
+                        <span className="font-medium">{line.productName}</span>
+                      </div>
+                    </TD>
                     <TD className="text-right tabular">{line.quantity}</TD>
                     <TD className="text-right tabular">{line.rentalDays}</TD>
                     {fulfilment ? (
@@ -554,34 +561,102 @@ function NextStep({
  * The four steps an order walks through, with the current one marked. A
  * cancelled order shows where it stopped instead.
  */
+/**
+ * Where a stage sits relative to the order's status. Derived from the status
+ * and the order of the steps alone; the lifecycle itself lives in the store.
+ * "final" is the current stage of a finished order, and "cancelled" the current
+ * stage of a cancelled one — both current, but ended rather than in progress.
+ */
+type StageState = "completed" | "current" | "final" | "cancelled" | "upcoming";
+
+const STAGE_STATE_LABEL: Record<StageState, string> = {
+  completed: "completed",
+  current: "current stage",
+  final: "completed, final stage",
+  cancelled: "current stage, cancelled",
+  upcoming: "upcoming",
+};
+
+/**
+ * The lifecycle as a stepper: filled check nodes for stages already passed, a
+ * ringed node for where the order is now, hollow dashed nodes for what is still
+ * to come, and connectors that are solid up to the current stage and dashed
+ * after it. Shape, fill and label weight carry the distinction as much as
+ * colour does, and each stage's state is also spelled out for screen readers.
+ *
+ * A cancelled order shows the path it actually took — Confirmed, then
+ * Cancelled — rather than a full lifecycle it can no longer follow.
+ */
 function OrderProgress({ status }: { status: OrderStatus }) {
   const steps: OrderStatus[] = status === "CANCELLED" ? ["CONFIRMED", "CANCELLED"] : FLOW;
   const reached = steps.indexOf(status);
 
+  const stateOf = (step: OrderStatus, index: number): StageState => {
+    if (index < reached) return "completed";
+    if (index > reached) return "upcoming";
+    if (step === "CANCELLED") return "cancelled";
+    return step === "COMPLETED" ? "final" : "current";
+  };
+
   return (
-    <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+    <ol className="flex max-w-xl items-start" aria-label="Order progress">
       {steps.map((step, index) => {
-        const done = index < reached || (index === reached && step === "COMPLETED");
-        const current = index === reached;
+        const state = stateOf(step, index);
+        const isCurrent = index === reached;
         return (
-          <li key={step} className="flex items-center gap-2">
-            {index > 0 ? <span className="h-px w-6 bg-border" aria-hidden /> : null}
+          <li
+            key={step}
+            className="relative flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center"
+            aria-current={isCurrent ? "step" : undefined}
+            title={ORDER_STATUS_MEANING[step]}
+          >
+            {/* The connector leading into this stage, from the previous one's centre. */}
+            {index > 0 ? (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute top-3.5 right-1/2 left-[-50%] -translate-y-1/2",
+                  state === "upcoming"
+                    ? "border-t-2 border-dashed border-border"
+                    : state === "cancelled"
+                      ? "h-0.5 bg-destructive/60"
+                      : "h-0.5 bg-primary",
+                )}
+              />
+            ) : null}
+
+            <span
+              aria-hidden="true"
+              className={cn(
+                "relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full border-2",
+                state === "completed" && "border-primary bg-primary text-primary-foreground",
+                state === "current" && "border-primary bg-card ring-4 ring-primary/20",
+                state === "final" && "border-success bg-success text-card ring-4 ring-success/20",
+                state === "cancelled" &&
+                  "border-destructive bg-destructive text-destructive-foreground ring-4 ring-destructive/20",
+                state === "upcoming" && "border-dashed border-muted-foreground/40 bg-card",
+              )}
+            >
+              {state === "completed" || state === "final" ? (
+                <Check className="size-4" strokeWidth={3} />
+              ) : state === "cancelled" ? (
+                <X className="size-4" strokeWidth={3} />
+              ) : state === "current" ? (
+                <span className="size-2.5 rounded-full bg-primary" />
+              ) : null}
+            </span>
+
             <span
               className={cn(
-                "flex items-center gap-1.5 rounded-full border px-2.5 py-1",
-                current && step === "CANCELLED"
-                  ? "border-destructive text-destructive"
-                  : current
-                    ? "border-primary font-medium text-foreground"
-                    : done
-                      ? "border-border text-foreground"
-                      : "border-dashed border-border text-muted-foreground",
+                "max-w-full truncate px-0.5 text-xs",
+                state === "completed" && "text-foreground",
+                (state === "current" || state === "final") && "font-semibold text-foreground",
+                state === "cancelled" && "font-semibold text-destructive",
+                state === "upcoming" && "text-muted-foreground",
               )}
-              aria-current={current ? "step" : undefined}
-              title={ORDER_STATUS_MEANING[step]}
             >
-              {done && !current ? <Check className="size-3" /> : null}
               {title(step)}
+              <span className="sr-only">, {STAGE_STATE_LABEL[state]}</span>
             </span>
           </li>
         );

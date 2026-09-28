@@ -2,13 +2,15 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Film, Layers, Package, Pencil, Plus, Search } from "lucide-react";
+import { Layers, Package, Pencil, Plus, Search } from "lucide-react";
 import { listProducts, masterDataKeys } from "@/features/master-data/api";
-import type { ProductMedia, ProductView } from "@/features/master-data/types";
+import type { ProductView } from "@/features/master-data/types";
+import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
 import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
+import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -17,31 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-
-/**
- * The product's first image at thumbnail size, or a film icon when it has only
- * a video. Nothing at all when it has neither, so a catalogue without media
- * reads exactly as it did before.
- */
-function MediaThumb({ media }: { media: ProductMedia[] }) {
-  if (!media.length) return null;
-  const image = media.find((item) => item.kind === "IMAGE" && item.url);
-  const label = `${media.length} media ${media.length === 1 ? "item" : "items"}`;
-
-  return (
-    <div
-      className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground"
-      title={label}
-    >
-      {image?.url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a local data URL; nothing to optimise
-        <img src={image.url} alt="" className="size-full object-cover" />
-      ) : (
-        <Film className="size-4" aria-label={label} />
-      )}
-    </div>
-  );
-}
 
 function matches(product: ProductView, term: string): boolean {
   const haystack = [
@@ -52,6 +29,12 @@ function matches(product: ProductView, term: string): boolean {
     product.categoryName ?? "",
     product.subCategoryName ?? "",
     product.tag,
+    // The storefront facets, so "velvet" or "royal heritage" finds its products.
+    ...(product.colours ?? []),
+    ...(product.materials ?? []),
+    ...(product.fabrics ?? []),
+    ...(product.moods ?? []),
+    ...(product.themes ?? []),
   ]
     .join(" ")
     .toLowerCase();
@@ -208,7 +191,15 @@ export function ProductsPage() {
                       </TD>
                       <TD>{product.tag}</TD>
                       <TD className="text-right tabular">{formatMoney(product.wholesaleRate)}</TD>
-                      <TD className="text-right tabular">{formatMoney(product.retailRate)}</TD>
+                      <TD className="text-right tabular">
+                        {formatMoney(product.retailRate)}
+                        {/* Per unit is the norm and goes unsaid; the others change what a quantity means. */}
+                        {product.rateType && product.rateType !== "Qty" ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {RATE_TYPE_LABEL[product.rateType]}
+                          </span>
+                        ) : null}
+                      </TD>
                       <TD>
                         <div className="flex justify-end gap-1">
                           {/* Only a product set to have variants has any to

@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, ClipboardList, Search, SearchX, X } from "lucide-react";
+import { ChevronRight, ClipboardList, SearchX } from "lucide-react";
 import { listOrders, orderKeys } from "@/features/orders/api";
 import type { OrderStatus, OrderView } from "@/features/orders/types";
 import { OrderDetail } from "@/features/orders/components/OrderDetail";
@@ -13,14 +13,17 @@ import { orderFulfilment } from "@/features/inventory/fulfilment";
 import { depositKeys, getDepositByOrder } from "@/features/deposits/api";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
+import {
+  WorkspaceLayout,
+  WorkspaceListSkeleton,
+  WorkspaceSearch,
+  workspaceHref as sharedWorkspaceHref,
+} from "@/components/workspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 
 /** The workspace's filters, in lifecycle order. "" is all. */
 const FILTERS: { key: string; label: string; status?: OrderStatus }[] = [
@@ -35,13 +38,8 @@ const FILTERS: { key: string; label: string; status?: OrderStatus }[] = [
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The workspace URL for a filter, optionally with an order open in it. */
-const workspaceHref = (filterKey: string, orderId?: string) => {
-  const params = new URLSearchParams();
-  if (filterKey) params.set("status", filterKey);
-  if (orderId) params.set("id", orderId);
-  const query = params.toString();
-  return query ? `/orders?${query}` : "/orders";
-};
+const workspaceHref = (filterKey: string, id?: string) =>
+  sharedWorkspaceHref("/orders", filterKey, id);
 
 /**
  * The order workspace: a filter sidebar of its own beside a searchable list,
@@ -77,49 +75,15 @@ export function OrdersPage({ orderId, status }: { orderId: string; status: strin
         description="Confirmed work, from dispatch through return to a settled deposit."
       />
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
-        <nav aria-label="Order filters" className="md:sticky md:top-4 md:w-52 md:shrink-0">
-          <p className="mb-1 hidden px-2 text-[0.65rem] font-semibold tracking-wider text-muted-foreground uppercase md:block">
-            Orders
-          </p>
-          {/* A row of tabs on a narrow screen, a column beside the list on a wide one. */}
-          <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-col md:overflow-visible md:px-0 md:pb-0">
-            {FILTERS.map((option) => {
-              const active = option.key === filter.key;
-              const count = option.status
-                ? (counts.get(option.status) ?? 0)
-                : (list.data?.length ?? 0);
-              return (
-                <li key={option.key} className="shrink-0">
-                  <Link
-                    href={workspaceHref(option.key)}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors",
-                      active
-                        ? "bg-primary/10 font-medium text-primary"
-                        : "text-foreground hover:bg-muted",
-                    )}
-                  >
-                    {option.label}
-                    {list.data ? (
-                      <span
-                        className={cn(
-                          "tabular text-xs",
-                          active ? "text-primary" : "text-muted-foreground",
-                        )}
-                      >
-                        {count}
-                      </span>
-                    ) : null}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        <div className="min-w-0 flex-1 space-y-4">
+      <WorkspaceLayout
+        navLabel="Order filters"
+        heading="Orders"
+        filters={FILTERS}
+        activeKey={filter.key}
+        counts={list.data ? counts : undefined}
+        total={list.data?.length}
+        hrefFor={(key) => workspaceHref(key)}
+      >
           {orderId ? (
             <OrderDetail
               key={orderId}
@@ -138,8 +102,7 @@ export function OrdersPage({ orderId, status }: { orderId: string; status: strin
               onSearch={setSearch}
             />
           )}
-        </div>
-      </div>
+      </WorkspaceLayout>
     </div>
   );
 }
@@ -187,34 +150,20 @@ function OrderList({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="relative w-full sm:max-w-md">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search orders…"
-            className="h-10 pr-9 pl-9"
-            aria-label="Search orders by customer, email or order number"
-          />
-          {search ? (
-            <button
-              type="button"
-              onClick={() => onSearch("")}
-              className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-              aria-label="Clear search"
-            >
-              <X className="size-4" />
-            </button>
-          ) : null}
-        </div>
-        {orders ? (
-          <p className="text-xs text-muted-foreground tabular" aria-live="polite">
-            {visible.length} of {inFilter.length} {filter.status ? filter.label.toLowerCase() : ""}{" "}
-            orders
-          </p>
-        ) : null}
-      </div>
+      <WorkspaceSearch
+        value={search}
+        onChange={onSearch}
+        placeholder="Search orders…"
+        label="Search orders by customer, email or order number"
+        summary={
+          orders ? (
+            <>
+              {visible.length} of {inFilter.length}{" "}
+              {filter.status ? filter.label.toLowerCase() : ""} orders
+            </>
+          ) : undefined
+        }
+      />
 
       {pastedId && !visible.some((order) => order.id === pastedId) ? (
         <Link
@@ -228,16 +177,7 @@ function OrderList({
         </Link>
       ) : null}
 
-      {isPending ? (
-        <Card className="divide-y divide-border">
-          {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="space-y-2 px-4 py-3.5">
-              <Skeleton className="h-4 w-48" />
-              <Skeleton className="h-3 w-32" />
-            </div>
-          ))}
-        </Card>
-      ) : null}
+      {isPending ? <WorkspaceListSkeleton /> : null}
 
       {error ? (
         <Card>

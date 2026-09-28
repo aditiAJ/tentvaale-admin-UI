@@ -140,16 +140,24 @@ re-checks every request.
 src/
   app/                  route segments. (admin) is the guarded group; pages are
                         thin and delegate to the matching feature.
-  components/ui/        primitives (button, input, table, dialog, field, …)
-  components/           providers, page-header, require-permission
+  components/ui/        primitives (button, input, table, dialog, field,
+                        tag-input, …)
+  components/           providers, page-header, require-permission, id-lookup,
+                        and workspace — the filter-sidebar-and-list shell the
+                        quotation, order and credit-note screens share
   layouts/              AdminShell, Sidebar, Topbar, navigation.ts
-  features/<name>/      one folder per domain — auth, master-data, users
+  features/<name>/      one folder per domain — auth, dashboard, master-data,
+                        users, quotations, orders, deposits, inventory,
+                        credit-notes, notifications
     types.ts            the domain types this feature owns
     api/                typed fetch wrappers + query keys
     components/         feature-specific UI
     index.ts            the feature's public surface — import from here
   services/             cross-cutting: api-client, auth-token, jwt, permissions
   lib/                  cn(), money and date formatting
+  mock-data/            the mock backend: seed.ts, store.ts (every rule), and
+                        media.ts, which matches seeded records to images
+public/mock-media/      the seeded catalogue images and the fallback placeholder
 ```
 
 ## Design
@@ -178,25 +186,31 @@ equally. Three tiers:
 |---|---|---|
 | Login | `POST /admin/auth/login` | Working |
 | Dashboard | `GET /admin/reporting/dashboard` | Working |
-| Products | `GET`/`POST /admin/master-data/products` | List and create work; edit, variants and media are **mock only** |
+| Products | `GET`/`POST /admin/master-data/products` | List and create work; edit, variants, media and storefront details are **mock only** |
 | Deposits | `GET /admin/deposits/by-order/{id}` + request-refund / confirm-refunded / forfeit | Working |
 | Notifications | `GET /admin/notifications/log`, `…/log/by-subject` | Working |
 | Users | `GET`/`POST /admin/users`, `…/role`, `…/deactivate`, `…/reset-password` | Working |
-| Quotations | `GET`/`POST /admin/quotations` | Create works; edit is **mock only**; reading is lookup-only — no list endpoint |
-| Orders | `GET /admin/orders/{id}`, `POST /admin/orders/from-quotation` | Convert works; cancel, complete and by-customer listing are **mock only**; reading is lookup-only |
+| Quotations | `GET`/`POST /admin/quotations` | Create and open-by-id work; the browsable list (`…/list`) and edit are **mock only** |
+| Orders | `GET /admin/orders/{id}`, `POST /admin/orders/from-quotation` | Convert and open-by-id work; the browsable list (`…/list`), cancel, complete and by-customer listing are **mock only** |
 | Stock movement | `GET /admin/inventory/stock-movements/by-order/{id}`, `POST /admin/inventory/stock-movements` | Recording works; the order-flow rules and stock effects are **mock only**; reading is per-order only |
-| Credit notes | `GET /admin/credit-notes/by-customer/{id}`, `…/balance`, `POST /admin/credit-notes` | Per-customer only; apply, cancel and reverse are **mock only** |
-| Categories | none | **Mock only** — add, edit and deactivate, with sub-categories; md_category exists, no controller |
+| Credit notes | `GET /admin/credit-notes/by-customer/{id}`, `…/balance`, `POST /admin/credit-notes` | Issue and per-customer reads work; the company-wide list is assembled from those, from a customer list that is **mock only**; apply, cancel and reverse are **mock only** |
+| Categories | none | **Mock only** — add, edit and deactivate, with sub-categories and one image; md_category exists, no controller |
 | Customers | none | **Mock only** — add and edit, invented; StorefrontAccount exists, no admin endpoint |
-| Bundles | none | **Mock only** — full CRUD, all of it invented; no entity or table |
-| Featured collections | none | **Mock only** — add, edit, activate and deactivate; no entity or table |
+| Bundles | none | **Mock only** — full CRUD with one image, storefront details and occasions (add, rename, reorder, show or hide), all of it invented; no entity or table |
+| Featured collections | none | **Mock only** — add, edit, activate and deactivate, with one image and storefront details; no entity or table |
 | Warehouses | none | **Mock only** — full CRUD plus per-warehouse stock, all of it invented; no entity or table |
 | Trucks | none | **Mock only** — full CRUD, all of it invented; no entity or table |
 | Availability | none | **Mock only** — derived, and the real derivation is unread |
 
-The middle tier works against the real backend: those four modules expose a
-record by id but have no query that lists them, so each screen looks one up
-the way Deposits already did rather than pretending to browse.
+The middle tier works against the real backend only in part. Those modules
+expose a record by id, or per customer, but have no query that lists them for
+the company. Deposits and stock movements therefore look a record up. The
+quotation, order and credit-note screens are instead a browsable workspace —
+status filters beside a searchable list, or one record opened from it, both
+held in the URL (`?status=`, `?id=`) — and in api mode the list behind each is
+missing: quotations and orders call proposed `…/list` paths that 404, and the
+credit-note list is read per customer from the mock-only customer list, so it
+comes back empty. A record can still be opened directly by `?id=`.
 
 The bottom tier has nothing to call at all, and renders seeded mock data.
 
@@ -204,7 +218,8 @@ The bottom tier has nothing to call at all, and renders seeded mock data.
 they were removed by request, so this table is now the only record of which of
 them are real. Nothing in the running app distinguishes a figure the backend
 produced from one the mock invented, and nothing tells a user that editing a
-product, cancelling an order or applying credit works only in mock mode, that a
+product, browsing quotations, cancelling an order or applying credit works only
+in mock mode, that a catalogue image or storefront detail is saved nowhere real, that a
 quotation's status never moves except to converted, or that the availability
 numbers are this UI's own calculation. Keep this table current: it
 is load-bearing in a way a README does not normally have to be.
@@ -218,8 +233,43 @@ surprise rather than as an explanation:
 - **Products are list-and-create only on the backend.** `listActiveProducts`
   returns active products, and there is no update, deactivate or get-by-id
   endpoint exposed. The back office edits products anyway — name, rates,
-  category, media, variants and warehouse stock — but every one of those writes
-  is mock-only and 404s in api mode. There is still no way to retire a product.
+  category, media, storefront details, variants and warehouse stock — but every
+  one of those writes is mock-only and 404s in api mode. There is still no way
+  to retire a product.
+- **Catalogue media has nowhere real to live.** There is no upload endpoint and
+  the real `ProductView` carries no media, so in api mode every product shows
+  the placeholder. In mock mode a product holds up to its image and video
+  limits, and a category, bundle or featured collection holds one image and no
+  video. Seeded records take their image from `public/mock-media`, matched by
+  what the record is in `mock-data/media.ts`; an image the admin picks is
+  downscaled into a data URL in `localStorage`, and a video is an object URL
+  that does not survive a reload. A write that would exhaust the browser's
+  storage is refused and undone rather than lost on reload.
+- **Storefront details are invented to match the storefront, not the
+  backend.** Products carry a rate type (per unit, running foot or square
+  foot), size, indoor/outdoor setting, colours, materials, fabrics, moods,
+  themes and a free spec table; bundles a tagline, description, guest range,
+  setup time and highlights; featured collections the occasions they suit and
+  a palette. The field names are the storefront's own so one could be passed
+  to the other. Moods, themes, settings and rate types are closed lists in
+  `features/master-data/storefront.ts` and the mock refuses anything else; the
+  rest are open, with suggestions. None of it exists on the backend, and none
+  of it affects pricing or stock.
+- **Bundle occasions are the storefront's filter row, and only a proposal.**
+  The storefront's bundles page filters by occasion — Haldi, Reception,
+  Diwali. Here those are a managed list, opened from **Occasions** on the
+  Bundles screen: add, rename, reorder, and show or hide on the storefront. A
+  bundle is filed under any number of them, up to six, picked in the bundle
+  form, where a new one can also be added on the spot. Bundles store occasion
+  ids, so a rename reaches every bundle. An occasion is hidden rather than
+  deleted: its bundles keep it and still show under the storefront's "All",
+  and a hidden occasion cannot be newly added to a bundle, though one already
+  on it may stay. Names are unique ignoring case. Nothing here reaches the
+  storefront: it would have to read this list, through a
+  `/admin/master-data/bundle-occasions`-style endpoint that does not exist,
+  and to accept several occasions per bundle where it shows one today.
+  Whether an occasion with no bundles should be offered as a filter is the
+  storefront's call.
 - **Categories have no endpoint.** `md_category` exists and `ProductView`
   resolves a `categoryName`, but nothing lists, creates or edits categories, so
   the Categories screen and the product form's category and sub-category
@@ -239,7 +289,8 @@ surprise rather than as an explanation:
   quotations and orders were raised against, and for variants — Has variants
   cannot be switched off while a product has variants, or on while any of it is
   held or out on rent without one, and a variant cannot be deleted while any of
-  it is in a warehouse or on rent. `mock-data/store.ts` states each one and why.
+  it is in a warehouse or on rent. Media and storefront details are checked
+  too, as the entries on them above describe. `mock-data/store.ts` states each one and why.
   When the backend defines these modules it may decide differently, and the
   point of writing them down is that the disagreement is visible.
 - **Product editing is mock-only by request.** The real controller exposes `GET`
@@ -261,14 +312,17 @@ surprise rather than as an explanation:
   the rest of a deposit that is only partly forfeited is not defined. In mock
   mode a HELD deposit is opened when an order is converted; whether the real
   conversion does the same has not been checked.
-- **No quotation or order list endpoints.** Both screens therefore look a
-  record up by id rather than browsing, the same shape Deposits settled on.
-  This is still the main thing blocking the back office: the counts on the
-  dashboard are the only company-wide view of either. It bites hardest now that
-  quotations can be raised here — a quotation is reachable straight after
-  creation, because the response carries its id, and effectively unreachable
-  the next morning unless someone kept the id. The credit-notes screen lists one
-  customer's orders through a proposed `by-customer` path that is mock-only.
+- **No quotation, order or credit-note list endpoints.** The three workspaces
+  browse anyway, in mock mode only: quotations and orders through proposed
+  `/admin/quotations/list` and `/admin/orders/list` paths that 404 against the
+  backend, and credit notes by reading every customer's notes one call per
+  customer, from a customer list the backend cannot supply. In api mode each
+  list is empty and a record is reachable only by `?id=` — a quotation straight
+  after creation, because the response carries its id, and effectively not the
+  next morning unless someone kept the id. This is still the main thing
+  blocking the back office: the dashboard counts are the only real
+  company-wide view. The credit-notes screen also lists one customer's orders
+  through a proposed `by-customer` path that is mock-only.
 - **A quotation's customer comes from a mock-only list.** A quotation references
   an existing customer by id, chosen from the Customers list, and copies the
   name and email from that record. But nothing lists storefront accounts on the
@@ -278,7 +332,9 @@ surprise rather than as an explanation:
   quotation has exactly one transition, DRAFT/SENT/ACCEPTED → CONVERTED, and
   only as a side effect of creating an order from it. There is no way to mark a
   quotation sent, accepted, rejected or expired from the back office, so those
-  statuses are only ever reached by seeded data. Until it is converted, a
+  statuses are only ever reached by seeded data. NEW, REVIEWED and DISCARDED
+  are this UI's own, added for the workspace's filters; the backend enum does
+  not have them and only seeded data carries them. Until it is converted, a
   quotation can be edited in mock mode.
 - **Order status follows the flow in mock mode only.** The real `OrderStatus`
   has no state machine either, so against the backend an order still sits at
@@ -363,8 +419,9 @@ nothing in the app depends on them.
 The figures quoted below — order and movement numbers, counts, which seeded
 quotation already had an order — come from the seed as it stood when each flow
 was driven. The seed has changed since, so they will not all reproduce. The
-order flow past conversion, the inventory rules, variant stock and credit-note
-application came later and are not described here.
+order flow past conversion, the inventory rules, variant stock, credit-note
+application, the list workspaces, catalogue media and storefront details came
+later and are not described here.
 
 In **mock mode**, the flows were driven in headless Chrome: signing in as each
 role and confirming the menu narrows accordingly (WAREHOUSE loses the dashboard

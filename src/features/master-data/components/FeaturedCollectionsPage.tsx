@@ -8,10 +8,12 @@ import {
   masterDataKeys,
   setFeaturedCollectionActive,
 } from "@/features/master-data/api";
-import type {
-  FeaturedCollectionProduct,
-  FeaturedCollectionView,
+import {
+  FALLBACK_IMAGE,
+  type FeaturedCollectionProduct,
+  type FeaturedCollectionView,
 } from "@/features/master-data/types";
+import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { FeaturedCollectionDialog } from "@/features/master-data/components/FeaturedCollectionDialog";
 import { useCan } from "@/features/auth";
 import { cn } from "@/lib/utils";
@@ -23,21 +25,22 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** One product in a collection, with its first image when it has one. */
+/** One product in a collection, with its first image or the fallback. */
 function ProductChip({ product }: { product: FeaturedCollectionProduct }) {
   return (
     <li
       className={cn(
-        "flex items-center gap-1.5 rounded-full border border-border py-0.5 pr-2.5 text-xs",
-        product.imageUrl ? "pl-0.5" : "pl-2.5",
+        "flex items-center gap-1.5 rounded-full border border-border py-0.5 pr-2.5 pl-0.5 text-xs",
         !product.active && "opacity-60",
       )}
       title={product.active ? product.sku : `${product.sku} · inactive product`}
     >
-      {product.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a local data URL; nothing to optimise
-        <img src={product.imageUrl} alt="" className="size-5 rounded-full object-cover" />
-      ) : null}
+      {/* eslint-disable-next-line @next/next/no-img-element -- a local or data URL; nothing to optimise */}
+      <img
+        src={product.imageUrl ?? FALLBACK_IMAGE}
+        alt=""
+        className="size-5 rounded-full object-cover"
+      />
       {product.name}
     </li>
   );
@@ -78,7 +81,7 @@ export function FeaturedCollectionsPage() {
       {isPending ? (
         <div className="grid gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }, (_, i) => (
-            <Skeleton key={i} className="h-40" />
+            <Skeleton key={i} className="h-80" />
           ))}
         </div>
       ) : null}
@@ -108,8 +111,12 @@ export function FeaturedCollectionsPage() {
           {data.map((collection) => (
             <Card
               key={collection.id}
-              className={cn("flex flex-col", !collection.active && "opacity-70")}
+              className={cn("flex flex-col overflow-hidden", !collection.active && "opacity-70")}
             >
+              <MediaThumb
+                media={collection.media}
+                className="h-40 w-full rounded-none border-0 border-b"
+              />
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <CardTitle className="flex items-center gap-2">
@@ -122,6 +129,20 @@ export function FeaturedCollectionsPage() {
                 </div>
                 {collection.description ? (
                   <p className="text-xs text-muted-foreground">{collection.description}</p>
+                ) : null}
+                {collection.palette ? (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Palette</span> {collection.palette}
+                  </p>
+                ) : null}
+                {collection.bestFor.length ? (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {collection.bestFor.map((occasion) => (
+                      <Badge key={occasion} variant="outline">
+                        {occasion}
+                      </Badge>
+                    ))}
+                  </div>
                 ) : null}
               </CardHeader>
 
