@@ -1,5 +1,6 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
+import * as backend from "@/features/master-data/api/backend";
 import {
   mockAddProductToWarehouse,
   mockCreateBundle,
@@ -79,16 +80,13 @@ import type {
  */
 export function listProducts(signal?: AbortSignal): Promise<ProductView[]> {
   if (IS_MOCK) return mockListProducts();
-  return apiFetch<ProductView[]>("/admin/master-data/products", { signal });
+  return backend.listProducts(signal);
 }
 
 /** 422 if the SKU already exists for this company (case-insensitive). */
 export function createProduct(request: CreateProductRequest): Promise<ProductView> {
   if (IS_MOCK) return mockCreateProduct(request);
-  return apiFetch<ProductView>("/admin/master-data/products", {
-    method: "POST",
-    body: request,
-  });
+  return backend.createProduct(request);
 }
 
 /**
@@ -102,10 +100,7 @@ export function updateProduct(
   request: UpdateProductRequest,
 ): Promise<ProductView> {
   if (IS_MOCK) return mockUpdateProduct(productId, request);
-  return apiFetch<ProductView>(`/admin/master-data/products/${productId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateProduct(productId, request);
 }
 
 /**
@@ -120,10 +115,7 @@ export function createProductVariant(
   request: CreateProductVariantRequest,
 ): Promise<ProductVariantView> {
   if (IS_MOCK) return mockCreateProductVariant(productId, request);
-  return apiFetch<ProductVariantView>(`/admin/master-data/products/${productId}/variants`, {
-    method: "POST",
-    body: request,
-  });
+  return backend.createProductVariant(productId, request);
 }
 
 export function updateProductVariant(
@@ -132,18 +124,13 @@ export function updateProductVariant(
   request: UpdateProductVariantRequest,
 ): Promise<ProductVariantView> {
   if (IS_MOCK) return mockUpdateProductVariant(productId, variantId, request);
-  return apiFetch<ProductVariantView>(
-    `/admin/master-data/products/${productId}/variants/${variantId}`,
-    { method: "PUT", body: request },
-  );
+  return backend.updateProductVariant(productId, variantId, request);
 }
 
 /** Leaves the product alone. 422 while a warehouse still holds stock of the variant. */
 export function deleteProductVariant(productId: string, variantId: string): Promise<void> {
   if (IS_MOCK) return mockDeleteProductVariant(productId, variantId);
-  return apiFetch<void>(`/admin/master-data/products/${productId}/variants/${variantId}`, {
-    method: "DELETE",
-  });
+  return backend.deleteProductVariant(productId, variantId);
 }
 
 /**
@@ -155,15 +142,12 @@ export function deleteProductVariant(productId: string, variantId: string): Prom
  */
 export function listCategories(signal?: AbortSignal): Promise<CategoryView[]> {
   if (IS_MOCK) return mockListCategories();
-  return apiFetch<CategoryView[]>("/admin/master-data/categories", { signal });
+  return backend.listCategories(signal);
 }
 
 export function createCategory(request: CreateCategoryRequest): Promise<CategoryView> {
   if (IS_MOCK) return mockCreateCategory(request);
-  return apiFetch<CategoryView>("/admin/master-data/categories", {
-    method: "POST",
-    body: request,
-  });
+  return backend.createCategory(request);
 }
 
 /**
@@ -223,10 +207,7 @@ export function updateCategory(
   request: UpdateCategoryRequest,
 ): Promise<CategoryView> {
   if (IS_MOCK) return mockUpdateCategory(categoryId, request);
-  return apiFetch<CategoryView>(`/admin/master-data/categories/${categoryId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateCategory(categoryId, request);
 }
 
 /**
@@ -239,9 +220,7 @@ export function updateCategory(
  */
 export function deactivateCategory(categoryId: string): Promise<CategoryView> {
   if (IS_MOCK) return mockDeactivateCategory(categoryId);
-  return apiFetch<CategoryView>(`/admin/master-data/categories/${categoryId}/deactivate`, {
-    method: "POST",
-  });
+  return backend.deactivateCategory(categoryId);
 }
 
 export function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {

@@ -11,6 +11,9 @@ import {
   VIDEO_TYPES,
 } from "@/features/master-data/media";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { IS_MOCK } from "@/services/data-source";
+import { mediaFromUrl } from "@/features/master-data/api/backend";
 
 /**
  * Picks, previews and removes a catalogue record's images and video — a
@@ -42,6 +45,7 @@ export function MediaField({
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [urlText, setUrlText] = useState("");
 
   const images = media.filter((item) => item.kind === "IMAGE");
   const videos = media.filter((item) => item.kind === "VIDEO");
@@ -112,11 +116,50 @@ export function MediaField({
 
   const locked = disabled || busy;
 
+  /** api mode: the backend stores image URLs only, so the admin pastes one instead of uploading. */
+  const addUrl = () => {
+    const text = urlText.trim();
+    if (!/^https?:\/\/\S+$/i.test(text)) {
+      setError("Enter a full image URL starting with http:// or https://");
+      return;
+    }
+    const item = mediaFromUrl(text);
+    if (item.kind === "VIDEO" ? videosLeft <= 0 : imagesLeft <= 0) {
+      setError(item.kind === "VIDEO" ? "Only one video is allowed." : `Only ${limits.images} image(s) allowed.`);
+      return;
+    }
+    setError(null);
+    setUrlText("");
+    const replaced = replacesImage && item.kind === "IMAGE";
+    onChange([...(replaced ? videos : media), item]);
+  };
+
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-xs font-medium">{acceptsVideo ? "Media" : "Image"}</p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {!IS_MOCK ? (
+        <div className="flex items-center gap-2">
+          <Input
+            value={urlText}
+            onChange={(event) => setUrlText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addUrl();
+              }
+            }}
+            placeholder="https://… image URL"
+            disabled={locked}
+            aria-label="Image URL"
+          />
+          <Button type="button" variant="outline" className="h-10 rounded-full px-5 shadow-md" disabled={locked || !urlText.trim()} onClick={addUrl}>
+            {replacesImage && images.length ? "Replace" : "Add URL"}
+          </Button>
+        </div>
+      ) : null}
+
+      <div className={IS_MOCK ? "flex flex-wrap items-center gap-2" : "hidden"}>
         <Button
           type="button"
           variant="outline"
@@ -193,7 +236,7 @@ export function MediaField({
               </p>
               <p className="text-[0.7rem] text-muted-foreground tabular">
                 {item.kind === "VIDEO" ? "Video · " : ""}
-                {formatBytes(item.sizeBytes)}
+                {item.sizeBytes ? formatBytes(item.sizeBytes) : "Linked URL"}
               </p>
             </li>
           ))}
