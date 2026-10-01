@@ -31,6 +31,7 @@ export const ORDER_STATUS_MEANING: Record<OrderStatus, string> = {
 export interface OrderLineView {
   id: string;
   productId: string;
+  variantId?: string | null;
   productName: string;
   quantity: number;
   rentalDays: number;
@@ -53,6 +54,12 @@ export interface OrderView {
   totalAmount: Money;
   securityDeposit: Money;
   sourceReference: string | null;
+  createdAt?: string | null;
+  dispatchedAt?: string | null;
+  returnedAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   lines: OrderLineView[];
 }
 

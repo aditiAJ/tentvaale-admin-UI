@@ -35,6 +35,11 @@ const schema = z.object({
   // One amount for the whole booking: products no longer carry a deposit of
   // their own, so nothing on the lines can add up to one.
   securityDeposit: amountField("Security deposit"),
+  // Last day the quotation can be offered. Blank: the backend applies its default (15 days).
+  validUntil: z
+    .string()
+    .refine((value) => value === "" || isIsoDate(value), "Enter a valid date")
+    .transform((value) => (value === "" ? undefined : value)),
   lines: z
     .array(
       z.object({
@@ -42,6 +47,8 @@ const schema = z.object({
         // already has, which keeps the rate it was priced at.
         lineId: z.string(),
         productId: z.string().min(1, "Choose a product"),
+        // Required, by the check on submit, for a product that has variants.
+        variantId: z.string(),
         quantity: positiveIntegerField("Quantity"),
         rentalDays: positiveIntegerField("Rental days"),
       }),
@@ -52,7 +59,20 @@ const schema = z.object({
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
 
-const emptyLine = () => ({ lineId: "", productId: "", quantity: "1", rentalDays: "1" });
+const emptyLine = () => ({
+  lineId: "",
+  productId: "",
+  variantId: "",
+  quantity: "1",
+  rentalDays: "1",
+});
+
+/** Today plus the backend's default validity, as yyyy-MM-dd, shown so staff can see and change it. */
+const defaultValidUntil = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 15);
+  return date.toISOString().slice(0, 10);
+};
 
 /** Names compared the way a person would: ignoring case and extra spaces. */
 const normaliseName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -106,10 +126,12 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           customerName: existing.customerName,
           customerId: "",
           eventDate: existing.eventDate ?? "",
+          validUntil: existing.validUntil ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
           lines: existing.lines.map((line) => ({
             lineId: line.id,
             productId: line.productId,
+            variantId: line.variantId ?? "",
             quantity: String(line.quantity),
             rentalDays: String(line.rentalDays),
           })),
@@ -118,6 +140,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           customerName: "",
           customerId: "",
           eventDate: "",
+          validUntil: defaultValidUntil(),
           securityDeposit: "",
           lines: [emptyLine()],
         },
@@ -134,12 +157,18 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const watchedCustomerId = useWatch({ control, name: "customerId" });
 
   /** The per-day rate a line is priced at, or null until it has a product. */
-  const rateFor = (line: { lineId: string; productId: string } | undefined) => {
+  const rateFor = (
+    line: { lineId: string; productId: string; variantId?: string } | undefined,
+  ) => {
     if (!line?.productId) return null;
     const stored = line.lineId ? storedLines.get(line.lineId) : undefined;
     if (stored && stored.productId === line.productId) return Number(stored.unitRatePerDay.amount);
     const product = productsById.get(line.productId);
-    return product ? Number(product.retailRate.amount) : null;
+    if (!product) return null;
+    // An estimate: the server prices the line (a variant's own rate, or a trade price for a
+    // verified planner) and the saved quotation shows the final figure.
+    const variant = line.variantId ? product.variants?.find((v) => v.id === line.variantId) : undefined;
+    return Number((variant ?? product).retailRate.amount);
   };
 
   const priceLine = (line: FormInput["lines"][number] | undefined) => {
@@ -182,6 +211,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           lines: values.lines.map((line) => ({
             lineId: line.lineId || undefined,
             productId: line.productId,
+            variantId: line.variantId || undefined,
             quantity: line.quantity,
             rentalDays: line.rentalDays,
           })),
@@ -196,8 +226,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         customerEmail: customer?.email,
         eventDate: values.eventDate,
         securityDeposit: values.securityDeposit,
-        lines: values.lines.map(({ productId, quantity, rentalDays }) => ({
+        validUntil: values.validUntil,
+        lines: values.lines.map(({ productId, variantId, quantity, rentalDays }) => ({
           productId,
+          variantId: variantId || undefined,
           quantity,
           rentalDays,
         })),
@@ -231,6 +263,15 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   const onSubmit = handleSubmit((values) => {
     setFormError(null);
+    // A product with variants is rented as one of its variants.
+    let missingVariant = false;
+    values.lines.forEach((line, index) => {
+      if (productsById.get(line.productId)?.hasVariants && !line.variantId) {
+        setError(`lines.${index}.variantId`, { message: "Choose a variant" });
+        missingVariant = true;
+      }
+    });
+    if (missingVariant) return;
     if (keepsExistingCustomer && existing?.customerId) {
       mutation.mutate({ values, customerId: existing.customerId });
       return;
@@ -350,6 +391,23 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             )}
           </Field>
 
+          {!existing ? (
+            <Field
+              label="Valid until"
+              hint="Default is 15 days. After this date the quotation expires."
+              error={errors.validUntil?.message}
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  {...register("validUntil")}
+                  type="date"
+                  disabled={mutation.isPending}
+                />
+              )}
+            </Field>
+          ) : null}
+
           {!keepsExistingCustomer && nameMatches.length > 1 ? (
             <Field
               label={`${nameMatches.length} customers have this name`}
@@ -424,7 +482,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                           // A different product is a different line: it is
                           // priced afresh rather than inheriting this line's
                           // stored rate.
-                          onChange: () => setValue(`lines.${index}.lineId`, ""),
+                          onChange: () => {
+                            setValue(`lines.${index}.lineId`, "");
+                            setValue(`lines.${index}.variantId`, "");
+                          },
                         })}
                         aria-label={`Product for line ${index + 1}`}
                         aria-invalid={Boolean(rowErrors?.productId)}
@@ -451,6 +512,31 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                         <p className="mt-1 text-xs text-destructive">
                           {rowErrors.productId.message}
                         </p>
+                      ) : null}
+                      {line?.productId && productsById.get(line.productId)?.hasVariants ? (
+                        <>
+                          <Select
+                            {...register(`lines.${index}.variantId`, {
+                              onChange: () => setValue(`lines.${index}.lineId`, ""),
+                            })}
+                            aria-label={`Variant for line ${index + 1}`}
+                            aria-invalid={Boolean(rowErrors?.variantId)}
+                            disabled={mutation.isPending}
+                            className="mt-1.5 min-w-52"
+                          >
+                            <option value="">Choose a variant</option>
+                            {(productsById.get(line.productId)?.variants ?? []).map((variant) => (
+                              <option key={variant.id} value={variant.id}>
+                                {variant.name} — {formatMoney(variant.retailRate)}/day
+                              </option>
+                            ))}
+                          </Select>
+                          {rowErrors?.variantId ? (
+                            <p className="mt-1 text-xs text-destructive">
+                              {rowErrors.variantId.message}
+                            </p>
+                          ) : null}
+                        </>
                       ) : null}
                     </TD>
 

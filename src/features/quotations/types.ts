@@ -30,6 +30,10 @@ export type QuotationStatus = (typeof QUOTATION_STATUSES)[number];
 export interface QuotationLineView {
   id: string;
   productId: string;
+  /** Absent for the base (Standard) product. */
+  variantId?: string | null;
+  /** Whether the rate came from the customer's trade price list. */
+  tradePrice?: boolean;
   productName: string;
   quantity: number;
   rentalDays: number;
@@ -58,12 +62,21 @@ export interface QuotationView {
   totalSecurityDeposit: Money;
   /** Free-text provenance, e.g. "storefront-plan:<uuid>" or "admin-ui". */
   sourceReference: string | null;
+  /** Last day the quotation can be offered; it expires after this. */
+  validUntil?: string | null;
+  createdAt?: string | null;
+  sentAt?: string | null;
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
   lines: QuotationLineView[];
 }
 
 /** One requested line. Mirrors QuotationAdminController.LineRequest. */
 export interface CreateQuotationLineRequest {
   productId: string;
+  /** Required by the backend for a product that has variants. */
+  variantId?: string;
   quantity: number;
   rentalDays: number;
 }
@@ -99,6 +112,8 @@ export interface CreateQuotationRequest {
   eventDate?: string;
   /** In INR, zero or more. Stored as the quotation's totalSecurityDeposit. */
   securityDeposit: number;
+  /** ISO yyyy-MM-dd. Omitted: the backend's default validity (15 days) applies. */
+  validUntil?: string;
   lines: CreateQuotationLineRequest[];
 }
 
@@ -111,6 +126,7 @@ export interface CreateQuotationRequest {
 export interface UpdateQuotationLineRequest {
   lineId?: string;
   productId: string;
+  variantId?: string;
   quantity: number;
   rentalDays: number;
 }

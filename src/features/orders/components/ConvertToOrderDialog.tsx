@@ -42,6 +42,8 @@ export function ConvertToOrderDialog({
       // The quotation is CONVERTED now, and this is the only way the screen
       // behind the dialog finds out.
       queryClient.invalidateQueries({ queryKey: quotationKeys.byId(quotation.id) });
+      queryClient.invalidateQueries({ queryKey: quotationKeys.list });
+      queryClient.invalidateQueries({ queryKey: orderKeys.list });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
       queryClient.invalidateQueries({ queryKey: depositKeys.byOrder(order.id) });
       toast.success(`${order.orderNumber} confirmed`, {

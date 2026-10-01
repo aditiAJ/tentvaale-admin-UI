@@ -13,6 +13,8 @@ import { formatMoney } from "@/lib/money";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 export type OrderAction = "cancel" | "complete";
 
@@ -33,12 +35,14 @@ export function OrderActionDialog({
 }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const cancelling = action === "cancel";
 
   const mutation = useMutation({
-    mutationFn: () => (cancelling ? cancelOrder(order.id) : completeOrder(order.id)),
+    mutationFn: () => (cancelling ? cancelOrder(order.id, reason.trim()) : completeOrder(order.id)),
     onSuccess: (updated) => {
       queryClient.setQueryData(orderKeys.byId(order.id), updated);
+      queryClient.invalidateQueries({ queryKey: orderKeys.list });
       // Cancelling moves a held deposit to refund pending.
       queryClient.invalidateQueries({ queryKey: depositKeys.byOrder(order.id) });
       toast.success(`${updated.orderNumber} ${cancelling ? "cancelled" : "completed"}`);
@@ -81,6 +85,20 @@ export function OrderActionDialog({
     >
       <div className="space-y-4">
         {error ? <Alert tone="error" title={error} /> : null}
+
+        {cancelling ? (
+          <Field label="Reason" hint="Optional. Kept on the order.">
+            {(props) => (
+              <Input
+                {...props}
+                value={reason}
+                maxLength={1000}
+                onChange={(event) => setReason(event.target.value)}
+                disabled={mutation.isPending}
+              />
+            )}
+          </Field>
+        ) : null}
 
         <dl className="grid gap-3 sm:grid-cols-2">
           <div>

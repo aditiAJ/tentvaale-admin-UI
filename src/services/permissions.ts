@@ -13,6 +13,7 @@ export const PERMISSIONS = [
   "MASTER_DATA_WRITE",
   "QUOTATION_READ",
   "QUOTATION_WRITE",
+  "QUOTATION_APPROVE",
   "ORDER_READ",
   "ORDER_WRITE",
   "INVENTORY_READ",
@@ -37,7 +38,7 @@ export type Role = (typeof ROLES)[number];
 /** What each role is for, as described on the backend enum. Shown in the UI. */
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   ADMIN: "Full access, including settings and user management. Typically the owner.",
-  SALES: "Customers, quotations and orders. Cannot move stock or issue credit.",
+  SALES: "Drafts, edits and sends quotations and turns accepted ones into orders. An Admin approves quotations. Cannot move stock or issue credit.",
   WAREHOUSE: "Dispatches and receives goods. Reads orders; no financial access.",
   ACCOUNTS: "Credit notes, deposits and reporting. Cannot create orders or move stock.",
 };

@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   ChevronRight,
   FileText,
-  Pencil,
   Plus,
   SearchX,
 } from "lucide-react";
@@ -15,6 +14,8 @@ import { getQuotation, listQuotations, quotationKeys } from "@/features/quotatio
 import type { QuotationStatus, QuotationView } from "@/features/quotations/types";
 import { useCan } from "@/features/auth";
 import { ConvertToOrderDialog } from "@/features/orders";
+import { QuotationActions } from "@/features/quotations/components/QuotationActions";
+import { IS_MOCK } from "@/services/data-source";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
@@ -48,16 +49,29 @@ const STATUS_VARIANT: Record<
   EXPIRED: "destructive",
 };
 
-/** The workspace's filters, in the order the inner sidebar lists them. "" is all. */
-const FILTERS: { key: string; label: string; status?: QuotationStatus }[] = [
-  { key: "", label: "All quotations" },
+/**
+ * The workspace's filters, in the order the inner sidebar lists them. "" is all.
+ *
+ * Against the real backend the statuses are the lifecycle's own: Draft, Sent, Accepted,
+ * Converted, Rejected, Expired. The seeded mock data also uses New, Reviewed and Discarded, which
+ * the backend does not have, so those only show in mock mode.
+ */
+const MOCK_ONLY_FILTERS: { key: string; label: string; status?: QuotationStatus }[] = [
   { key: "new", label: "New", status: "NEW" },
   { key: "reviewed", label: "Reviewed", status: "REVIEWED" },
+  { key: "discarded", label: "Discarded", status: "DISCARDED" },
+];
+
+const FILTERS: { key: string; label: string; status?: QuotationStatus }[] = [
+  { key: "", label: "All quotations" },
+  ...(IS_MOCK ? MOCK_ONLY_FILTERS.slice(0, 2) : []),
   { key: "draft", label: "Draft", status: "DRAFT" },
   { key: "sent", label: "Sent", status: "SENT" },
   { key: "accepted", label: "Accepted", status: "ACCEPTED" },
   { key: "converted", label: "Converted", status: "CONVERTED" },
-  { key: "discarded", label: "Discarded", status: "DISCARDED" },
+  { key: "rejected", label: "Rejected", status: "REJECTED" },
+  { key: "expired", label: "Expired", status: "EXPIRED" },
+  ...(IS_MOCK ? MOCK_ONLY_FILTERS.slice(2) : []),
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -351,11 +365,6 @@ function QuotationDetail({
   backLabel: string;
 }) {
   const [converting, setConverting] = useState(false);
-  const canWrite = useCan("QUOTATION_WRITE");
-  // Converting writes an order, so it is ORDER_WRITE that governs it, not
-  // QUOTATION_WRITE — which is why a SALES user sees both actions and an
-  // ACCOUNTS user sees neither.
-  const canConvert = useCan("ORDER_WRITE");
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: quotationKeys.byId(quotationId),
@@ -409,37 +418,8 @@ function QuotationDetail({
                   <p className="font-mono text-xs text-muted-foreground">{data.customerId}</p>
                 ) : null}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {canWrite && data.status !== "CONVERTED" ? (
-                  // Converted is the one status that cannot be edited: the
-                  // order was copied from this quotation.
-                  <Link
-                    href={`/quotations/edit?id=${data.id}`}
-                    className={buttonVariants({ variant: "outline", size: "sm" })}
-                  >
-                    <Pencil />
-                    Edit
-                  </Link>
-                ) : null}
-                {canConvert ? (
-                  // Only CONVERTED is refused: markConverted is the one rule
-                  // the backend actually has here, so a rejected or expired
-                  // quotation is still offered rather than being blocked by a
-                  // rule this screen invented.
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={data.status === "CONVERTED"}
-                    title={
-                      data.status === "CONVERTED"
-                        ? "This quotation has already been converted to an order"
-                        : undefined
-                    }
-                    onClick={() => setConverting(true)}
-                  >
-                    Convert to order
-                  </Button>
-                ) : null}
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <QuotationActions quotation={data} onConvert={() => setConverting(true)} />
               </div>
             </CardHeader>
 
@@ -462,6 +442,18 @@ function QuotationDetail({
                   </dd>
                 </div>
               </dl>
+
+              {data.status === "REJECTED" && data.rejectionReason ? (
+                <Alert tone="error" title={`Rejected: ${data.rejectionReason}`} className="mt-4" />
+              ) : null}
+
+              {data.validUntil || data.sentAt || data.acceptedAt ? (
+                <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
+                  {data.validUntil ? <>Valid until {formatEventDate(data.validUntil)}. </> : null}
+                  {data.sentAt ? <>Sent {formatEventDate(data.sentAt)}. </> : null}
+                  {data.acceptedAt ? <>Accepted {formatEventDate(data.acceptedAt)}.</> : null}
+                </p>
+              ) : null}
 
               {data.sourceReference ? (
                 <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">

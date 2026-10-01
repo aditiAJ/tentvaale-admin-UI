@@ -1,4 +1,3 @@
-import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import {
   mockCancelOrder,
@@ -8,82 +7,59 @@ import {
   mockListOrders,
   mockListOrdersByCustomer,
 } from "@/mock-data/store";
+import * as backend from "@/features/orders/api/backend";
 import type { OrderView } from "@/features/orders/types";
 
 /**
- * As with quotations, get-by-id is real and works in api mode; there is no
- * list endpoint. SalesOrderRepository can count orders and sum their value —
- * which is what the dashboard uses — but cannot return them.
+ * Orders. In api mode every call goes to OrderAdminController through `./backend`.
+ *
+ * Statuses are never set by hand: dispatches and returns (inventory) move an order to DISPATCHED
+ * and RETURNED, and these calls cover the manual steps, convert, cancel and complete. The backend
+ * decides what is allowed and answers 422 with a sentence for the user, 403 without permission and
+ * 409 when someone changed the record at the same time.
  *
  * 404 when the id is unknown or belongs to another company.
  */
 export function getOrder(orderId: string, signal?: AbortSignal): Promise<OrderView> {
   if (IS_MOCK) return mockGetOrder(orderId);
-  return apiFetch<OrderView>(`/admin/orders/${encodeURIComponent(orderId)}`, { signal });
+  return backend.getOrder(orderId, signal);
 }
 
 /**
- * Converts a quotation into a confirmed order. Needs ORDER_WRITE, and answers
- * 201 with the order itself.
- *
- * It also marks the quotation CONVERTED and opens a HELD deposit for the
- * order's security deposit, in the same transaction — so the caller's copy of
- * that quotation is stale the moment this resolves, and the screen that
- * triggered it has to refetch rather than trust what it is holding.
- *
- * 422 when the quotation already has an order, 404 when it does not exist or
- * belongs to another company.
+ * Converts a quotation into a confirmed order. Needs ORDER_WRITE, and only an ACCEPTED quotation
+ * converts (422 otherwise). It also marks the quotation CONVERTED and holds the deposit in the
+ * same step, so the caller's copy of the quotation is stale as soon as this resolves.
  */
 export function createOrderFromQuotation(quotationId: string): Promise<OrderView> {
   if (IS_MOCK) return mockCreateOrderFromQuotation(quotationId);
-  return apiFetch<OrderView>("/admin/orders/from-quotation", {
-    method: "POST",
-    body: { quotationId },
-  });
+  return backend.createOrderFromQuotation(quotationId);
 }
 
 /**
- * Cancelling has no endpoint on the real controller — this follows the same
- * POST /{resource}/{id}/{action} shape as the deposit transitions and 404s in
- * api mode. Only a CONFIRMED order can be cancelled; its held deposit moves to
- * REFUND_PENDING, and nothing moves in stock because nothing was dispatched.
+ * Only a CONFIRMED order (nothing dispatched) can be cancelled; its held deposit moves to REFUND
+ * PENDING. The reason is optional.
  */
-export function cancelOrder(orderId: string): Promise<OrderView> {
+export function cancelOrder(orderId: string, reason?: string): Promise<OrderView> {
   if (IS_MOCK) return mockCancelOrder(orderId);
-  return apiFetch<OrderView>(`/admin/orders/${encodeURIComponent(orderId)}/cancel`, {
-    method: "POST",
-  });
+  return backend.cancelOrder(orderId, reason);
 }
 
-/**
- * Proposed, like cancel. 422 unless the order is RETURNED and its deposit is
- * REFUNDED or FORFEITED.
- */
+/** 422 unless the order is RETURNED and its deposit is settled (or it has none). */
 export function completeOrder(orderId: string): Promise<OrderView> {
   if (IS_MOCK) return mockCompleteOrder(orderId);
-  return apiFetch<OrderView>(`/admin/orders/${encodeURIComponent(orderId)}/complete`, {
-    method: "POST",
-  });
+  return backend.completeOrder(orderId);
 }
 
-/**
- * Proposed: there is no list endpoint, so this 404s in api mode. One
- * customer's orders, for the screens that pick an order for a customer.
- */
+/** One customer's orders: the same list endpoint, filtered by customer. */
 export function listOrdersByCustomer(customerId: string, signal?: AbortSignal): Promise<OrderView[]> {
   if (IS_MOCK) return mockListOrdersByCustomer(customerId);
-  return apiFetch<OrderView[]>(`/admin/orders/by-customer/${encodeURIComponent(customerId)}`, {
-    signal,
-  });
+  return backend.listOrders(customerId, signal);
 }
 
-/**
- * Proposed: there is no list endpoint, so this 404s in api mode. Every order
- * for the company, for the order workspace to browse.
- */
+/** Every order for the company, newest first. */
 export function listOrders(signal?: AbortSignal): Promise<OrderView[]> {
   if (IS_MOCK) return mockListOrders();
-  return apiFetch<OrderView[]>("/admin/orders/list", { signal });
+  return backend.listOrders(undefined, signal);
 }
 
 export const orderKeys = {

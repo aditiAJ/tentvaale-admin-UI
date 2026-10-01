@@ -20,6 +20,7 @@ import { IS_MOCK } from "@/services/data-source";
 import { DEMO_DEPOSIT_EXAMPLES } from "@/mock-data/seed";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
+import { DepositLedger } from "@/features/deposits/components/DepositLedger";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +65,8 @@ export function DepositsPage({ initialOrderId = "" }: { initialOrderId?: string 
         description="Security deposits held against orders, and how they are settled."
       />
 
+      {!IS_MOCK ? <DepositLedger onOpen={setOrderId} /> : null}
+
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {
@@ -95,6 +98,13 @@ export function DepositsPage({ initialOrderId = "" }: { initialOrderId?: string 
           Find deposit
         </Button>
       </form>
+
+      {data?.refundExceedsHeld ? (
+        <Alert
+          tone="warning"
+          title="More was refunded or kept than was held. This is allowed; please check the amounts."
+        />
+      ) : null}
 
       {IS_MOCK ? (
         <div className="flex flex-wrap items-center gap-1.5">

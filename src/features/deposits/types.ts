@@ -31,7 +31,13 @@ export interface DepositLedgerView {
   id: string;
   companyId: string;
   orderId: string;
-  accountId: string;
+  /** Absent: deposits are held for the order, not for a storefront account. */
+  accountId?: string;
+  orderNumber?: string;
+  /** REFUNDED or FORFEITED: final, and what completing the order waits for. */
+  settled?: boolean;
+  /** More was refunded or kept than was held. Allowed; the screen warns. */
+  refundExceedsHeld?: boolean;
   amountHeld: Money;
   amountRefunded: Money;
   amountForfeited: Money;
