@@ -1142,7 +1142,6 @@ function toWarehouseProductView(entry: WarehouseProduct, current: MockState): Wa
     // better thing to show than a blank cell if it ever does.
     productName: product?.name ?? entry.productId,
     variantName: entry.variantId ? (variant?.name ?? entry.variantId) : null,
-    sku: product?.sku ?? "",
   };
 }
 

@@ -3,7 +3,12 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, SearchX, Tags, X } from "lucide-react";
-import { deactivateCategory, listCategories, masterDataKeys } from "@/features/master-data/api";
+import {
+  activateCategory,
+  deactivateCategory,
+  listCategories,
+  masterDataKeys,
+} from "@/features/master-data/api";
 import type { CategoryView } from "@/features/master-data/types";
 import { CategoryCard } from "@/features/master-data/components/CategoryCard";
 import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
@@ -24,6 +29,7 @@ export function CategoriesPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CategoryView | null>(null);
   const [deactivating, setDeactivating] = useState<CategoryView | null>(null);
+  const [activating, setActivating] = useState<CategoryView | null>(null);
   const queryClient = useQueryClient();
 
   const deferredSearch = useDeferredValue(search);
@@ -139,6 +145,9 @@ export function CategoriesPage() {
               onDeactivate={
                 canWrite && category.active ? () => setDeactivating(category) : undefined
               }
+              onActivate={
+                canWrite && !category.active ? () => setActivating(category) : undefined
+              }
             />
           ))}
         </div>
@@ -146,6 +155,21 @@ export function CategoriesPage() {
 
       {creating ? <CategoryDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <CategoryDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {activating ? (
+        <ConfirmDialog
+          title={`Activate ${activating.name}?`}
+          description="It returns to the product picker, along with its sub-categories."
+          confirmLabel="Activate category"
+          destructive={false}
+          fallbackError="Could not activate the category."
+          action={() => activateCategory(activating.id)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: masterDataKeys.categories });
+            setActivating(null);
+          }}
+          onClose={() => setActivating(null)}
+        />
+      ) : null}
       {deactivating ? (
         <ConfirmDialog
           title={`Deactivate ${deactivating.name}?`}

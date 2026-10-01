@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { ActiveToggle } from "@/features/master-data/components/ActiveToggle";
 
 const FORM_ID = "warehouse-form";
 
@@ -26,6 +27,7 @@ const schema = z.object({
   // rather than being stored as whitespace.
   address: z.string().trim().min(1, "Address is required").max(250, "Maximum 250 characters"),
   city: z.string().trim().min(1, "City is required").max(100, "Maximum 100 characters"),
+  active: z.boolean(),
 });
 
 type FormValues = z.output<typeof schema>;
@@ -58,6 +60,7 @@ export function WarehouseDialog({
       name: existing?.name ?? "",
       address: existing?.address ?? "",
       city: existing?.city ?? "",
+      active: existing?.active ?? true,
     },
   });
 
@@ -127,6 +130,14 @@ export function WarehouseDialog({
         <Field label="City" required error={errors.city?.message}>
           {(props) => <Input {...props} {...register("city")} placeholder="Mumbai" />}
         </Field>
+
+        {existing ? (
+          <ActiveToggle
+            {...register("active")}
+            label="Active"
+            hint="An inactive warehouse keeps its stock but takes no new stock."
+          />
+        ) : null}
       </form>
     </Dialog>
   );

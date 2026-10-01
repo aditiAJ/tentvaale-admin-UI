@@ -218,24 +218,44 @@ export interface CreateCategoryRequest {
   media: MediaAsset[];
 }
 
+export type CustomerType = "CUSTOMER" | "EVENT_PLANNER";
+
+export type PlannerStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+/** An event planner's trade-pricing application and where it stands. */
+export interface PlannerProfileView {
+  customerId: string;
+  customerName: string | null;
+  businessName: string;
+  yearsInBusiness: string | null;
+  about: string | null;
+  status: PlannerStatus;
+  /** Set only while the status is REJECTED. */
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
 /**
- * Mirrors com.tentvaale.identity.api.StorefrontAccountView.
+ * A back-office customer record (masterdata's md_customer). A storefront account is a separate
+ * record linked 1:1 through `storefrontAccountId`; staff-created customers have none.
  *
- * Customers live in the identity module, not master data, and the shape here
- * is the real one — but no admin-facing endpoint exposes it. Only the
- * storefront's own signup/login touch StorefrontAccount today.
- *
- * Note the missing companyId: a storefront account is deliberately NOT owned
- * by a tenant. It becomes associated with a company only through the
- * quotations and orders it creates, so "customers for my company" is a
- * transitive question the backend cannot answer directly yet.
+ * The backend omits null fields, so everything but the first five is optional.
  */
 export interface CustomerView {
   id: string;
   email: string;
   fullName: string;
   phone: string | null;
-  accountType: "CUSTOMER" | "EVENT_PLANNER";
+  accountType: CustomerType;
+  gstin?: string | null;
+  active?: boolean;
+  storefrontAccountId?: string | null;
+  /** Present once the customer, an event planner, has applied for trade pricing. */
+  plannerProfile?: PlannerProfileView | null;
+  /** The price list this planner is on. Managed with price lists (a later module). */
+  priceListId?: string | null;
 }
 
 /**
@@ -390,6 +410,8 @@ export interface WarehouseView {
    */
   address: string;
   city: string;
+  /** An inactive warehouse takes no new stock. */
+  active?: boolean;
 }
 
 /**
@@ -414,9 +436,23 @@ export interface WarehouseProductView {
   variantId: string | null;
   productName: string;
   variantName: string | null;
-  sku: string;
   quantity: number;
 }
+
+/** A rental supplier. Admin-only: supplier identity is never shown on the storefront. */
+export interface SupplierView {
+  id: string;
+  name: string;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  addressLine: string | null;
+  gstin: string | null;
+  active: boolean;
+}
+
+/** How many of a product (or variant) a supplier can provide. Set, not added to. */
+export type SupplierStockView = WarehouseProductView;
 
 export interface TruckView {
   id: string;
@@ -424,6 +460,8 @@ export interface TruckView {
   registration: string;
   /** Legacy computes load from product volume against this; neither is modelled. */
   capacityKg: number;
+  /** An inactive truck is kept on record but not offered. */
+  active?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +495,8 @@ export interface UpdateCategoryRequest {
 
 export interface CreateWarehouseRequest {
   name: string;
+  /** Sent on edit; leaving it out on the real backend means active. */
+  active?: boolean;
   /** Required, like every other field a warehouse carries — see WarehouseView. */
   address: string;
   city: string;
@@ -480,6 +520,24 @@ export interface AddWarehouseProductRequest {
 export interface CreateTruckRequest {
   registration: string;
   capacityKg: number;
+  active?: boolean;
+}
+
+export interface SupplierRequest {
+  name: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  addressLine?: string;
+  gstin?: string;
+  active?: boolean;
+}
+
+export interface SetSupplierStockRequest {
+  productId: string;
+  variantId?: string;
+  /** Zero is allowed: the supplier has none right now. */
+  quantity: number;
 }
 
 export type UpdateTruckRequest = CreateTruckRequest;
@@ -523,7 +581,14 @@ export interface CreateCustomerRequest {
   email: string;
   fullName: string;
   phone?: string;
-  accountType: CustomerView["accountType"];
+  accountType: CustomerType;
+  gstin?: string;
+}
+
+export interface PlannerApplicationRequest {
+  businessName: string;
+  yearsInBusiness?: string;
+  about?: string;
 }
 
 export type UpdateCustomerRequest = CreateCustomerRequest;

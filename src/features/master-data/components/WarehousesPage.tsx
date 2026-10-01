@@ -14,6 +14,7 @@ import { WarehouseProductsDialog } from "@/features/master-data/components/Wareh
 import { RowActions } from "@/features/master-data/components/RowActions";
 import { useCan } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -70,7 +71,12 @@ export function WarehousesPage() {
               {!isPending && data
                 ? data.map((warehouse) => (
                     <TR key={warehouse.id}>
-                      <TD className="font-medium">{warehouse.name}</TD>
+                      <TD className="font-medium">
+                        {warehouse.name}
+                        {warehouse.active === false ? (
+                          <Badge className="ml-2">Inactive</Badge>
+                        ) : null}
+                      </TD>
                       {/* Truncated to one line with the full value on hover, the
                           same way the notification log handles a long recipient.
                           Wrapping instead would make every row a different

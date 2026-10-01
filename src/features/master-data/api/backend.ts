@@ -3,15 +3,32 @@ import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
 import type {
+  AddWarehouseProductRequest,
   CategoryView,
   CreateCategoryRequest,
+  CreateCustomerRequest,
   CreateProductRequest,
   CreateProductVariantRequest,
+  CreateTruckRequest,
+  CreateWarehouseRequest,
+  CustomerView,
   MediaAsset,
+  PlannerApplicationRequest,
+  PlannerProfileView,
   ProductVariantView,
   ProductView,
+  SetSupplierStockRequest,
   SubCategoryView,
+  SupplierRequest,
+  SupplierStockView,
+  SupplierView,
+  TruckView,
   UpdateCategoryRequest,
+  UpdateCustomerRequest,
+  UpdateTruckRequest,
+  UpdateWarehouseRequest,
+  WarehouseProductView,
+  WarehouseView,
 } from "@/features/master-data/types";
 
 /**
@@ -201,7 +218,20 @@ export async function deactivateCategory(categoryId: string): Promise<CategoryVi
   );
 }
 
+export async function activateCategory(categoryId: string): Promise<CategoryView> {
+  return categoryFromWire(
+    await apiFetch<WireCategory>(`${BASE}/categories/${categoryId}/activate`, { method: "POST" }),
+  );
+}
+
 // ------------------------------------------------------------------ products
+
+/** Switches a product off (kept on record, hidden from pickers and the storefront) or back on. */
+export async function setProductActive(productId: string, active: boolean): Promise<void> {
+  await apiFetch<unknown>(`${BASE}/products/${productId}/${active ? "activate" : "deactivate"}`, {
+    method: "POST",
+  });
+}
 
 function variantFromWire(variant: WireVariant): ProductVariantView {
   return {
@@ -273,8 +303,14 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
   };
 }
 
-export async function listProducts(signal?: AbortSignal): Promise<ProductView[]> {
-  const rows = await apiFetch<WireProduct[]>(`${BASE}/products`, { signal });
+export async function listProducts(
+  signal?: AbortSignal,
+  includeInactive = false,
+): Promise<ProductView[]> {
+  const rows = await apiFetch<WireProduct[]>(
+    `${BASE}/products${includeInactive ? "?includeInactive=true" : ""}`,
+    { signal },
+  );
   // The list is a summary with no variants, media or facets; the screens read all three off the
   // product, so each row is completed from its detail.
   return Promise.all(
@@ -393,4 +429,379 @@ export async function updateProductVariant(
 
 export function deleteProductVariant(_productId: string, variantId: string): Promise<void> {
   return apiFetch<void>(`${BASE}/variants/${variantId}`, { method: "DELETE" });
+}
+
+// ----------------------------------------------------------------- customers
+
+interface WirePlannerProfile {
+  customerId: number;
+  customerName: string | null;
+  businessName: string;
+  yearsInBusiness: string | null;
+  about: string | null;
+  status: PlannerProfileView["status"];
+  rejectionReason?: string | null;
+  submittedAt: string;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+}
+
+/** The backend leaves null fields out of its JSON, so most of these may be absent. */
+interface WireCustomer {
+  id: number;
+  fullName: string;
+  email: string;
+  phone?: string | null;
+  accountType: CustomerView["accountType"];
+  gstin?: string | null;
+  active: boolean;
+  storefrontAccountId?: string | null;
+  plannerProfile?: WirePlannerProfile | null;
+  priceListId?: number | null;
+}
+
+function plannerFromWire(profile: WirePlannerProfile): PlannerProfileView {
+  return {
+    customerId: String(profile.customerId),
+    customerName: profile.customerName ?? null,
+    businessName: profile.businessName,
+    yearsInBusiness: profile.yearsInBusiness ?? null,
+    about: profile.about ?? null,
+    status: profile.status,
+    rejectionReason: profile.rejectionReason ?? null,
+    submittedAt: profile.submittedAt,
+    reviewedAt: profile.reviewedAt ?? null,
+    reviewedBy: profile.reviewedBy ?? null,
+  };
+}
+
+function customerFromWire(customer: WireCustomer): CustomerView {
+  return {
+    id: String(customer.id),
+    fullName: customer.fullName,
+    email: customer.email,
+    phone: customer.phone ?? null,
+    accountType: customer.accountType,
+    gstin: customer.gstin ?? null,
+    active: customer.active,
+    storefrontAccountId: customer.storefrontAccountId ?? null,
+    plannerProfile: customer.plannerProfile ? plannerFromWire(customer.plannerProfile) : null,
+    priceListId: customer.priceListId == null ? null : String(customer.priceListId),
+  };
+}
+
+/** Blank optional fields are sent as absent, which the backend stores as empty. */
+function customerBody(request: CreateCustomerRequest | UpdateCustomerRequest) {
+  return {
+    fullName: request.fullName,
+    email: request.email,
+    phone: request.phone || undefined,
+    accountType: request.accountType,
+    gstin: request.gstin || undefined,
+  };
+}
+
+export async function listCustomers(signal?: AbortSignal): Promise<CustomerView[]> {
+  const rows = await apiFetch<WireCustomer[]>(`${BASE}/customers`, { signal });
+  return rows.map(customerFromWire);
+}
+
+export async function getCustomer(customerId: string, signal?: AbortSignal): Promise<CustomerView> {
+  const row = await apiFetch<WireCustomer>(`${BASE}/customers/${encodeURIComponent(customerId)}`, {
+    signal,
+  });
+  return customerFromWire(row);
+}
+
+export async function createCustomer(request: CreateCustomerRequest): Promise<CustomerView> {
+  const created = await apiFetch<WireCustomer>(`${BASE}/customers`, {
+    method: "POST",
+    body: customerBody(request),
+  });
+  return customerFromWire(created);
+}
+
+export async function updateCustomer(
+  customerId: string,
+  request: UpdateCustomerRequest,
+): Promise<CustomerView> {
+  const updated = await apiFetch<WireCustomer>(`${BASE}/customers/${customerId}`, {
+    method: "PUT",
+    body: customerBody(request),
+  });
+  return customerFromWire(updated);
+}
+
+/** Pending applications only, oldest first. */
+export async function listPlannerApplications(signal?: AbortSignal): Promise<PlannerProfileView[]> {
+  const rows = await apiFetch<WirePlannerProfile[]>(`${BASE}/planner-applications`, { signal });
+  return rows.map(plannerFromWire);
+}
+
+/** Staff applying for trade pricing on a planner's behalf. 422 unless the customer is an event planner. */
+export async function applyAsPlanner(
+  customerId: string,
+  request: PlannerApplicationRequest,
+): Promise<PlannerProfileView> {
+  const profile = await apiFetch<WirePlannerProfile>(
+    `${BASE}/customers/${customerId}/planner-profile`,
+    {
+      method: "PUT",
+      body: {
+        businessName: request.businessName,
+        yearsInBusiness: request.yearsInBusiness || undefined,
+        about: request.about || undefined,
+      },
+    },
+  );
+  return plannerFromWire(profile);
+}
+
+export async function approvePlannerApplication(customerId: string): Promise<PlannerProfileView> {
+  const profile = await apiFetch<WirePlannerProfile>(
+    `${BASE}/planner-applications/${customerId}/approve`,
+    { method: "POST" },
+  );
+  return plannerFromWire(profile);
+}
+
+/** 400 for a blank reason; 422 if the application is not pending. */
+export async function rejectPlannerApplication(
+  customerId: string,
+  reason: string,
+): Promise<PlannerProfileView> {
+  const profile = await apiFetch<WirePlannerProfile>(
+    `${BASE}/planner-applications/${customerId}/reject`,
+    { method: "POST", body: { reason } },
+  );
+  return plannerFromWire(profile);
+}
+
+// ------------------------------------------------- warehouses, suppliers, trucks
+
+interface WireWarehouse {
+  id: number;
+  name: string;
+  addressLine?: string | null;
+  city?: string | null;
+  active: boolean;
+}
+
+interface WireStockLine {
+  id: number;
+  locationId: number;
+  productId: number;
+  productName: string | null;
+  variantId?: number | null;
+  variantName?: string | null;
+  quantity: number;
+}
+
+interface WireSupplier {
+  id: number;
+  name: string;
+  contactPerson?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  addressLine?: string | null;
+  gstin?: string | null;
+  active: boolean;
+}
+
+interface WireTruck {
+  id: number;
+  registrationNumber: string;
+  capacityKg: number;
+  active: boolean;
+}
+
+function warehouseFromWire(warehouse: WireWarehouse): WarehouseView {
+  return {
+    id: String(warehouse.id),
+    companyId: companyId(),
+    name: warehouse.name,
+    address: warehouse.addressLine ?? "",
+    city: warehouse.city ?? "",
+    active: warehouse.active,
+  };
+}
+
+/** The same shape serves owned stock (location = warehouse) and supplier stock (location = supplier). */
+function stockFromWire(line: WireStockLine): WarehouseProductView {
+  return {
+    warehouseId: String(line.locationId),
+    productId: String(line.productId),
+    variantId: line.variantId == null ? null : String(line.variantId),
+    productName: line.productName ?? "",
+    variantName: line.variantName ?? null,
+    quantity: line.quantity,
+  };
+}
+
+function supplierFromWire(supplier: WireSupplier): SupplierView {
+  return {
+    id: String(supplier.id),
+    name: supplier.name,
+    contactPerson: supplier.contactPerson ?? null,
+    phone: supplier.phone ?? null,
+    email: supplier.email ?? null,
+    addressLine: supplier.addressLine ?? null,
+    gstin: supplier.gstin ?? null,
+    active: supplier.active,
+  };
+}
+
+function truckFromWire(truck: WireTruck): TruckView {
+  return {
+    id: String(truck.id),
+    companyId: companyId(),
+    registration: truck.registrationNumber,
+    capacityKg: Number(truck.capacityKg),
+    active: truck.active,
+  };
+}
+
+export async function listWarehouses(signal?: AbortSignal): Promise<WarehouseView[]> {
+  const rows = await apiFetch<WireWarehouse[]>(`${BASE}/warehouses`, { signal });
+  return rows.map(warehouseFromWire);
+}
+
+export async function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {
+  const created = await apiFetch<WireWarehouse>(`${BASE}/warehouses`, {
+    method: "POST",
+    body: { name: request.name, addressLine: request.address, city: request.city },
+  });
+  return warehouseFromWire(created);
+}
+
+export async function updateWarehouse(
+  warehouseId: string,
+  request: UpdateWarehouseRequest,
+): Promise<WarehouseView> {
+  const updated = await apiFetch<WireWarehouse>(`${BASE}/warehouses/${warehouseId}`, {
+    method: "PUT",
+    body: {
+      name: request.name,
+      addressLine: request.address,
+      city: request.city,
+      active: request.active,
+    },
+  });
+  return warehouseFromWire(updated);
+}
+
+export function deleteWarehouse(warehouseId: string): Promise<void> {
+  return apiFetch<void>(`${BASE}/warehouses/${warehouseId}`, { method: "DELETE" });
+}
+
+export async function listWarehouseProducts(
+  warehouseId: string,
+  signal?: AbortSignal,
+): Promise<WarehouseProductView[]> {
+  const rows = await apiFetch<WireStockLine[]>(`${BASE}/warehouses/${warehouseId}/stock`, { signal });
+  return rows.map(stockFromWire);
+}
+
+export async function addProductToWarehouse(
+  warehouseId: string,
+  request: AddWarehouseProductRequest,
+): Promise<WarehouseProductView> {
+  const line = await apiFetch<WireStockLine>(`${BASE}/warehouses/${warehouseId}/stock`, {
+    method: "POST",
+    body: {
+      productId: Number(request.productId),
+      variantId: request.variantId ? Number(request.variantId) : undefined,
+      quantity: request.quantity,
+    },
+  });
+  return stockFromWire(line);
+}
+
+export async function listSuppliers(signal?: AbortSignal): Promise<SupplierView[]> {
+  const rows = await apiFetch<WireSupplier[]>(`${BASE}/suppliers`, { signal });
+  return rows.map(supplierFromWire);
+}
+
+function supplierBody(request: SupplierRequest) {
+  return {
+    name: request.name,
+    contactPerson: request.contactPerson || undefined,
+    phone: request.phone || undefined,
+    email: request.email || undefined,
+    addressLine: request.addressLine || undefined,
+    gstin: request.gstin || undefined,
+    active: request.active,
+  };
+}
+
+export async function createSupplier(request: SupplierRequest): Promise<SupplierView> {
+  const created = await apiFetch<WireSupplier>(`${BASE}/suppliers`, {
+    method: "POST",
+    body: supplierBody(request),
+  });
+  return supplierFromWire(created);
+}
+
+export async function updateSupplier(
+  supplierId: string,
+  request: SupplierRequest,
+): Promise<SupplierView> {
+  const updated = await apiFetch<WireSupplier>(`${BASE}/suppliers/${supplierId}`, {
+    method: "PUT",
+    body: supplierBody(request),
+  });
+  return supplierFromWire(updated);
+}
+
+export async function listSupplierStock(
+  supplierId: string,
+  signal?: AbortSignal,
+): Promise<SupplierStockView[]> {
+  const rows = await apiFetch<WireStockLine[]>(`${BASE}/suppliers/${supplierId}/stock`, { signal });
+  return rows.map(stockFromWire);
+}
+
+/** Replaces the supplier's count for that product or variant; it does not add to it. */
+export async function setSupplierStock(
+  supplierId: string,
+  request: SetSupplierStockRequest,
+): Promise<SupplierStockView> {
+  const line = await apiFetch<WireStockLine>(`${BASE}/suppliers/${supplierId}/stock`, {
+    method: "PUT",
+    body: {
+      productId: Number(request.productId),
+      variantId: request.variantId ? Number(request.variantId) : undefined,
+      quantity: request.quantity,
+    },
+  });
+  return stockFromWire(line);
+}
+
+export async function listTrucks(signal?: AbortSignal): Promise<TruckView[]> {
+  const rows = await apiFetch<WireTruck[]>(`${BASE}/trucks`, { signal });
+  return rows.map(truckFromWire);
+}
+
+export async function createTruck(request: CreateTruckRequest): Promise<TruckView> {
+  const created = await apiFetch<WireTruck>(`${BASE}/trucks`, {
+    method: "POST",
+    body: { registrationNumber: request.registration, capacityKg: request.capacityKg },
+  });
+  return truckFromWire(created);
+}
+
+export async function updateTruck(truckId: string, request: UpdateTruckRequest): Promise<TruckView> {
+  const updated = await apiFetch<WireTruck>(`${BASE}/trucks/${truckId}`, {
+    method: "PUT",
+    body: {
+      registrationNumber: request.registration,
+      capacityKg: request.capacityKg,
+      active: request.active,
+    },
+  });
+  return truckFromWire(updated);
+}
+
+export function deleteTruck(truckId: string): Promise<void> {
+  return apiFetch<void>(`${BASE}/trucks/${truckId}`, { method: "DELETE" });
 }

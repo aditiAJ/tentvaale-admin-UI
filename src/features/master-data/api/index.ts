@@ -1,4 +1,4 @@
-import { apiFetch } from "@/services/api-client";
+import { ApiError, apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import * as backend from "@/features/master-data/api/backend";
 import {
@@ -56,6 +56,12 @@ import type {
   CreateWarehouseRequest,
   CustomerView,
   FeaturedCollectionView,
+  PlannerApplicationRequest,
+  PlannerProfileView,
+  SetSupplierStockRequest,
+  SupplierRequest,
+  SupplierStockView,
+  SupplierView,
   ProductVariantView,
   ProductView,
   TruckView,
@@ -78,9 +84,18 @@ import type {
  * no paging, no filter and no way to list inactive products yet, so the table
  * sorts and filters client-side over the full set.
  */
-export function listProducts(signal?: AbortSignal): Promise<ProductView[]> {
+export function listProducts(
+  signal?: AbortSignal,
+  options?: { includeInactive?: boolean },
+): Promise<ProductView[]> {
   if (IS_MOCK) return mockListProducts();
-  return backend.listProducts(signal);
+  return backend.listProducts(signal, options?.includeInactive);
+}
+
+/** Inactive products stay on record but leave pickers and the storefront. Real backend only. */
+export function setProductActive(productId: string, active: boolean): Promise<void> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.setProductActive(productId, active);
 }
 
 /** 422 if the SKU already exists for this company (case-insensitive). */
@@ -151,20 +166,12 @@ export function createCategory(request: CreateCategoryRequest): Promise<Category
 }
 
 /**
- * Customers, bundles, warehouses and trucks have no backend at all.
- *
- * Customers at least have a real entity — identity's StorefrontAccount — but
- * only the storefront's signup/login touch it; nothing under /admin exposes
- * it. Bundles, warehouses and trucks have no entity and no table either:
- * masterdata's package-info names them as intended scope, and the schema
- * creates only md_category and md_product.
- *
- * These paths are therefore guesses at where each would land, following the
- * same shape as products. All four will 404 in api mode.
+ * Customers are master-data records (md_customer), served by CustomerAdminController. The list
+ * is every customer of the company, ordered by name, and is searched in the browser.
  */
 export function listCustomers(signal?: AbortSignal): Promise<CustomerView[]> {
   if (IS_MOCK) return mockListCustomers();
-  return apiFetch<CustomerView[]>("/admin/customers", { signal });
+  return backend.listCustomers(signal);
 }
 
 /**
@@ -174,7 +181,7 @@ export function listCustomers(signal?: AbortSignal): Promise<CustomerView[]> {
  */
 export function getCustomer(customerId: string, signal?: AbortSignal): Promise<CustomerView> {
   if (IS_MOCK) return mockGetCustomer(customerId);
-  return apiFetch<CustomerView>(`/admin/customers/${encodeURIComponent(customerId)}`, { signal });
+  return backend.getCustomer(customerId, signal);
 }
 
 export function listBundles(signal?: AbortSignal): Promise<BundleView[]> {
@@ -184,12 +191,12 @@ export function listBundles(signal?: AbortSignal): Promise<BundleView[]> {
 
 export function listWarehouses(signal?: AbortSignal): Promise<WarehouseView[]> {
   if (IS_MOCK) return mockListWarehouses();
-  return apiFetch<WarehouseView[]>("/admin/master-data/warehouses", { signal });
+  return backend.listWarehouses(signal);
 }
 
 export function listTrucks(signal?: AbortSignal): Promise<TruckView[]> {
   if (IS_MOCK) return mockListTrucks();
-  return apiFetch<TruckView[]>("/admin/master-data/trucks", { signal });
+  return backend.listTrucks(signal);
 }
 
 // ---------------------------------------------------------------------------
@@ -223,12 +230,15 @@ export function deactivateCategory(categoryId: string): Promise<CategoryView> {
   return backend.deactivateCategory(categoryId);
 }
 
+/** The reverse of deactivateCategory; its sub-categories come back with it. Real backend only. */
+export function activateCategory(categoryId: string): Promise<CategoryView> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.activateCategory(categoryId);
+}
+
 export function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {
   if (IS_MOCK) return mockCreateWarehouse(request);
-  return apiFetch<WarehouseView>("/admin/master-data/warehouses", {
-    method: "POST",
-    body: request,
-  });
+  return backend.createWarehouse(request);
 }
 
 export function updateWarehouse(
@@ -236,62 +246,51 @@ export function updateWarehouse(
   request: UpdateWarehouseRequest,
 ): Promise<WarehouseView> {
   if (IS_MOCK) return mockUpdateWarehouse(warehouseId, request);
-  return apiFetch<WarehouseView>(`/admin/master-data/warehouses/${warehouseId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateWarehouse(warehouseId, request);
 }
 
-/** 422 when a stock movement still points at it — see the mock for why. */
+/** 422 when a dispatch or return still points at it. Deleting also removes the stock it held. */
 export function deleteWarehouse(warehouseId: string): Promise<void> {
   if (IS_MOCK) return mockDeleteWarehouse(warehouseId);
-  return apiFetch<void>(`/admin/master-data/warehouses/${warehouseId}`, { method: "DELETE" });
+  return backend.deleteWarehouse(warehouseId);
 }
 
-/** Sorted by product name. 404 if the warehouse does not exist. */
+/** Sorted by product name. 404 if the warehouse does not exist. Backend path: /warehouses/{id}/stock. */
 export function listWarehouseProducts(
   warehouseId: string,
   signal?: AbortSignal,
 ): Promise<WarehouseProductView[]> {
   if (IS_MOCK) return mockListWarehouseProducts(warehouseId);
-  return apiFetch<WarehouseProductView[]>(
-    `/admin/master-data/warehouses/${warehouseId}/products`,
-    { signal },
-  );
+  return backend.listWarehouseProducts(warehouseId, signal);
 }
 
 /**
  * Adds stock of a product to a warehouse, creating the warehouse–product
  * relationship or raising its quantity if the warehouse already holds that
- * product. 422 for a quantity below 1 or an inactive product.
+ * product. 422 for an inactive warehouse or a product that needs a variant; 400 for a
+ * quantity below 1.
  */
 export function addProductToWarehouse(
   warehouseId: string,
   request: AddWarehouseProductRequest,
 ): Promise<WarehouseProductView> {
   if (IS_MOCK) return mockAddProductToWarehouse(warehouseId, request);
-  return apiFetch<WarehouseProductView>(`/admin/master-data/warehouses/${warehouseId}/products`, {
-    method: "POST",
-    body: request,
-  });
+  return backend.addProductToWarehouse(warehouseId, request);
 }
 
 export function createTruck(request: CreateTruckRequest): Promise<TruckView> {
   if (IS_MOCK) return mockCreateTruck(request);
-  return apiFetch<TruckView>("/admin/master-data/trucks", { method: "POST", body: request });
+  return backend.createTruck(request);
 }
 
 export function updateTruck(truckId: string, request: UpdateTruckRequest): Promise<TruckView> {
   if (IS_MOCK) return mockUpdateTruck(truckId, request);
-  return apiFetch<TruckView>(`/admin/master-data/trucks/${truckId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateTruck(truckId, request);
 }
 
 export function deleteTruck(truckId: string): Promise<void> {
   if (IS_MOCK) return mockDeleteTruck(truckId);
-  return apiFetch<void>(`/admin/master-data/trucks/${truckId}`, { method: "DELETE" });
+  return backend.deleteTruck(truckId);
 }
 
 export function createBundle(request: CreateBundleRequest): Promise<BundleView> {
@@ -410,27 +409,92 @@ export function setFeaturedCollectionActive(
   );
 }
 
-/**
- * A storefront account raised from the back office, for the customer who books
- * over the phone. The real StorefrontAccount is created by storefront signup
- * and carries a password; what an admin-created one would do about that is a
- * question for whoever builds the endpoint, and is why this shape asks for no
- * credential.
- */
+/** 422 if the email already belongs to another customer of this company (case-insensitive). */
 export function createCustomer(request: CreateCustomerRequest): Promise<CustomerView> {
   if (IS_MOCK) return mockCreateCustomer(request);
-  return apiFetch<CustomerView>("/admin/customers", { method: "POST", body: request });
+  return backend.createCustomer(request);
 }
 
+/**
+ * 422 for another customer's email, or for turning an event planner who has applied back into a
+ * plain customer.
+ */
 export function updateCustomer(
   customerId: string,
   request: UpdateCustomerRequest,
 ): Promise<CustomerView> {
   if (IS_MOCK) return mockUpdateCustomer(customerId, request);
-  return apiFetch<CustomerView>(`/admin/customers/${customerId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateCustomer(customerId, request);
+}
+
+// Rental suppliers exist only on the real backend; the demo data has no such concept.
+const SUPPLIERS_NEED_BACKEND = "Suppliers need the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
+
+/** Every supplier, active or not, ordered by name. */
+export function listSuppliers(signal?: AbortSignal): Promise<SupplierView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listSuppliers(signal);
+}
+
+/** 422 if the name is taken by another supplier of this company (case-insensitive). */
+export function createSupplier(request: SupplierRequest): Promise<SupplierView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
+  return backend.createSupplier(request);
+}
+
+export function updateSupplier(supplierId: string, request: SupplierRequest): Promise<SupplierView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
+  return backend.updateSupplier(supplierId, request);
+}
+
+/** What this supplier can provide. Kept apart from owned stock, and never shown on the storefront. */
+export function listSupplierStock(
+  supplierId: string,
+  signal?: AbortSignal,
+): Promise<SupplierStockView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listSupplierStock(supplierId, signal);
+}
+
+/** Sets (replaces) the supplier's count. Zero is allowed. */
+export function setSupplierStock(
+  supplierId: string,
+  request: SetSupplierStockRequest,
+): Promise<SupplierStockView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
+  return backend.setSupplierStock(supplierId, request);
+}
+
+// Planner applications exist only on the real backend; the demo data has no such concept.
+const NEEDS_BACKEND = "Planner applications need the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
+
+/** Pending applications, oldest first. */
+export function listPlannerApplications(signal?: AbortSignal): Promise<PlannerProfileView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listPlannerApplications(signal);
+}
+
+/** 422 unless the customer is an event planner. Resubmitting after a rejection re-queues it. */
+export function applyAsPlanner(
+  customerId: string,
+  request: PlannerApplicationRequest,
+): Promise<PlannerProfileView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.applyAsPlanner(customerId, request);
+}
+
+export function approvePlannerApplication(customerId: string): Promise<PlannerProfileView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.approvePlannerApplication(customerId);
+}
+
+/** The reason is required (400 if blank) and is kept on the application. */
+export function rejectPlannerApplication(
+  customerId: string,
+  reason: string,
+): Promise<PlannerProfileView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.rejectPlannerApplication(customerId, reason);
 }
 
 /** Query keys kept beside the calls they invalidate, so the two cannot drift. */
@@ -438,6 +502,7 @@ export const masterDataKeys = {
   products: ["master-data", "products"] as const,
   categories: ["master-data", "categories"] as const,
   customers: ["master-data", "customers"] as const,
+  plannerApplications: ["master-data", "planner-applications"] as const,
   // Nested under `customers`, so refreshing the list refreshes every lookup too.
   customer: (customerId: string) => ["master-data", "customers", customerId] as const,
   bundles: ["master-data", "bundles"] as const,
@@ -450,4 +515,7 @@ export const masterDataKeys = {
   warehouseProducts: (warehouseId: string) =>
     ["master-data", "warehouses", warehouseId, "products"] as const,
   trucks: ["master-data", "trucks"] as const,
+  suppliers: ["master-data", "suppliers"] as const,
+  // Nested under `suppliers`, so refreshing the list refreshes every supplier's stock too.
+  supplierStock: (supplierId: string) => ["master-data", "suppliers", supplierId, "stock"] as const,
 };

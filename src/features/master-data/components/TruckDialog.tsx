@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { ActiveToggle } from "@/features/master-data/components/ActiveToggle";
 
 const FORM_ID = "truck-form";
 
@@ -26,6 +27,7 @@ const schema = z.object({
     .min(1, "Registration is required")
     .max(20, "Maximum 20 characters"),
   capacityKg: positiveIntegerField("Capacity"),
+  active: z.boolean(),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -45,6 +47,7 @@ export function TruckDialog({ existing, onClose }: { existing?: TruckView; onClo
     defaultValues: {
       registration: existing?.registration ?? "",
       capacityKg: existing ? String(existing.capacityKg) : "",
+      active: existing?.active ?? true,
     },
   });
 
@@ -111,6 +114,14 @@ export function TruckDialog({ existing, onClose }: { existing?: TruckView; onClo
             <Input {...props} {...register("capacityKg")} inputMode="numeric" placeholder="3500" />
           )}
         </Field>
+
+        {existing ? (
+          <ActiveToggle
+            {...register("active")}
+            label="Active"
+            hint="An inactive truck is kept on record but not offered."
+          />
+        ) : null}
       </form>
     </Dialog>
   );

@@ -38,6 +38,11 @@ const schema = z.object({
     .refine((value) => value === "" || isValidPhone(value), "Enter a valid phone number")
     .transform((value) => (value === "" ? undefined : value)),
   accountType: z.enum(["CUSTOMER", "EVENT_PLANNER"]),
+  gstin: z
+    .string()
+    .trim()
+    .max(20, "Maximum 20 characters")
+    .transform((value) => (value === "" ? undefined : value)),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -46,12 +51,8 @@ type FormOutput = z.output<typeof schema>;
 /**
  * Add or edit one customer account.
  *
- * There is no password field. A real StorefrontAccount is created by storefront
- * signup and carries a credential; an account raised from the back office, for
- * the customer who books by phone, has no obvious answer for that — an invite,
- * a temporary password, or no login at all. Rather than invent one, this asks
- * only for what the back office actually knows, and leaves the question for
- * whoever builds the endpoint.
+ * A back-office customer record: no password and no login. A storefront account is a separate
+ * record linked to it later, so this asks only for what staff know about someone who books by phone.
  */
 export function CustomerDialog({
   existing,
@@ -74,6 +75,7 @@ export function CustomerDialog({
       email: existing?.email ?? "",
       phone: existing?.phone ?? "",
       accountType: existing?.accountType ?? "CUSTOMER",
+      gstin: existing?.gstin ?? "",
     },
   });
 
@@ -146,17 +148,23 @@ export function CustomerDialog({
           </Field>
         </div>
 
-        <Field label="Account type" required error={errors.accountType?.message}>
-          {(props) => (
-            <Select {...props} {...register("accountType")}>
-              {ACCOUNT_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Account type" required error={errors.accountType?.message}>
+            {(props) => (
+              <Select {...props} {...register("accountType")}>
+                {ACCOUNT_TYPES.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+
+          <Field label="GSTIN" error={errors.gstin?.message}>
+            {(props) => <Input {...props} {...register("gstin")} placeholder="Optional" />}
+          </Field>
+        </div>
       </form>
     </Dialog>
   );

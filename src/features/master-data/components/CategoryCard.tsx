@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, EyeOff, Plus } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Plus } from "lucide-react";
 import type { CategoryView } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { cn } from "@/lib/utils";
@@ -26,12 +26,15 @@ export function CategoryCard({
   term,
   onEdit,
   onDeactivate,
+  onActivate,
 }: {
   category: CategoryView;
   term: string;
   /** Absent for a user who cannot write master data. */
   onEdit?: () => void;
   onDeactivate?: () => void;
+  /** Offered instead of Deactivate on an inactive category. */
+  onActivate?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -112,7 +115,7 @@ export function CategoryCard({
         )}
       </div>
 
-      {onEdit || onDeactivate ? (
+      {onEdit || onDeactivate || onActivate ? (
         <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
           {onDeactivate ? (
             <Button
@@ -124,6 +127,17 @@ export function CategoryCard({
             >
               <EyeOff />
               Deactivate
+            </Button>
+          ) : onActivate ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={onActivate}
+              aria-label={`Activate ${category.name}`}
+            >
+              <Eye />
+              Activate
             </Button>
           ) : (
             <span />

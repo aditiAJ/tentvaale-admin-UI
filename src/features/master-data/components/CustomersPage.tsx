@@ -2,10 +2,12 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Users } from "lucide-react";
+import { Pencil, Plus, Search, UserCheck, Users } from "lucide-react";
 import { listCustomers, masterDataKeys } from "@/features/master-data/api";
 import type { CustomerView } from "@/features/master-data/types";
 import { CustomerDialog } from "@/features/master-data/components/CustomerDialog";
+import { PlannerApplicationDialog } from "@/features/master-data/components/PlannerApplicationDialog";
+import { PlannerApplicationsPanel } from "@/features/master-data/components/PlannerApplicationsPanel";
 import { useCan } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -28,11 +30,26 @@ function matches(customer: CustomerView, term: string): boolean {
   return digits.length >= 3 && (customer.phone ?? "").replace(/\D/g, "").includes(digits);
 }
 
+/** Where a planner stands on trade pricing; plain customers have none. */
+function TradeStatus({ customer }: { customer: CustomerView }) {
+  if (customer.accountType !== "EVENT_PLANNER") return <span className="text-muted-foreground">—</span>;
+  const profile = customer.plannerProfile;
+  if (!profile) return <span className="text-xs text-muted-foreground">Not applied</span>;
+  if (profile.status === "APPROVED") return <Badge variant="success">Verified</Badge>;
+  if (profile.status === "PENDING") return <Badge variant="warning">Pending</Badge>;
+  return (
+    <Badge variant="destructive" title={profile.rejectionReason ?? undefined}>
+      Rejected
+    </Badge>
+  );
+}
+
 export function CustomersPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CustomerView | null>(null);
+  const [applying, setApplying] = useState<CustomerView | null>(null);
 
   // Filtered in the browser over the full list, like products; deferring the
   // term keeps typing responsive on a long one.
@@ -49,13 +66,13 @@ export function CustomersPage() {
     return (data ?? []).filter((customer) => matches(customer, term));
   }, [data, deferredSearch]);
 
-  const columns = canWrite ? 6 : 5;
+  const columns = canWrite ? 7 : 6;
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Customers"
-        description="The accounts that place orders through the storefront."
+        description="The people and event planners you quote and book orders for."
         actions={
           canWrite ? (
             <Button onClick={() => setCreating(true)}>
@@ -65,6 +82,8 @@ export function CustomersPage() {
           ) : null
         }
       />
+
+      <PlannerApplicationsPanel canWrite={canWrite} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
@@ -92,6 +111,7 @@ export function CustomersPage() {
                 <TH>Email</TH>
                 <TH>Phone</TH>
                 <TH>Type</TH>
+                <TH>Trade pricing</TH>
                 <TH>ID</TH>
                 {canWrite ? <TH className="text-right">Actions</TH> : null}
               </tr>
@@ -114,6 +134,9 @@ export function CustomersPage() {
                           {customer.accountType === "EVENT_PLANNER" ? "Event planner" : "Customer"}
                         </Badge>
                       </TD>
+                      <TD>
+                        <TradeStatus customer={customer} />
+                      </TD>
                       {/* The id is what quotations, orders, deposits and credit
                           notes store, and the credit-notes screen asks for it,
                           so it is shown rather than kept internal. */}
@@ -128,6 +151,18 @@ export function CustomersPage() {
                               leave those records pointing at nothing, with no
                               foreign key to notice. */}
                           <div className="flex justify-end">
+                            {customer.accountType === "EVENT_PLANNER" &&
+                            (!customer.plannerProfile || customer.plannerProfile.status === "REJECTED") ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setApplying(customer)}
+                                aria-label={`Submit planner application for ${customer.fullName}`}
+                                title="Submit planner application"
+                              >
+                                <UserCheck />
+                              </Button>
+                            ) : null}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -177,6 +212,7 @@ export function CustomersPage() {
 
       {creating ? <CustomerDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <CustomerDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {applying ? <PlannerApplicationDialog customer={applying} onClose={() => setApplying(null)} /> : null}
     </div>
   );
 }

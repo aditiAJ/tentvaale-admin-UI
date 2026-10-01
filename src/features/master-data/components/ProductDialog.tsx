@@ -177,11 +177,13 @@ export function ProductDialog({
 
   const attributeRows = useFieldArray({ control, name: "attributes" });
 
-  // The list returns active categories only. A product already filed under a
-  // category that has since been deactivated keeps it as an option — the mock
-  // accepts it unchanged — rather than having the picker silently reset it.
+  // Only active categories can take a product. One already filed under a
+  // category that has since been deactivated keeps it as an option, rather
+  // than having the picker silently reset it.
   const categoryOptions = useMemo(() => {
-    const list: CategoryView[] = [...(categories.data ?? [])];
+    const list: CategoryView[] = (categories.data ?? []).filter(
+      (category) => category.active || category.id === existing?.categoryId,
+    );
     if (
       existing?.categoryId &&
       categories.data &&

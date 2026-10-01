@@ -9,6 +9,7 @@ import { TruckDialog } from "@/features/master-data/components/TruckDialog";
 import { RowActions } from "@/features/master-data/components/RowActions";
 import { useCan } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -63,7 +64,12 @@ export function TrucksPage() {
               {!isPending && data
                 ? data.map((truck) => (
                     <TR key={truck.id}>
-                      <TD className="font-mono text-xs font-medium">{truck.registration}</TD>
+                      <TD className="font-mono text-xs font-medium">
+                        {truck.registration}
+                        {truck.active === false ? (
+                          <Badge className="ml-2 font-sans">Inactive</Badge>
+                        ) : null}
+                      </TD>
                       <TD className="text-right tabular">{capacity.format(truck.capacityKg)} kg</TD>
                       {canWrite ? (
                         <TD>

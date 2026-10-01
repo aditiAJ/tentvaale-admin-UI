@@ -1,9 +1,9 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Layers, Package, Pencil, Plus, Search } from "lucide-react";
-import { listProducts, masterDataKeys } from "@/features/master-data/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, EyeOff, Layers, Package, Pencil, Plus, Search } from "lucide-react";
+import { listProducts, masterDataKeys, setProductActive } from "@/features/master-data/api";
 import type { ProductView } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -48,6 +49,9 @@ export function ProductsPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
   const [managingVariants, setManagingVariants] = useState<ProductView | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [switching, setSwitching] = useState<ProductView | null>(null);
+  const queryClient = useQueryClient();
 
   // Actions is always shown: anyone who can see a product can see its variants.
   const columns = 8;
@@ -58,8 +62,8 @@ export function ProductsPage() {
   const deferredSearch = useDeferredValue(search);
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery({
-    queryKey: masterDataKeys.products,
-    queryFn: ({ signal }) => listProducts(signal),
+    queryKey: [...masterDataKeys.products, showInactive ? "all" : "active"],
+    queryFn: ({ signal }) => listProducts(signal, { includeInactive: showInactive }),
   });
 
   // Tags are free text, so the filter offers the ones the catalogue actually
@@ -122,6 +126,15 @@ export function ProductsPage() {
             </option>
           ))}
         </Select>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(event) => setShowInactive(event.target.checked)}
+            className="size-4 accent-[var(--primary)]"
+          />
+          Show inactive
+        </label>
         <p className="text-xs text-muted-foreground tabular" aria-live="polite">
           {isPending ? "Loading…" : `${visible.length} of ${data?.length ?? 0} products`}
           {isFetching && !isPending ? " · refreshing" : ""}
@@ -160,6 +173,9 @@ export function ProductsPage() {
                           <MediaThumb media={product.media} />
                           <div className="min-w-0">
                             <span className="font-medium">{product.name}</span>
+                            {product.active === false ? (
+                              <Badge className="ml-1.5 align-middle">Inactive</Badge>
+                            ) : null}
                             {product.hasVariants ? (
                               <Badge className="ml-1.5 align-middle tabular">
                                 {product.variants.length}{" "}
@@ -226,6 +242,17 @@ export function ProductsPage() {
                               <Pencil />
                             </Button>
                           ) : null}
+                          {canWrite ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSwitching(product)}
+                              aria-label={`${product.active === false ? "Activate" : "Deactivate"} ${product.name}`}
+                              title={product.active === false ? "Activate" : "Deactivate"}
+                            >
+                              {product.active === false ? <Eye /> : <EyeOff />}
+                            </Button>
+                          ) : null}
                         </div>
                       </TD>
                     </TR>
@@ -270,6 +297,25 @@ export function ProductsPage() {
 
       {creating ? <ProductDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <ProductDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {switching ? (
+        <ConfirmDialog
+          title={`${switching.active === false ? "Activate" : "Deactivate"} ${switching.name}?`}
+          description={
+            switching.active === false
+              ? "It returns to the product pickers and the storefront."
+              : "It stays on record, with its variants and stock, but leaves the product pickers and the storefront. Existing quotations and orders keep it."
+          }
+          confirmLabel={switching.active === false ? "Activate product" : "Deactivate product"}
+          destructive={switching.active !== false}
+          fallbackError="Could not change the product."
+          action={() => setProductActive(switching.id, switching.active === false)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: masterDataKeys.products });
+            setSwitching(null);
+          }}
+          onClose={() => setSwitching(null)}
+        />
+      ) : null}
       {managingVariants ? (
         <ProductVariantsDialog
           product={managingVariants}
