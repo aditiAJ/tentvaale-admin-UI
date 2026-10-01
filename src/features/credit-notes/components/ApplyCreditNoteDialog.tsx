@@ -39,7 +39,8 @@ export function ApplyCreditNoteDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const remaining = remainingCredit(note);
   const currency = note.amount.currency;
-  const eligible = orders.filter((order) => order.status !== "CANCELLED");
+  // Open orders only: not cancelled and not completed (the server enforces the same).
+  const eligible = orders.filter((order) => order.status !== "CANCELLED" && order.status !== "COMPLETED");
 
   const schema = z.object({
     orderId: z.string().min(1, "Choose an order"),
@@ -70,6 +71,7 @@ export function ApplyCreditNoteDialog({
     mutationFn: (values: FormOutput) => applyCreditNote(note.id, values),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: creditNoteKeys.byCustomer(note.customerId) });
+      queryClient.invalidateQueries({ queryKey: creditNoteKeys.list });
       queryClient.invalidateQueries({ queryKey: creditNoteKeys.balance(note.customerId) });
       toast.success(`Credit applied from ${updated.creditNoteNumber}`, {
         description: `${formatMoney({ amount: remainingCredit(updated), currency })} remains`,
@@ -114,8 +116,12 @@ export function ApplyCreditNoteDialog({
       >
         {formError ? <Alert tone="error" title={formError} /> : null}
         {eligible.length === 0 ? (
-          <Alert tone="warning" title="This customer has no order the credit can be applied to." />
-        ) : null}
+          <Alert tone="warning" title="This customer has no open order the credit can be applied to." />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Credit can go to confirmed, dispatched or returned orders. All credit on one order together cannot exceed its total.
+          </p>
+        )}
 
         <Field label="Order" required error={errors.orderId?.message}>
           {(props) => (

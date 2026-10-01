@@ -1,34 +1,42 @@
-import { apiFetch } from "@/services/api-client";
+import * as backend from "@/features/credit-notes/api/backend";
 import { IS_MOCK } from "@/services/data-source";
 import {
   mockApplyCreditNote,
   mockCancelCreditNote,
   mockGetCustomerCreditBalance,
   mockIssueCreditNote,
+  mockListAllCreditNotes,
   mockListCreditNotesByCustomer,
   mockReverseCreditNote,
 } from "@/mock-data/store";
 import type {
   ApplyCreditNoteRequest,
+  CreditNoteStatus,
   CreditNoteView,
   CustomerCreditBalance,
   IssueCreditNoteRequest,
 } from "@/features/credit-notes/types";
 
-const base = (customerId: string) =>
-  `/admin/credit-notes/by-customer/${encodeURIComponent(customerId)}`;
 
 /**
- * Real, and works in api mode — but only per customer. There is no
- * company-wide list, so "what credit is outstanding across the business?" is
- * a question the back office cannot ask; you look a customer up.
+ * Every credit note of the company, newest first, optionally narrowed by status and by text
+ * (note number, customer name, reason or order number). One request, not one per customer.
  */
+export function listCreditNotes(
+  options: { status?: CreditNoteStatus; q?: string } = {},
+  signal?: AbortSignal,
+): Promise<CreditNoteView[]> {
+  if (IS_MOCK) return mockListAllCreditNotes();
+  return backend.listCreditNotes(options, signal);
+}
+
+/** One customer's notes, newest first. */
 export function listCreditNotesByCustomer(
   customerId: string,
   signal?: AbortSignal,
 ): Promise<CreditNoteView[]> {
   if (IS_MOCK) return mockListCreditNotesByCustomer(customerId);
-  return apiFetch<CreditNoteView[]>(base(customerId), { signal });
+  return backend.listCreditNotesByCustomer(customerId, signal);
 }
 
 /** Sums what remains on the customer's ISSUED notes. */
@@ -37,49 +45,45 @@ export function getCustomerCreditBalance(
   signal?: AbortSignal,
 ): Promise<CustomerCreditBalance> {
   if (IS_MOCK) return mockGetCustomerCreditBalance(customerId);
-  return apiFetch<CustomerCreditBalance>(`${base(customerId)}/balance`, { signal });
+  return backend.getCustomerCreditBalance(customerId, signal);
 }
 
 /**
- * 404 for an unknown customer or order; 422 for an amount that is not
- * positive with at most two decimals, or an order of another customer.
+ * 404 for an unknown customer or order; 422 for an order of another customer, or an amount above
+ * the total of the order it is issued against (goodwill credit has no limit).
  */
 export function issueCreditNote(request: IssueCreditNoteRequest): Promise<CreditNoteView> {
   if (IS_MOCK) return mockIssueCreditNote(request);
-  return apiFetch<CreditNoteView>("/admin/credit-notes", { method: "POST", body: request });
+  return backend.issueCreditNote(request);
 }
 
-const note = (creditNoteId: string) => `/admin/credit-notes/${encodeURIComponent(creditNoteId)}`;
-
 /**
- * Apply, cancel and reverse have no endpoint on the real controller — they
- * follow the POST /{resource}/{id}/{action} shape of the deposit transitions
- * and 404 in api mode.
- *
- * Apply: 422 unless the note is ISSUED, the order is the same customer's and
- * not cancelled, and the amount is no more than what remains.
+ * Apply: 422 unless the note is ISSUED, the order is the same customer's and open (not cancelled,
+ * not completed), and the amount is no more than what remains on the note nor more than the room
+ * left on the order's total once all credit already applied to it is counted.
  */
 export function applyCreditNote(
   creditNoteId: string,
   request: ApplyCreditNoteRequest,
 ): Promise<CreditNoteView> {
   if (IS_MOCK) return mockApplyCreditNote(creditNoteId, request);
-  return apiFetch<CreditNoteView>(`${note(creditNoteId)}/apply`, { method: "POST", body: request });
+  return backend.applyCreditNote(creditNoteId, request);
 }
 
 /** 422 unless the note is ISSUED with nothing applied. */
 export function cancelCreditNote(creditNoteId: string): Promise<CreditNoteView> {
   if (IS_MOCK) return mockCancelCreditNote(creditNoteId);
-  return apiFetch<CreditNoteView>(`${note(creditNoteId)}/cancel`, { method: "POST" });
+  return backend.cancelCreditNote(creditNoteId);
 }
 
-/** 422 unless the note is ISSUED; what was applied stays applied. */
+/** 422 unless the note is ISSUED; what was applied stays applied. Administrators only (403 otherwise). */
 export function reverseCreditNote(creditNoteId: string): Promise<CreditNoteView> {
   if (IS_MOCK) return mockReverseCreditNote(creditNoteId);
-  return apiFetch<CreditNoteView>(`${note(creditNoteId)}/reverse`, { method: "POST" });
+  return backend.reverseCreditNote(creditNoteId);
 }
 
 export const creditNoteKeys = {
+  list: ["credit-notes", "list"] as const,
   byCustomer: (customerId: string) => ["credit-notes", "by-customer", customerId] as const,
   balance: (customerId: string) => ["credit-notes", "balance", customerId] as const,
 };

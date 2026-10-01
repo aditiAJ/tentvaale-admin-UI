@@ -37,6 +37,7 @@ export function CreditNoteActionDialog({
     mutationFn: () => (cancelling ? cancelCreditNote(note.id) : reverseCreditNote(note.id)),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: creditNoteKeys.byCustomer(note.customerId) });
+      queryClient.invalidateQueries({ queryKey: creditNoteKeys.list });
       queryClient.invalidateQueries({ queryKey: creditNoteKeys.balance(note.customerId) });
       toast.success(`${updated.creditNoteNumber} ${cancelling ? "cancelled" : "reversed"}`);
       onClose();

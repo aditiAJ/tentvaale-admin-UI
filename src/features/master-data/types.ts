@@ -289,6 +289,8 @@ export interface BundleView extends BundleStorefrontDetails {
    * Stored as ids, so renaming an occasion renames it on every bundle.
    */
   occasions: BundleOccasionRef[];
+  /** Inactive bundles stay on record but are not on the storefront. */
+  active?: boolean;
 }
 
 /**
@@ -341,6 +343,10 @@ export interface BundleStorefrontDetails {
   setupTime: string | null;
   /** At most BUNDLE_HIGHLIGHT_LIMIT short lines, in display order. */
   highlights: string[];
+  /** The real backend keeps the guest range and setup time as numbers; `guests` and `setupTime` are built from them. */
+  guestMin?: number | null;
+  guestMax?: number | null;
+  setupHours?: number | null;
 }
 
 export const BUNDLE_HIGHLIGHT_LIMIT = 6;
@@ -354,6 +360,19 @@ export interface BundleComponentView {
   quantity: number;
   /** False once the product itself is deactivated; it stays in the bundle. */
   active: boolean;
+  /** Set for a product that has variants: the one this line is. */
+  variantId?: string | null;
+  variantName?: string | null;
+  /** The only alternatives a customer may swap this line for (curated by staff). */
+  swapOptions?: BundleSwapView[];
+}
+
+/** One curated alternative for a bundle line. */
+export interface BundleSwapView {
+  productId: string;
+  productName: string;
+  variantId?: string | null;
+  variantName?: string | null;
 }
 
 /**
@@ -379,6 +398,8 @@ export interface FeaturedCollectionView {
   media: MediaAsset[];
   /** The occasions the storefront recommends it for — "Wedding", "Sangeet". */
   bestFor: string[];
+  /** The same occasions by id, for editing (real backend). */
+  occasionIds?: string[];
   /** Its colour story, as one line: "Crimson · Antique gold · Ivory". */
   palette: string | null;
   products: FeaturedCollectionProduct[];
@@ -548,10 +569,20 @@ export interface CreateBundleRequest extends BundleStorefrontDetails {
   /**
    * The complete component list. At least one; each product at most once —
    * adding more of a product means raising its quantity, not a second entry.
-   * On update, a product left out is removed from the bundle only.
+   * On update, a product left out is removed from the bundle only. A product with variants
+   * must name one; each line may list curated swap options.
    */
-  components: { productId: string; quantity: number }[];
-  rentalRate: number;
+  components: {
+    productId: string;
+    variantId?: string;
+    quantity: number;
+    swapOptions?: { productId: string; variantId?: string }[];
+  }[];
+  /**
+   * Ignored by the real backend: a bundle's price is derived from its items (ADR-005), so it is
+   * never typed in. Only the demo data still reads it.
+   */
+  rentalRate?: number;
   /** At most one image. On update, the full set to keep: an empty list removes it. */
   media: MediaAsset[];
   /**
@@ -571,6 +602,8 @@ export interface CreateFeaturedCollectionRequest {
   /** The hero: at most one image. On update, an empty list removes it. */
   media: MediaAsset[];
   bestFor: string[];
+  /** Occasion ids (real backend). When given, `bestFor` is ignored. */
+  occasionIds?: string[];
   palette?: string;
 }
 
@@ -592,3 +625,71 @@ export interface PlannerApplicationRequest {
 }
 
 export type UpdateCustomerRequest = CreateCustomerRequest;
+
+// ---------------------------------------------------------------------------
+// Price lists and payment setup (real backend only).
+// ---------------------------------------------------------------------------
+
+/** One explicit trade rate on a price list: a product, or one variant of it. */
+export interface PriceListItemView {
+  productId: string;
+  productName: string;
+  variantId: string | null;
+  variantName: string | null;
+  dailyRate: number;
+}
+
+/**
+ * Trade pricing for verified event planners. An explicit rate here wins; otherwise the default
+ * discount comes off the standard rate. Only an approved planner on an active list gets it.
+ */
+export interface PriceListView {
+  id: string;
+  name: string;
+  /** Percentage off the standard rate for products with no explicit rate, 0 to 100. */
+  defaultDiscountPercent: number;
+  active: boolean;
+  items: PriceListItemView[];
+}
+
+export interface PriceListRequest {
+  name: string;
+  defaultDiscountPercent: number;
+  active?: boolean;
+  /** The complete set of explicit rates; one per product (or variant). */
+  items: { productId: string; variantId?: string; dailyRate: number }[];
+}
+
+/** A way a customer can pay: Cash, UPI, Bank transfer. Switched off rather than deleted. */
+export interface PaymentModeView {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface PaymentModeRequest {
+  name: string;
+  active?: boolean;
+}
+
+/** One instalment of a payment-terms template, as a share of the total. */
+export interface PaymentTermsLine {
+  description: string;
+  percentage: number;
+}
+
+/** A reusable payment schedule, such as "50% on booking, 50% before the event". Lines add up to 100%. */
+export interface PaymentTermsView {
+  id: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  details: PaymentTermsLine[];
+}
+
+export interface PaymentTermsRequest {
+  name: string;
+  description?: string;
+  active?: boolean;
+  details: PaymentTermsLine[];
+}

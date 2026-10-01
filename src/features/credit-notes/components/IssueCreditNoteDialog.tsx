@@ -68,6 +68,7 @@ export function IssueCreditNoteDialog({
     mutationFn: (values: FormOutput) => issueCreditNote({ ...values, customerId: customer.id }),
     onSuccess: (note) => {
       queryClient.invalidateQueries({ queryKey: creditNoteKeys.byCustomer(customer.id) });
+      queryClient.invalidateQueries({ queryKey: creditNoteKeys.list });
       queryClient.invalidateQueries({ queryKey: creditNoteKeys.balance(customer.id) });
       toast.success(`${note.creditNoteNumber} issued`);
       onClose();
@@ -79,6 +80,14 @@ export function IssueCreditNoteDialog({
 
   const onSubmit = handleSubmit((values) => {
     setFormError(null);
+    // A note tied to an order cannot be worth more than that order (the server enforces it too).
+    const against = orders.find((order) => order.id === values.againstOrderId);
+    if (against && values.amount > Number(against.totalAmount.amount)) {
+      setFormError(
+        `A credit note issued against ${against.orderNumber} cannot be more than the order total of ${against.totalAmount.amount}`,
+      );
+      return;
+    }
     mutation.mutate(values);
   });
 

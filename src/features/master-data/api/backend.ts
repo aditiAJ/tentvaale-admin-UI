@@ -30,6 +30,25 @@ import type {
   WarehouseProductView,
   WarehouseView,
 } from "@/features/master-data/types";
+import type {
+  PaymentModeRequest,
+  PaymentModeView,
+  PaymentTermsRequest,
+  PaymentTermsView,
+  PriceListRequest,
+  PriceListView,
+} from "@/features/master-data/types";
+import type {
+  BundleOccasionView,
+  BundleView,
+  CreateBundleOccasionRequest,
+  CreateBundleRequest,
+  CreateFeaturedCollectionRequest,
+  FeaturedCollectionView,
+  UpdateBundleOccasionRequest,
+  UpdateBundleRequest,
+  UpdateFeaturedCollectionRequest,
+} from "@/features/master-data/types";
 
 /**
  * Real-backend side of master data: the wire shapes of MasterDataApi's admin
@@ -804,4 +823,488 @@ export async function updateTruck(truckId: string, request: UpdateTruckRequest):
 
 export function deleteTruck(truckId: string): Promise<void> {
   return apiFetch<void>(`${BASE}/trucks/${truckId}`, { method: "DELETE" });
+}
+
+// ------------------------------------------- occasions, bundles, featured collections
+
+interface WireOccasion {
+  id: number;
+  name: string;
+  slug: string;
+  displayOrder: number;
+  visible: boolean;
+  productCount: number;
+  bundleCount: number;
+}
+
+interface WireBundleSwap {
+  productId: number;
+  productName: string;
+  variantId?: number | null;
+  variantName?: string | null;
+}
+
+interface WireBundleItem {
+  productId: number;
+  productName: string;
+  variantId?: number | null;
+  variantName?: string | null;
+  quantity: number;
+  productActive: boolean;
+  swapOptions: WireBundleSwap[];
+}
+
+interface WireBundle {
+  id: number;
+  name: string;
+  tagline?: string | null;
+  description?: string | null;
+  guestMin?: number | null;
+  guestMax?: number | null;
+  setupHours?: number | null;
+  imageUrl?: string | null;
+  active: boolean;
+  highlights: string[];
+  occasionIds: number[];
+  items: WireBundleItem[];
+  fromPricePerEvent: number;
+}
+
+interface WireCollection {
+  id: number;
+  name: string;
+  description?: string | null;
+  palette?: string | null;
+  imageUrl?: string | null;
+  active: boolean;
+  occasionIds: number[];
+  products: { productId: number; sku: string; name: string; imageUrl?: string | null; productActive: boolean }[];
+}
+
+function fetchOccasions(signal?: AbortSignal): Promise<WireOccasion[]> {
+  return apiFetch<WireOccasion[]>(`${BASE}/occasions`, { signal });
+}
+
+function occasionFromWire(occasion: WireOccasion): BundleOccasionView {
+  return {
+    id: String(occasion.id),
+    companyId: companyId(),
+    name: occasion.name,
+    active: occasion.visible,
+    // The screens count positions from 1; the backend from 0.
+    sortOrder: occasion.displayOrder + 1,
+    bundleCount: occasion.bundleCount,
+  };
+}
+
+const occasionsById = (rows: WireOccasion[]) => new Map(rows.map((row) => [row.id, row]));
+
+export async function listBundleOccasions(signal?: AbortSignal): Promise<BundleOccasionView[]> {
+  return (await fetchOccasions(signal)).map(occasionFromWire);
+}
+
+export async function createBundleOccasion(
+  request: CreateBundleOccasionRequest,
+): Promise<BundleOccasionView> {
+  const created = await apiFetch<WireOccasion>(`${BASE}/occasions`, {
+    method: "POST",
+    body: { name: request.name },
+  });
+  return occasionFromWire(created);
+}
+
+export async function updateBundleOccasion(
+  occasionId: string,
+  request: UpdateBundleOccasionRequest,
+): Promise<BundleOccasionView> {
+  // Leaving the position out would move the occasion to the front, so it is sent back unchanged.
+  const current = (await fetchOccasions()).find((row) => String(row.id) === occasionId);
+  const updated = await apiFetch<WireOccasion>(`${BASE}/occasions/${occasionId}`, {
+    method: "PUT",
+    body: { name: request.name, displayOrder: current?.displayOrder },
+  });
+  return occasionFromWire(updated);
+}
+
+/** Hiding keeps the occasion on its bundles and products; it only leaves the storefront's filter row. */
+export async function setBundleOccasionActive(
+  occasionId: string,
+  active: boolean,
+): Promise<BundleOccasionView> {
+  const changed = await apiFetch<WireOccasion>(
+    `${BASE}/occasions/${occasionId}/${active ? "show" : "hide"}`,
+    { method: "POST" },
+  );
+  return occasionFromWire(changed);
+}
+
+/** One write per occasion whose position changed, so reordering is a short run of small saves. */
+export async function reorderBundleOccasions(occasionIds: string[]): Promise<BundleOccasionView[]> {
+  const byId = new Map((await fetchOccasions()).map((row) => [String(row.id), row]));
+  for (const [index, id] of occasionIds.entries()) {
+    const row = byId.get(id);
+    if (row && row.displayOrder !== index) {
+      await apiFetch<WireOccasion>(`${BASE}/occasions/${id}`, {
+        method: "PUT",
+        body: { name: row.name, displayOrder: index },
+      });
+    }
+  }
+  return listBundleOccasions();
+}
+
+function guestsLabel(min?: number | null, max?: number | null): string | null {
+  if (min != null && max != null) return min === max ? String(min) : `${min}–${max}`;
+  if (min != null) return `${min}+`;
+  if (max != null) return `up to ${max}`;
+  return null;
+}
+
+function setupLabel(hours?: number | null): string | null {
+  return hours == null ? null : `${hours} ${Number(hours) === 1 ? "hour" : "hours"}`;
+}
+
+function bundleFromWire(bundle: WireBundle, occasions: Map<number, WireOccasion>): BundleView {
+  return {
+    id: String(bundle.id),
+    companyId: companyId(),
+    name: bundle.name,
+    active: bundle.active,
+    tagline: bundle.tagline ?? null,
+    description: bundle.description ?? null,
+    guests: guestsLabel(bundle.guestMin, bundle.guestMax),
+    setupTime: setupLabel(bundle.setupHours),
+    guestMin: bundle.guestMin ?? null,
+    guestMax: bundle.guestMax ?? null,
+    setupHours: bundle.setupHours == null ? null : Number(bundle.setupHours),
+    highlights: bundle.highlights,
+    components: bundle.items.map((item) => ({
+      productId: String(item.productId),
+      productName: item.productName,
+      sku: "",
+      quantity: item.quantity,
+      active: item.productActive,
+      variantId: item.variantId == null ? null : String(item.variantId),
+      variantName: item.variantName ?? null,
+      swapOptions: item.swapOptions.map((swap) => ({
+        productId: String(swap.productId),
+        productName: swap.productName,
+        variantId: swap.variantId == null ? null : String(swap.variantId),
+        variantName: swap.variantName ?? null,
+      })),
+    })),
+    // Derived from the items on the backend, never typed in (ADR-005): "from ₹X per event".
+    rentalRate: money(bundle.fromPricePerEvent),
+    media: bundle.imageUrl ? [mediaFromUrl(bundle.imageUrl)] : [],
+    occasions: bundle.occasionIds.flatMap((id) => {
+      const occasion = occasions.get(id);
+      return occasion ? [{ id: String(id), name: occasion.name, active: occasion.visible }] : [];
+    }),
+  };
+}
+
+function bundleBody(request: CreateBundleRequest) {
+  return {
+    name: request.name,
+    tagline: request.tagline || undefined,
+    description: request.description || undefined,
+    guestMin: request.guestMin ?? undefined,
+    guestMax: request.guestMax ?? undefined,
+    setupHours: request.setupHours ?? undefined,
+    imageUrl: request.media[0]?.url || undefined,
+    highlights: request.highlights,
+    occasionIds: request.occasionIds.map(Number),
+    items: request.components.map((component) => ({
+      productId: Number(component.productId),
+      variantId: component.variantId ? Number(component.variantId) : undefined,
+      quantity: component.quantity,
+      swapOptions: (component.swapOptions ?? []).map((swap) => ({
+        productId: Number(swap.productId),
+        variantId: swap.variantId ? Number(swap.variantId) : undefined,
+      })),
+    })),
+  };
+}
+
+export async function listBundles(signal?: AbortSignal): Promise<BundleView[]> {
+  const [rows, occasions] = await Promise.all([
+    apiFetch<WireBundle[]>(`${BASE}/bundles`, { signal }),
+    fetchOccasions(signal),
+  ]);
+  const byId = occasionsById(occasions);
+  return rows.map((row) => bundleFromWire(row, byId));
+}
+
+export async function createBundle(request: CreateBundleRequest): Promise<BundleView> {
+  const created = await apiFetch<WireBundle>(`${BASE}/bundles`, {
+    method: "POST",
+    body: bundleBody(request),
+  });
+  return bundleFromWire(created, occasionsById(await fetchOccasions()));
+}
+
+export async function updateBundle(
+  bundleId: string,
+  request: UpdateBundleRequest,
+): Promise<BundleView> {
+  const updated = await apiFetch<WireBundle>(`${BASE}/bundles/${bundleId}`, {
+    method: "PUT",
+    body: bundleBody(request),
+  });
+  return bundleFromWire(updated, occasionsById(await fetchOccasions()));
+}
+
+/** Inactive bundles stay on record but leave the storefront. */
+export async function setBundleActive(bundleId: string, active: boolean): Promise<BundleView> {
+  const changed = await apiFetch<WireBundle>(
+    `${BASE}/bundles/${bundleId}/${active ? "activate" : "deactivate"}`,
+    { method: "POST" },
+  );
+  return bundleFromWire(changed, occasionsById(await fetchOccasions()));
+}
+
+export function deleteBundle(bundleId: string): Promise<void> {
+  return apiFetch<void>(`${BASE}/bundles/${bundleId}`, { method: "DELETE" });
+}
+
+function collectionFromWire(
+  collection: WireCollection,
+  occasions: Map<number, WireOccasion>,
+): FeaturedCollectionView {
+  return {
+    id: String(collection.id),
+    companyId: companyId(),
+    name: collection.name,
+    description: collection.description ?? null,
+    active: collection.active,
+    media: collection.imageUrl ? [mediaFromUrl(collection.imageUrl)] : [],
+    bestFor: collection.occasionIds.flatMap((id) => {
+      const occasion = occasions.get(id);
+      return occasion ? [occasion.name] : [];
+    }),
+    occasionIds: collection.occasionIds.map(String),
+    palette: collection.palette ?? null,
+    products: collection.products.map((product) => ({
+      productId: String(product.productId),
+      name: product.name,
+      sku: product.sku,
+      imageUrl: product.imageUrl ?? null,
+      active: product.productActive,
+    })),
+  };
+}
+
+function collectionBody(request: CreateFeaturedCollectionRequest) {
+  return {
+    name: request.name,
+    description: request.description || undefined,
+    palette: request.palette || undefined,
+    imageUrl: request.media[0]?.url || undefined,
+    productIds: request.productIds.map(Number),
+    occasionIds: (request.occasionIds ?? []).map(Number),
+  };
+}
+
+export async function listFeaturedCollections(signal?: AbortSignal): Promise<FeaturedCollectionView[]> {
+  const [rows, occasions] = await Promise.all([
+    apiFetch<WireCollection[]>(`${BASE}/featured-collections`, { signal }),
+    fetchOccasions(signal),
+  ]);
+  const byId = occasionsById(occasions);
+  return rows.map((row) => collectionFromWire(row, byId));
+}
+
+export async function createFeaturedCollection(
+  request: CreateFeaturedCollectionRequest,
+): Promise<FeaturedCollectionView> {
+  const created = await apiFetch<WireCollection>(`${BASE}/featured-collections`, {
+    method: "POST",
+    body: collectionBody(request),
+  });
+  return collectionFromWire(created, occasionsById(await fetchOccasions()));
+}
+
+/** Replaces the product list and the occasions in full. */
+export async function updateFeaturedCollection(
+  collectionId: string,
+  request: UpdateFeaturedCollectionRequest,
+): Promise<FeaturedCollectionView> {
+  const updated = await apiFetch<WireCollection>(`${BASE}/featured-collections/${collectionId}`, {
+    method: "PUT",
+    body: collectionBody(request),
+  });
+  return collectionFromWire(updated, occasionsById(await fetchOccasions()));
+}
+
+export async function setFeaturedCollectionActive(
+  collectionId: string,
+  active: boolean,
+): Promise<FeaturedCollectionView> {
+  const changed = await apiFetch<WireCollection>(
+    `${BASE}/featured-collections/${collectionId}/${active ? "activate" : "deactivate"}`,
+    { method: "POST" },
+  );
+  return collectionFromWire(changed, occasionsById(await fetchOccasions()));
+}
+
+// ------------------------------------------ price lists, payment setup, company
+
+interface WirePriceListItem {
+  productId: number;
+  productName: string;
+  variantId?: number | null;
+  variantName?: string | null;
+  dailyRate: number;
+}
+
+interface WirePriceList {
+  id: number;
+  name: string;
+  defaultDiscountPercent: number;
+  active: boolean;
+  items: WirePriceListItem[];
+}
+
+interface WirePaymentTerms {
+  id: number;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  details: { description: string; percentage: number }[];
+}
+
+function priceListFromWire(list: WirePriceList): PriceListView {
+  return {
+    id: String(list.id),
+    name: list.name,
+    defaultDiscountPercent: Number(list.defaultDiscountPercent),
+    active: list.active,
+    items: list.items.map((item) => ({
+      productId: String(item.productId),
+      productName: item.productName,
+      variantId: item.variantId == null ? null : String(item.variantId),
+      variantName: item.variantName ?? null,
+      dailyRate: Number(item.dailyRate),
+    })),
+  };
+}
+
+function priceListItemsBody(request: PriceListRequest) {
+  return request.items.map((item) => ({
+    productId: Number(item.productId),
+    variantId: item.variantId ? Number(item.variantId) : undefined,
+    dailyRate: item.dailyRate,
+  }));
+}
+
+export async function listPriceLists(signal?: AbortSignal): Promise<PriceListView[]> {
+  const rows = await apiFetch<WirePriceList[]>(`${BASE}/price-lists`, { signal });
+  return rows.map(priceListFromWire);
+}
+
+/** Two calls: the list itself, then its explicit rates. A failure in the second leaves the list saved without rates. */
+export async function createPriceList(request: PriceListRequest): Promise<PriceListView> {
+  const created = await apiFetch<WirePriceList>(`${BASE}/price-lists`, {
+    method: "POST",
+    body: { name: request.name, defaultDiscountPercent: request.defaultDiscountPercent },
+  });
+  const withItems = await apiFetch<WirePriceList>(`${BASE}/price-lists/${created.id}/items`, {
+    method: "PUT",
+    body: priceListItemsBody(request),
+  });
+  return priceListFromWire(withItems);
+}
+
+export async function updatePriceList(
+  priceListId: string,
+  request: PriceListRequest,
+): Promise<PriceListView> {
+  await apiFetch<WirePriceList>(`${BASE}/price-lists/${priceListId}`, {
+    method: "PUT",
+    body: {
+      name: request.name,
+      defaultDiscountPercent: request.defaultDiscountPercent,
+      active: request.active,
+    },
+  });
+  const withItems = await apiFetch<WirePriceList>(`${BASE}/price-lists/${priceListId}/items`, {
+    method: "PUT",
+    body: priceListItemsBody(request),
+  });
+  return priceListFromWire(withItems);
+}
+
+/** Puts an event planner on a price list, or off every list with null. 422 for a plain customer. */
+export async function assignPriceList(customerId: string, priceListId: string | null): Promise<void> {
+  await apiFetch<unknown>(`${BASE}/customers/${customerId}/price-list`, {
+    method: "PUT",
+    body: { priceListId: priceListId === null ? null : Number(priceListId) },
+  });
+}
+
+export function listPaymentModes(signal?: AbortSignal): Promise<PaymentModeView[]> {
+  return apiFetch<{ id: number; name: string; active: boolean }[]>(`${BASE}/payment-modes`, {
+    signal,
+  }).then((rows) => rows.map((row) => ({ id: String(row.id), name: row.name, active: row.active })));
+}
+
+export async function createPaymentMode(request: PaymentModeRequest): Promise<PaymentModeView> {
+  const created = await apiFetch<{ id: number; name: string; active: boolean }>(`${BASE}/payment-modes`, {
+    method: "POST",
+    body: { name: request.name },
+  });
+  return { id: String(created.id), name: created.name, active: created.active };
+}
+
+export async function updatePaymentMode(
+  modeId: string,
+  request: PaymentModeRequest,
+): Promise<PaymentModeView> {
+  const updated = await apiFetch<{ id: number; name: string; active: boolean }>(
+    `${BASE}/payment-modes/${modeId}`,
+    { method: "PUT", body: { name: request.name, active: request.active } },
+  );
+  return { id: String(updated.id), name: updated.name, active: updated.active };
+}
+
+function termsFromWire(terms: WirePaymentTerms): PaymentTermsView {
+  return {
+    id: String(terms.id),
+    name: terms.name,
+    description: terms.description ?? null,
+    active: terms.active,
+    details: terms.details.map((line) => ({
+      description: line.description,
+      percentage: Number(line.percentage),
+    })),
+  };
+}
+
+export async function listPaymentTerms(signal?: AbortSignal): Promise<PaymentTermsView[]> {
+  const rows = await apiFetch<WirePaymentTerms[]>(`${BASE}/payment-terms`, { signal });
+  return rows.map(termsFromWire);
+}
+
+export async function createPaymentTerms(request: PaymentTermsRequest): Promise<PaymentTermsView> {
+  const created = await apiFetch<WirePaymentTerms>(`${BASE}/payment-terms`, {
+    method: "POST",
+    body: { name: request.name, description: request.description || undefined, details: request.details },
+  });
+  return termsFromWire(created);
+}
+
+export async function updatePaymentTerms(
+  termsId: string,
+  request: PaymentTermsRequest,
+): Promise<PaymentTermsView> {
+  const updated = await apiFetch<WirePaymentTerms>(`${BASE}/payment-terms/${termsId}`, {
+    method: "PUT",
+    body: {
+      name: request.name,
+      description: request.description || undefined,
+      active: request.active,
+      details: request.details,
+    },
+  });
+  return termsFromWire(updated);
 }

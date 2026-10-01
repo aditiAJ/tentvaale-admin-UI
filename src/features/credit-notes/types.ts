@@ -23,8 +23,11 @@ export const LIVE_STATUSES: CreditNoteStatus[] = ["ISSUED"];
 export interface CreditNoteApplicationView {
   id: string;
   orderId: string;
+  /** The order's number, resolved by the real backend. */
+  orderNumber?: string;
   amount: Money;
   appliedOn: string;
+  appliedBy?: string;
 }
 
 /** Mirrors com.tentvaale.creditnote.api.CreditNoteView, plus the applications
@@ -34,11 +37,18 @@ export interface CreditNoteView {
   companyId: string;
   creditNoteNumber: string;
   customerId: string;
+  /** The customer's name, resolved by the real backend. */
+  customerName?: string;
   /** A note may be issued against an order, or stand alone as goodwill credit. */
   againstOrderId: string | null;
+  againstOrderNumber?: string | null;
   amount: Money;
   /** The sum of `applications`. Never more than `amount`. */
   appliedAmount: Money;
+  /** What a reversal withdrew (the unused part at that moment). Real backend only. */
+  reversedAmount?: Money;
+  /** What can still be applied: zero unless the note is ISSUED. Real backend only. */
+  remaining?: Money;
   applications: CreditNoteApplicationView[];
   status: CreditNoteStatus;
   issuedOn: string;

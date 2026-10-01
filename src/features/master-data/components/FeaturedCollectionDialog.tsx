@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createFeaturedCollection,
+  listBundleOccasions,
   listProducts,
   masterDataKeys,
   updateFeaturedCollection,
@@ -19,8 +20,7 @@ import {
   type MediaAsset,
 } from "@/features/master-data/types";
 import { MediaField } from "@/features/master-data/components/MediaField";
-import { OCCASIONS } from "@/features/master-data/storefront";
-import { TagInput } from "@/components/ui/tag-input";
+import { ToggleChips } from "@/components/ui/tag-input";
 import { ApiError } from "@/services/api-client";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ const FORM_ID = "featured-collection-form";
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(150, "Maximum 150 characters"),
   description: z.string().trim().max(500, "Maximum 500 characters"),
-  bestFor: z.array(z.string()).max(8, "At most 8 occasions"),
+  occasionIds: z.array(z.string()).max(6, "At most 6 occasions"),
   palette: z.string().trim().max(120, "Maximum 120 characters"),
   products: z
     .array(z.object({ productId: z.string() }))
@@ -78,13 +78,28 @@ export function FeaturedCollectionDialog({
     defaultValues: {
       name: existing?.name ?? "",
       description: existing?.description ?? "",
-      bestFor: existing?.bestFor ?? [],
+      occasionIds: existing?.occasionIds ?? [],
       palette: existing?.palette ?? "",
       products: (existing?.products ?? []).map((product) => ({ productId: product.productId })),
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "products" });
+
+  const occasions = useQuery({
+    queryKey: masterDataKeys.bundleOccasions,
+    queryFn: ({ signal }) => listBundleOccasions(signal),
+  });
+  const pickedOccasions = useWatch({ control, name: "occasionIds" });
+  // Shown occasions can be picked; a hidden one only while the collection already has it.
+  const occasionOptions = (occasions.data ?? []).filter(
+    (occasion) => occasion.active || pickedOccasions.includes(occasion.id),
+  );
+  const occasionLabel = (occasionId: string) => {
+    const occasion = occasions.data?.find((candidate) => candidate.id === occasionId);
+    if (!occasion) return occasionId;
+    return occasion.active ? occasion.name : `${occasion.name} (hidden)`;
+  };
 
   // The catalogue lists active products only, so a product that was deactivated
   // after joining the collection is labelled from the collection's own copy.
@@ -109,7 +124,8 @@ export function FeaturedCollectionDialog({
         description: values.description,
         productIds: values.products.map((entry) => entry.productId),
         media,
-        bestFor: values.bestFor,
+        bestFor: [],
+        occasionIds: values.occasionIds,
         palette: values.palette,
       };
       return existing
@@ -185,18 +201,19 @@ export function FeaturedCollectionDialog({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Best for" error={errors.bestFor?.message}>
+          <Field label="Best for" error={errors.occasionIds?.message}>
             {(props) => (
               <Controller
                 control={control}
-                name="bestFor"
+                name="occasionIds"
                 render={({ field }) => (
-                  <TagInput
-                    {...props}
+                  <ToggleChips
+                    id={props.id}
+                    aria-label="Best for"
+                    options={occasionOptions.map((occasion) => occasion.id)}
+                    labelFor={occasionLabel}
                     value={field.value}
                     onChange={field.onChange}
-                    suggestions={OCCASIONS}
-                    placeholder="Wedding, Reception"
                     disabled={mutation.isPending}
                   />
                 )}

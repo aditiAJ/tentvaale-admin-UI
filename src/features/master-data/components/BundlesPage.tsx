@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Shapes, Tags } from "lucide-react";
-import { deleteBundle, listBundles, masterDataKeys } from "@/features/master-data/api";
+import { Eye, EyeOff, Plus, Shapes, Tags } from "lucide-react";
+import {
+  deleteBundle,
+  listBundles,
+  masterDataKeys,
+  setBundleActive,
+} from "@/features/master-data/api";
 import type { BundleView } from "@/features/master-data/types";
 import { BundleDialog } from "@/features/master-data/components/BundleDialog";
 import { BundleOccasionsDialog } from "@/features/master-data/components/BundleOccasionsDialog";
@@ -36,6 +41,7 @@ export function BundlesPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<BundleView | null>(null);
   const [removing, setRemoving] = useState<BundleView | null>(null);
+  const [switching, setSwitching] = useState<BundleView | null>(null);
   const [managingOccasions, setManagingOccasions] = useState(false);
 
   const { data, isPending, isError, error, refetch } = useQuery({
@@ -50,7 +56,7 @@ export function BundlesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Bundles"
-        description="Pre-priced groups of products quoted as a single line."
+        description="Groups of products offered together. The price is worked out from the products."
         actions={
           <>
             <Button variant="outline" onClick={() => setManagingOccasions(true)}>
@@ -74,7 +80,7 @@ export function BundlesPage() {
               <tr>
                 <TH>Name</TH>
                 <TH>Products</TH>
-                <TH className="text-right">Rental rate</TH>
+                <TH className="text-right">Price (from, per event)</TH>
                 {canWrite ? <TH className="text-right">Actions</TH> : null}
               </tr>
             </THead>
@@ -89,6 +95,9 @@ export function BundlesPage() {
                           <MediaThumb media={bundle.media} />
                           <div className="min-w-0">
                             <span className="font-medium">{bundle.name}</span>
+                            {bundle.active === false ? (
+                              <Badge className="ml-2 align-middle">Inactive</Badge>
+                            ) : null}
                             {bundleFacts(bundle) ? (
                               <p className="text-xs text-muted-foreground">{bundleFacts(bundle)}</p>
                             ) : null}
@@ -112,20 +121,17 @@ export function BundlesPage() {
                         <div className="flex flex-wrap gap-1">
                           {bundle.components.map((component) => (
                             <Badge
-                              key={component.productId}
+                              key={`${component.productId}:${component.variantId ?? ""}`}
                               variant="outline"
                               className={component.active ? undefined : "opacity-60"}
-                              title={
-                                component.active
-                                  ? component.sku
-                                  : `${component.sku} · inactive product`
-                              }
+                              title={component.active ? undefined : "Inactive product"}
                             >
                               <MediaThumb
                                 media={productMedia.get(component.productId)}
                                 className="size-4 rounded-full border-0"
                               />
                               {component.productName}
+                              {component.variantName ? ` (${component.variantName})` : ""}
                               <span className="tabular text-muted-foreground">
                                 × {component.quantity}
                               </span>
@@ -136,11 +142,22 @@ export function BundlesPage() {
                       <TD className="text-right tabular">{formatMoney(bundle.rentalRate)}</TD>
                       {canWrite ? (
                         <TD>
-                          <RowActions
-                            label={bundle.name}
-                            onEdit={() => setEditing(bundle)}
-                            onRemove={() => setRemoving(bundle)}
-                          />
+                          <div className="flex items-center justify-end">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setSwitching(bundle)}
+                              aria-label={`${bundle.active === false ? "Activate" : "Deactivate"} ${bundle.name}`}
+                              title={bundle.active === false ? "Activate" : "Deactivate"}
+                            >
+                              {bundle.active === false ? <Eye /> : <EyeOff />}
+                            </Button>
+                            <RowActions
+                              label={bundle.name}
+                              onEdit={() => setEditing(bundle)}
+                              onRemove={() => setRemoving(bundle)}
+                            />
+                          </div>
                         </TD>
                       ) : null}
                     </TR>
@@ -183,6 +200,25 @@ export function BundlesPage() {
       ) : null}
       {creating ? <BundleDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <BundleDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {switching ? (
+        <ConfirmDialog
+          title={`${switching.active === false ? "Activate" : "Deactivate"} ${switching.name}?`}
+          description={
+            switching.active === false
+              ? "It returns to the storefront."
+              : "It stays on record but leaves the storefront. Nothing already quoted or ordered is affected."
+          }
+          confirmLabel={switching.active === false ? "Activate bundle" : "Deactivate bundle"}
+          destructive={switching.active !== false}
+          fallbackError="Could not change the bundle."
+          action={() => setBundleActive(switching.id, switching.active === false)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: masterDataKeys.bundles });
+            setSwitching(null);
+          }}
+          onClose={() => setSwitching(null)}
+        />
+      ) : null}
       {removing ? (
         <ConfirmDialog
           title={`Delete ${removing.name}?`}

@@ -17,7 +17,7 @@ const COLUMNS = 4;
 export function AvailabilityPage() {
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: inventoryKeys.availability,
-    queryFn: () => deriveAvailability(),
+    queryFn: ({ signal }) => deriveAvailability(signal),
     retry: false,
   });
   const productMedia = useProductMedia();

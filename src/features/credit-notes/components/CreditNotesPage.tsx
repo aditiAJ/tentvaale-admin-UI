@@ -2,9 +2,9 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Plus, Receipt, SearchX } from "lucide-react";
-import { creditNoteKeys, listCreditNotesByCustomer } from "@/features/credit-notes/api";
+import { creditNoteKeys, listCreditNotes } from "@/features/credit-notes/api";
 import {
   remainingCredit,
   type CreditNoteStatus,
@@ -71,6 +71,8 @@ interface ListedNote {
  */
 export function CreditNotesPage({ noteId, status }: { noteId: string; status: string }) {
   const canWrite = useCan("CREDIT_NOTE_WRITE");
+  // Withdrawing what is left of a note is administrator-only.
+  const canReverse = useCan("CREDIT_NOTE_REVERSE");
   const filter = FILTERS.find((candidate) => candidate.key === status.toLowerCase()) ?? FILTERS[0];
   const [search, setSearch] = useState("");
   const [issuing, setIssuing] = useState(false);
@@ -84,23 +86,13 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
     queryFn: ({ signal }) => listCustomers(signal),
   });
 
-  // Fresh on every visit, like the other workspaces: a note issued or applied
-  // a moment ago changes the list and its counts.
-  const perCustomer = useQueries({
-    queries: (customers.data ?? []).map((customer) => ({
-      queryKey: creditNoteKeys.byCustomer(customer.id),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        listCreditNotesByCustomer(customer.id, signal),
-      staleTime: 0,
-      retry: false,
-    })),
-    combine: (results) => ({
-      notes: results.every((result) => result.data)
-        ? results.flatMap((result) => result.data ?? [])
-        : undefined,
-      error: results.find((result) => result.error)?.error ?? null,
-      refetch: () => results.forEach((result) => void result.refetch()),
-    }),
+  // One request for every note. Fresh on every visit, like the other workspaces: a note issued or
+  // applied a moment ago changes the list and its counts.
+  const allNotes = useQuery({
+    queryKey: creditNoteKeys.list,
+    queryFn: ({ signal }) => listCreditNotes({}, signal),
+    staleTime: 0,
+    retry: false,
   });
 
   // Only for showing order numbers rather than ids.
@@ -116,17 +108,17 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
   const orderNumber = (orderId: string) => orderNumbers.get(orderId) ?? orderId;
 
   const listed = useMemo<ListedNote[] | undefined>(() => {
-    if (!customers.data || !perCustomer.notes) return undefined;
+    if (!customers.data || !allNotes.data) return undefined;
     const byId = new Map(customers.data.map((customer) => [customer.id, customer]));
     // Newest first, as each customer's list already comes.
-    return [...perCustomer.notes]
+    return [...allNotes.data]
       .sort(
         (a, b) =>
           Date.parse(b.issuedOn) - Date.parse(a.issuedOn) ||
           b.creditNoteNumber.localeCompare(a.creditNoteNumber),
       )
       .map((note) => ({ note, customer: byId.get(note.customerId) }));
-  }, [customers.data, perCustomer.notes]);
+  }, [customers.data, allNotes.data]);
 
   const counts = useMemo(() => {
     const byStatus = new Map<string, number>();
@@ -136,14 +128,17 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
     return byStatus;
   }, [listed]);
 
-  const error = customers.error ?? perCustomer.error;
+  const error = customers.error ?? allNotes.error;
   const isPending = !listed && !error;
   const open = noteId ? listed?.find(({ note }) => note.id === noteId) : undefined;
 
   const actionsFor = {
     onApply: (note: CreditNoteView) => setApplying(note),
     onCancel: (note: CreditNoteView) => setActing({ action: "cancel", note }),
-    onReverse: (note: CreditNoteView) => setActing({ action: "reverse", note }),
+    // Absent for anyone but an administrator, so the button is not offered at all.
+    onReverse: canReverse
+      ? (note: CreditNoteView) => setActing({ action: "reverse", note })
+      : undefined,
   };
 
   return (
@@ -182,7 +177,7 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
               canWrite={canWrite}
               onApply={() => actionsFor.onApply(open.note)}
               onCancel={() => actionsFor.onCancel(open.note)}
-              onReverse={() => actionsFor.onReverse(open.note)}
+              onReverse={actionsFor.onReverse ? () => actionsFor.onReverse?.(open.note) : undefined}
             />
           ) : isPending ? (
             <Skeleton className="h-64" />
@@ -205,7 +200,7 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
             listed={listed}
             isPending={isPending}
             error={error}
-            onRetry={() => (customers.error ? customers.refetch() : perCustomer.refetch())}
+            onRetry={() => (customers.error ? customers.refetch() : allNotes.refetch())}
             filter={filter}
             search={search}
             onSearch={setSearch}
@@ -264,7 +259,7 @@ function CreditNoteList({
   canWrite: boolean;
   onApply: (note: CreditNoteView) => void;
   onCancel: (note: CreditNoteView) => void;
-  onReverse: (note: CreditNoteView) => void;
+  onReverse?: (note: CreditNoteView) => void;
 }) {
   const deferredSearch = useDeferredValue(search);
   const term = deferredSearch.trim().toLowerCase();
@@ -362,7 +357,7 @@ function CreditNoteList({
                   canWrite={canWrite}
                   onApply={() => onApply(note)}
                   onCancel={() => onCancel(note)}
-                  onReverse={() => onReverse(note)}
+                  onReverse={onReverse ? () => onReverse(note) : undefined}
                 />
               </li>
             ))}
@@ -395,11 +390,11 @@ function CreditNoteRow({
   canWrite: boolean;
   onApply: () => void;
   onCancel: () => void;
-  onReverse: () => void;
+  onReverse?: () => void;
 }) {
   const currency = note.amount.currency;
   const remaining = { amount: remainingCredit(note), currency };
-  const name = customer?.fullName ?? note.customerId;
+  const name = customer?.fullName ?? note.customerName ?? note.customerId;
   const live = note.status === "ISSUED";
   const unused = Number(note.appliedAmount.amount) === 0;
 
@@ -471,9 +466,9 @@ function CreditNoteRow({
               Cancel
             </Button>
           ) : null}
-          <Button size="sm" variant="ghost" onClick={onReverse} aria-label={`Reverse ${note.creditNoteNumber}`}>
+          {onReverse ? <Button size="sm" variant="ghost" onClick={onReverse} aria-label={`Reverse ${note.creditNoteNumber}`}>
             Reverse
-          </Button>
+          </Button> : null}
         </div>
       ) : null}
     </div>

@@ -48,7 +48,8 @@ export function CreditNoteDetail({
   canWrite: boolean;
   onApply: () => void;
   onCancel: () => void;
-  onReverse: () => void;
+  /** Absent for anyone but an administrator: the button is then not offered. */
+  onReverse?: () => void;
 }) {
   const balance = useQuery({
     queryKey: creditNoteKeys.balance(note.customerId),
@@ -98,7 +99,7 @@ export function CreditNoteDetail({
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-lg wrap-break-word">
-                {customer?.fullName ?? note.customerId}
+                {customer?.fullName ?? note.customerName ?? note.customerId}
               </CardTitle>
               <Badge
                 variant={CREDIT_NOTE_STATUS_VARIANT[note.status]}
@@ -126,9 +127,11 @@ export function CreditNoteDetail({
                   Cancel note
                 </Button>
               ) : null}
-              <Button size="sm" variant="outline" onClick={onReverse}>
-                Reverse
-              </Button>
+              {onReverse ? (
+                <Button size="sm" variant="outline" onClick={onReverse}>
+                  Reverse
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </CardHeader>

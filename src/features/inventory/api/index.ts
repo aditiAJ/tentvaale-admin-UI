@@ -1,4 +1,4 @@
-import { apiFetch } from "@/services/api-client";
+import * as backend from "@/features/inventory/api/backend";
 import { IS_MOCK } from "@/services/data-source";
 import {
   mockDeriveAvailability,
@@ -12,10 +12,8 @@ import type {
 } from "@/features/inventory/types";
 
 /**
- * Real, and works in api mode: movements can be recorded and read back per
- * order. What is missing is any way to browse them — StockMovementRepository
- * has only findByCompanyIdAndOrderIdOrderByMovedOnDesc, so "what went out
- * this week?" has no query behind it.
+ * Movements read back per order, newest first. There is still no way to browse them across
+ * orders ("what went out this week?" has no query behind it).
  *
  * An order with no movements returns an empty list, not a 404.
  */
@@ -24,10 +22,7 @@ export function listStockMovementsByOrder(
   signal?: AbortSignal,
 ): Promise<StockMovementView[]> {
   if (IS_MOCK) return mockListStockMovementsByOrder(orderId);
-  return apiFetch<StockMovementView[]>(
-    `/admin/inventory/stock-movements/by-order/${encodeURIComponent(orderId)}`,
-    { signal },
-  );
+  return backend.listStockMovementsByOrder(orderId, signal);
 }
 
 /**
@@ -44,24 +39,16 @@ export function recordStockMovement(
   request: RecordStockMovementRequest,
 ): Promise<StockMovementView> {
   if (IS_MOCK) return mockRecordStockMovement(request);
-  return apiFetch<StockMovementView>("/admin/inventory/stock-movements", {
-    method: "POST",
-    body: request,
-  });
+  return backend.recordStockMovement(request);
 }
 
 /**
- * Availability has no endpoint and no table — it is derived, and the legacy
- * derivation lives in stored procedures that have not been read. There is
- * nothing to call in api mode, so this is mock-only by construction rather
- * than by a missing route: calling it against a real backend would only
- * produce a 404 for a path nobody has designed yet.
+ * Current stock per product: on the shelf now, and out on rent. Counts only: nothing here is
+ * date-based or holds stock back for orders that have not been dispatched yet (PRD §9).
  */
-export function deriveAvailability(): Promise<AvailabilityRow[]> {
+export function deriveAvailability(signal?: AbortSignal): Promise<AvailabilityRow[]> {
   if (IS_MOCK) return mockDeriveAvailability();
-  return Promise.reject(
-    new Error("Availability is not implemented on the backend — there is no endpoint to call."),
-  );
+  return backend.deriveAvailability(signal);
 }
 
 export const inventoryKeys = {

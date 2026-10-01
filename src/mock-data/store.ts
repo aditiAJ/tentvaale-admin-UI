@@ -1331,7 +1331,7 @@ function checkBundleRequest(
       throw businessRule(`'${product.name}' is inactive and cannot be added to a bundle`);
     }
   }
-  if (!Number.isFinite(request.rentalRate) || request.rentalRate < 0) {
+  if (!Number.isFinite(request.rentalRate ?? 0) || (request.rentalRate ?? 0) < 0) {
     throw businessRule("Rental rate must be zero or more");
   }
   return request.components.map(({ productId, quantity }) => ({ productId, quantity }));
@@ -1355,7 +1355,7 @@ export async function mockCreateBundle(request: CreateBundleRequest): Promise<Bu
     companyId: COMPANY_ID,
     name,
     components,
-    rentalRate: { amount: request.rentalRate, currency: "INR" },
+    rentalRate: { amount: request.rentalRate ?? 0, currency: "INR" },
     media: orderedMedia(request.media),
     ...bundleDetails(request),
     occasionIds,
@@ -1401,7 +1401,7 @@ export async function mockUpdateBundle(
     ...existing,
     name,
     components,
-    rentalRate: { amount: request.rentalRate, currency: "INR" },
+    rentalRate: { amount: request.rentalRate ?? 0, currency: "INR" },
     media: orderedMedia(request.media),
     ...bundleDetails(request),
     occasionIds,
@@ -2597,6 +2597,15 @@ function customerOrder(current: MockState, customerId: string, orderId: string):
     throw businessRule(`${order.orderNumber} belongs to another customer`);
   }
   return order;
+}
+
+export async function mockListAllCreditNotes(): Promise<CreditNoteView[]> {
+  await delay();
+  return [...state().creditNotes].sort(
+    (a, b) =>
+      Date.parse(b.issuedOn) - Date.parse(a.issuedOn) ||
+      b.creditNoteNumber.localeCompare(a.creditNoteNumber),
+  );
 }
 
 export async function mockListCreditNotesByCustomer(

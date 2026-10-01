@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from "@/services/api-client";
+import { ApiError } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import * as backend from "@/features/master-data/api/backend";
 import {
@@ -56,8 +56,14 @@ import type {
   CreateWarehouseRequest,
   CustomerView,
   FeaturedCollectionView,
+  PaymentModeRequest,
+  PaymentModeView,
+  PaymentTermsRequest,
+  PaymentTermsView,
   PlannerApplicationRequest,
   PlannerProfileView,
+  PriceListRequest,
+  PriceListView,
   SetSupplierStockRequest,
   SupplierRequest,
   SupplierStockView,
@@ -186,7 +192,7 @@ export function getCustomer(customerId: string, signal?: AbortSignal): Promise<C
 
 export function listBundles(signal?: AbortSignal): Promise<BundleView[]> {
   if (IS_MOCK) return mockListBundles();
-  return apiFetch<BundleView[]>("/admin/master-data/bundles", { signal });
+  return backend.listBundles(signal);
 }
 
 export function listWarehouses(signal?: AbortSignal): Promise<WarehouseView[]> {
@@ -295,30 +301,32 @@ export function deleteTruck(truckId: string): Promise<void> {
 
 export function createBundle(request: CreateBundleRequest): Promise<BundleView> {
   if (IS_MOCK) return mockCreateBundle(request);
-  return apiFetch<BundleView>("/admin/master-data/bundles", { method: "POST", body: request });
+  return backend.createBundle(request);
 }
 
 export function updateBundle(bundleId: string, request: UpdateBundleRequest): Promise<BundleView> {
   if (IS_MOCK) return mockUpdateBundle(bundleId, request);
-  return apiFetch<BundleView>(`/admin/master-data/bundles/${bundleId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateBundle(bundleId, request);
+}
+
+/** Inactive bundles stay on record but leave the storefront. Real backend only. */
+export function setBundleActive(bundleId: string, active: boolean): Promise<BundleView> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.setBundleActive(bundleId, active);
 }
 
 export function deleteBundle(bundleId: string): Promise<void> {
   if (IS_MOCK) return mockDeleteBundle(bundleId);
-  return apiFetch<void>(`/admin/master-data/bundles/${bundleId}`, { method: "DELETE" });
+  return backend.deleteBundle(bundleId);
 }
 
 /**
- * The storefront's bundle filter row. No backend, like bundles: these paths
- * follow the same /admin/master-data/{resource} shape and 404 in api mode.
- * Every occasion is returned, shown or hidden, in display order.
+ * The storefront's occasion filter row (backend: /occasions, shared with products and
+ * collections). Every occasion is returned, shown or hidden, in display order.
  */
 export function listBundleOccasions(signal?: AbortSignal): Promise<BundleOccasionView[]> {
   if (IS_MOCK) return mockListBundleOccasions();
-  return apiFetch<BundleOccasionView[]>("/admin/master-data/bundle-occasions", { signal });
+  return backend.listBundleOccasions(signal);
 }
 
 /** 422 for a blank or taken name. A new occasion is shown, at the end of the row. */
@@ -326,10 +334,7 @@ export function createBundleOccasion(
   request: CreateBundleOccasionRequest,
 ): Promise<BundleOccasionView> {
   if (IS_MOCK) return mockCreateBundleOccasion(request);
-  return apiFetch<BundleOccasionView>("/admin/master-data/bundle-occasions", {
-    method: "POST",
-    body: request,
-  });
+  return backend.createBundleOccasion(request);
 }
 
 export function updateBundleOccasion(
@@ -337,10 +342,7 @@ export function updateBundleOccasion(
   request: UpdateBundleOccasionRequest,
 ): Promise<BundleOccasionView> {
   if (IS_MOCK) return mockUpdateBundleOccasion(occasionId, request);
-  return apiFetch<BundleOccasionView>(`/admin/master-data/bundle-occasions/${occasionId}`, {
-    method: "PUT",
-    body: request,
-  });
+  return backend.updateBundleOccasion(occasionId, request);
 }
 
 /** Same activate/deactivate shape as featured collections. */
@@ -349,29 +351,22 @@ export function setBundleOccasionActive(
   active: boolean,
 ): Promise<BundleOccasionView> {
   if (IS_MOCK) return mockSetBundleOccasionActive(occasionId, active);
-  return apiFetch<BundleOccasionView>(
-    `/admin/master-data/bundle-occasions/${occasionId}/${active ? "activate" : "deactivate"}`,
-    { method: "POST" },
-  );
+  return backend.setBundleOccasionActive(occasionId, active);
 }
 
 /** Every occasion id, in the new display order. */
 export function reorderBundleOccasions(occasionIds: string[]): Promise<BundleOccasionView[]> {
   if (IS_MOCK) return mockReorderBundleOccasions(occasionIds);
-  return apiFetch<BundleOccasionView[]>("/admin/master-data/bundle-occasions/order", {
-    method: "PUT",
-    body: { occasionIds },
-  });
+  return backend.reorderBundleOccasions(occasionIds);
 }
 
 /**
- * Featured collections have no backend either; these paths follow the same
- * /admin/master-data/{resource} shape and 404 in api mode. Every collection is
- * returned, active or not, sorted by name.
+ * Featured collections: curated product selections for the storefront (backend:
+ * /featured-collections, ADR-008). Every collection is returned, active or not, sorted by name.
  */
 export function listFeaturedCollections(signal?: AbortSignal): Promise<FeaturedCollectionView[]> {
   if (IS_MOCK) return mockListFeaturedCollections();
-  return apiFetch<FeaturedCollectionView[]>("/admin/master-data/featured-collections", { signal });
+  return backend.listFeaturedCollections(signal);
 }
 
 /** 422 for a taken name, no products, a repeated product or an inactive one. */
@@ -379,10 +374,7 @@ export function createFeaturedCollection(
   request: CreateFeaturedCollectionRequest,
 ): Promise<FeaturedCollectionView> {
   if (IS_MOCK) return mockCreateFeaturedCollection(request);
-  return apiFetch<FeaturedCollectionView>("/admin/master-data/featured-collections", {
-    method: "POST",
-    body: request,
-  });
+  return backend.createFeaturedCollection(request);
 }
 
 /** Replaces the product list; a product left out leaves the collection, nothing more. */
@@ -391,10 +383,7 @@ export function updateFeaturedCollection(
   request: UpdateFeaturedCollectionRequest,
 ): Promise<FeaturedCollectionView> {
   if (IS_MOCK) return mockUpdateFeaturedCollection(collectionId, request);
-  return apiFetch<FeaturedCollectionView>(
-    `/admin/master-data/featured-collections/${collectionId}`,
-    { method: "PUT", body: request },
-  );
+  return backend.updateFeaturedCollection(collectionId, request);
 }
 
 /** Same activate/deactivate shape as categories, which also switch off rather than delete. */
@@ -403,10 +392,7 @@ export function setFeaturedCollectionActive(
   active: boolean,
 ): Promise<FeaturedCollectionView> {
   if (IS_MOCK) return mockSetFeaturedCollectionActive(collectionId, active);
-  return apiFetch<FeaturedCollectionView>(
-    `/admin/master-data/featured-collections/${collectionId}/${active ? "activate" : "deactivate"}`,
-    { method: "POST" },
-  );
+  return backend.setFeaturedCollectionActive(collectionId, active);
 }
 
 /** 422 if the email already belongs to another customer of this company (case-insensitive). */
@@ -497,6 +483,64 @@ export function rejectPlannerApplication(
   return backend.rejectPlannerApplication(customerId, reason);
 }
 
+// Price lists and payment setup exist only on the real backend; the demo data has none.
+const SETUP_NEEDS_BACKEND = "This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
+const needsBackend = <T>() => Promise.reject<T>(new ApiError(SETUP_NEEDS_BACKEND, 422));
+
+/** Trade pricing for verified event planners. Every list, active or not, by name. */
+export function listPriceLists(signal?: AbortSignal): Promise<PriceListView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listPriceLists(signal);
+}
+
+/** 422 for a name already used, a rate repeated for one product, or a variant of another product. */
+export function createPriceList(request: PriceListRequest): Promise<PriceListView> {
+  if (IS_MOCK) return needsBackend();
+  return backend.createPriceList(request);
+}
+
+export function updatePriceList(priceListId: string, request: PriceListRequest): Promise<PriceListView> {
+  if (IS_MOCK) return needsBackend();
+  return backend.updatePriceList(priceListId, request);
+}
+
+/** Takes effect once the planner's application is approved. null takes them off every list. */
+export function assignPriceList(customerId: string, priceListId: string | null): Promise<void> {
+  if (IS_MOCK) return needsBackend();
+  return backend.assignPriceList(customerId, priceListId);
+}
+
+export function listPaymentModes(signal?: AbortSignal): Promise<PaymentModeView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listPaymentModes(signal);
+}
+
+export function createPaymentMode(request: PaymentModeRequest): Promise<PaymentModeView> {
+  if (IS_MOCK) return needsBackend();
+  return backend.createPaymentMode(request);
+}
+
+export function updatePaymentMode(modeId: string, request: PaymentModeRequest): Promise<PaymentModeView> {
+  if (IS_MOCK) return needsBackend();
+  return backend.updatePaymentMode(modeId, request);
+}
+
+export function listPaymentTerms(signal?: AbortSignal): Promise<PaymentTermsView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listPaymentTerms(signal);
+}
+
+/** 422 unless the lines add up to exactly 100%. */
+export function createPaymentTerms(request: PaymentTermsRequest): Promise<PaymentTermsView> {
+  if (IS_MOCK) return needsBackend();
+  return backend.createPaymentTerms(request);
+}
+
+export function updatePaymentTerms(termsId: string, request: PaymentTermsRequest): Promise<PaymentTermsView> {
+  if (IS_MOCK) return needsBackend();
+  return backend.updatePaymentTerms(termsId, request);
+}
+
 /** Query keys kept beside the calls they invalidate, so the two cannot drift. */
 export const masterDataKeys = {
   products: ["master-data", "products"] as const,
@@ -516,6 +560,9 @@ export const masterDataKeys = {
     ["master-data", "warehouses", warehouseId, "products"] as const,
   trucks: ["master-data", "trucks"] as const,
   suppliers: ["master-data", "suppliers"] as const,
+  priceLists: ["master-data", "price-lists"] as const,
+  paymentModes: ["master-data", "payment-modes"] as const,
+  paymentTerms: ["master-data", "payment-terms"] as const,
   // Nested under `suppliers`, so refreshing the list refreshes every supplier's stock too.
   supplierStock: (supplierId: string) => ["master-data", "suppliers", supplierId, "stock"] as const,
 };

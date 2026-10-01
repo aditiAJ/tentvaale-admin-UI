@@ -2,10 +2,11 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Plus, Search, UserCheck, Users } from "lucide-react";
-import { listCustomers, masterDataKeys } from "@/features/master-data/api";
+import { Pencil, Percent, Plus, Search, UserCheck, Users } from "lucide-react";
+import { listCustomers, listPriceLists, masterDataKeys } from "@/features/master-data/api";
 import type { CustomerView } from "@/features/master-data/types";
 import { CustomerDialog } from "@/features/master-data/components/CustomerDialog";
+import { AssignPriceListDialog } from "@/features/master-data/components/AssignPriceListDialog";
 import { PlannerApplicationDialog } from "@/features/master-data/components/PlannerApplicationDialog";
 import { PlannerApplicationsPanel } from "@/features/master-data/components/PlannerApplicationsPanel";
 import { useCan } from "@/features/auth";
@@ -31,11 +32,18 @@ function matches(customer: CustomerView, term: string): boolean {
 }
 
 /** Where a planner stands on trade pricing; plain customers have none. */
-function TradeStatus({ customer }: { customer: CustomerView }) {
+function TradeStatus({ customer, priceListName }: { customer: CustomerView; priceListName?: string }) {
   if (customer.accountType !== "EVENT_PLANNER") return <span className="text-muted-foreground">—</span>;
   const profile = customer.plannerProfile;
   if (!profile) return <span className="text-xs text-muted-foreground">Not applied</span>;
-  if (profile.status === "APPROVED") return <Badge variant="success">Verified</Badge>;
+  if (profile.status === "APPROVED") {
+    return (
+      <div>
+        <Badge variant="success">Verified</Badge>
+        {priceListName ? <span className="block text-xs text-muted-foreground">{priceListName}</span> : null}
+      </div>
+    );
+  }
   if (profile.status === "PENDING") return <Badge variant="warning">Pending</Badge>;
   return (
     <Badge variant="destructive" title={profile.rejectionReason ?? undefined}>
@@ -50,6 +58,7 @@ export function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CustomerView | null>(null);
   const [applying, setApplying] = useState<CustomerView | null>(null);
+  const [pricing, setPricing] = useState<CustomerView | null>(null);
 
   // Filtered in the browser over the full list, like products; deferring the
   // term keeps typing responsive on a long one.
@@ -59,6 +68,13 @@ export function CustomersPage() {
     queryKey: masterDataKeys.customers,
     queryFn: ({ signal }) => listCustomers(signal),
   });
+
+  // Price list names, so a planner's row can say which list they are on.
+  const priceLists = useQuery({
+    queryKey: masterDataKeys.priceLists,
+    queryFn: ({ signal }) => listPriceLists(signal),
+  });
+  const priceListName = (id?: string | null) => priceLists.data?.find((list) => list.id === id)?.name;
 
   const visible = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
@@ -135,7 +151,7 @@ export function CustomersPage() {
                         </Badge>
                       </TD>
                       <TD>
-                        <TradeStatus customer={customer} />
+                        <TradeStatus customer={customer} priceListName={priceListName(customer.priceListId)} />
                       </TD>
                       {/* The id is what quotations, orders, deposits and credit
                           notes store, and the credit-notes screen asks for it,
@@ -151,6 +167,17 @@ export function CustomersPage() {
                               leave those records pointing at nothing, with no
                               foreign key to notice. */}
                           <div className="flex justify-end">
+                            {customer.accountType === "EVENT_PLANNER" ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setPricing(customer)}
+                                aria-label={`Price list for ${customer.fullName}`}
+                                title="Price list"
+                              >
+                                <Percent />
+                              </Button>
+                            ) : null}
                             {customer.accountType === "EVENT_PLANNER" &&
                             (!customer.plannerProfile || customer.plannerProfile.status === "REJECTED") ? (
                               <Button
@@ -212,6 +239,7 @@ export function CustomersPage() {
 
       {creating ? <CustomerDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <CustomerDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {pricing ? <AssignPriceListDialog customer={pricing} onClose={() => setPricing(null)} /> : null}
       {applying ? <PlannerApplicationDialog customer={applying} onClose={() => setApplying(null)} /> : null}
     </div>
   );

@@ -230,12 +230,30 @@ function MovementFields({
     return [...names.entries()].map(([id, name]) => ({ id, name }));
   }, [order.lines]);
 
+  // The one variant an order uses for a product, so the dispatch form can start with it chosen. A
+  // product the order holds as several variants is left for the user to pick.
+  const soleVariant = useMemo(() => {
+    const variants = new Map<string, Set<string>>();
+    for (const line of order.lines) {
+      const set = variants.get(line.productId) ?? new Set<string>();
+      set.add(line.variantId ?? "");
+      variants.set(line.productId, set);
+    }
+    const sole = new Map<string, string>();
+    for (const [productId, set] of variants) {
+      if (set.size === 1) sole.set(productId, [...set][0]);
+    }
+    return sole;
+  }, [order.lines]);
+
   const suggestedLines = (direction: MovementDirection, warehouseId: string): LineInput[] => {
     if (direction === "OUTWARD") {
       return orderProducts.flatMap(({ id }) => {
         const entry = fulfilment.byProduct.get(id);
         const left = entry ? entry.ordered - entry.dispatched : 0;
-        return left > 0 ? [{ productId: id, variantId: "", quantity: String(left) }] : [];
+        return left > 0
+          ? [{ productId: id, variantId: soleVariant.get(id) ?? "", quantity: String(left) }]
+          : [];
       });
     }
     return fulfilment.outstanding
