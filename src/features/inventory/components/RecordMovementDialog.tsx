@@ -101,6 +101,7 @@ export function RecordMovementDialog({
     mutationFn: recordStockMovement,
     onSuccess: (movement) => {
       queryClient.invalidateQueries({ queryKey: inventoryKeys.movementsByOrder(orderId) });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.movementLists });
       queryClient.invalidateQueries({ queryKey: inventoryKeys.availability });
       // The movement moved the order along, and changed warehouse counts and
       // with them every variant's stock.

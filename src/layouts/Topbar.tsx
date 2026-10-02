@@ -1,6 +1,7 @@
 "use client";
 
-import { LogOut, Menu, Moon, RotateCcw, Sun } from "lucide-react";
+import { useState } from "react";
+import { KeyRound, LogOut, Menu, Moon, RotateCcw, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSession } from "@/features/auth";
 import { IS_MOCK } from "@/services/data-source";
@@ -8,10 +9,12 @@ import { resetMockData } from "@/mock-data/store";
 import { formatRelative } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ChangePasswordDialog } from "@/features/users/components/ChangePasswordDialog";
 
 export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const { session, signOut } = useSession();
   const { resolvedTheme, setTheme } = useTheme();
+  const [changingPassword, setChangingPassword] = useState(false);
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
@@ -84,11 +87,25 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           <Sun className="hidden dark:block" />
         </Button>
 
+        {session ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setChangingPassword(true)}
+            aria-label="Change my password"
+            title="Change my password"
+          >
+            <KeyRound />
+          </Button>
+        ) : null}
+
         <Button variant="ghost" size="sm" onClick={signOut}>
           <LogOut />
           <span className="hidden sm:inline">Sign out</span>
         </Button>
       </div>
+
+      {changingPassword ? <ChangePasswordDialog onClose={() => setChangingPassword(false)} /> : null}
     </header>
   );
 }

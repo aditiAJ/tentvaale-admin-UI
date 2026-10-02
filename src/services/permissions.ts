@@ -28,6 +28,7 @@ export const PERMISSIONS = [
   "CONFIG_WRITE",
   "USER_READ",
   "USER_WRITE",
+  "OWN_PASSWORD_CHANGE",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

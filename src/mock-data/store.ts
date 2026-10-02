@@ -56,6 +56,8 @@ import type { OrderView } from "@/features/orders/types";
 import type {
   AvailabilityRow,
   RecordStockMovementRequest,
+  StockMovementFilters,
+  StockMovementRow,
   StockMovementView,
 } from "@/features/inventory/types";
 import type {
@@ -2302,6 +2304,32 @@ export async function mockListStockMovementsByOrder(
     .sort((a, b) => Date.parse(b.movedOn) - Date.parse(a.movedOn));
 }
 
+export async function mockListStockMovements(
+  filters: StockMovementFilters,
+): Promise<StockMovementRow[]> {
+  await delay();
+  const current = state();
+  const numberOf = (orderId: string) =>
+    current.orders.find((order) => order.id === orderId)?.orderNumber ??
+    SEED_ORDERS.find((order) => order.id === orderId)?.number ??
+    null;
+  const text = (filters.q ?? "").trim().toLowerCase();
+
+  // Newest first, then a stable tie-break, like the backend's order by.
+  return current.stockMovements
+    .map((movement) => ({ ...movement, orderNumber: numberOf(movement.orderId) }))
+    .filter((row) => !filters.direction || row.direction === filters.direction)
+    .filter((row) => !filters.orderId || row.orderId === filters.orderId)
+    .filter(
+      (row) =>
+        text === "" ||
+        row.movementNumber.toLowerCase().includes(text) ||
+        (row.orderNumber ?? "").toLowerCase().includes(text),
+    )
+    .sort((a, b) => Date.parse(b.movedOn) - Date.parse(a.movedOn) || b.id.localeCompare(a.id))
+    .slice(0, Math.min(Math.max(filters.limit, 1), 200));
+}
+
 /** One warehouse + product + variant — the unit stock is held and moved in. */
 const stockKey = (warehouseId: string, productId: string, variantId: string | null) =>
   `${warehouseId}|${productId}|${variantId ?? ""}`;
@@ -2881,6 +2909,28 @@ export async function mockDeactivateUser(userId: string): Promise<AdminUserView>
   user.active = false;
   persist();
   return toUserView(user);
+}
+
+export async function mockReactivateUser(userId: string): Promise<AdminUserView> {
+  await delay();
+  const user = requireUser(userId);
+  user.active = true;
+  persist();
+  return toUserView(user);
+}
+
+export async function mockChangeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await delay();
+  const user = requireUser(caller().userId);
+  if (user.password !== currentPassword) throw businessRule("The current password is not correct");
+  if (currentPassword === newPassword) {
+    throw businessRule("The new password must be different from the current one");
+  }
+  user.password = newPassword;
+  persist();
 }
 
 export async function mockResetUserPassword(userId: string, password: string): Promise<void> {

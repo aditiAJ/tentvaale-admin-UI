@@ -7,6 +7,7 @@ import {
   QuotationPipeline,
   type PipelineStage,
 } from "@/features/dashboard/components/QuotationPipeline";
+import { ORDER_STATUSES, ORDER_STATUS_MEANING } from "@/features/orders/types";
 import { formatMoney } from "@/lib/money";
 import { formatCount, HeroFigure, StatTile } from "@/components/ui/stat";
 import { PageHeader } from "@/components/page-header";
@@ -104,6 +105,26 @@ export function DashboardPage() {
               hint="Every order ever raised for this company."
             />
           </div>
+
+          {data.ordersByStatus ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Orders by status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  {ORDER_STATUSES.map((status) => (
+                    <StatTile
+                      key={status}
+                      label={status.charAt(0) + status.slice(1).toLowerCase()}
+                      value={formatCount(data.ordersByStatus?.[status] ?? 0)}
+                      hint={ORDER_STATUS_MEANING[status]}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>

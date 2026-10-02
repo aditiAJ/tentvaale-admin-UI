@@ -3,6 +3,8 @@ import type {
   AvailabilityRow,
   MovedLineView,
   RecordStockMovementRequest,
+  StockMovementFilters,
+  StockMovementRow,
   StockMovementView,
 } from "@/features/inventory/types";
 
@@ -37,6 +39,10 @@ interface WireMovement {
   lines: WireMovedLine[];
 }
 
+interface WireMovementRow extends WireMovement {
+  orderNumber?: string | null;
+}
+
 interface WireAvailability {
   productId: number;
   sku: string;
@@ -67,6 +73,22 @@ function movementFromWire(movement: WireMovement): StockMovementView {
     remarks: movement.remarks ?? null,
     lines: movement.lines.map(lineFromWire),
   };
+}
+
+/**
+ * Movements across every order, newest first, narrowed by direction, order, or text (movement or
+ * order number). Nothing matching is an empty list, not an error.
+ */
+export async function listStockMovements(
+  filters: StockMovementFilters,
+  signal?: AbortSignal,
+): Promise<StockMovementRow[]> {
+  const params = new URLSearchParams({ limit: String(filters.limit) });
+  if (filters.direction) params.set("direction", filters.direction);
+  if (filters.orderId) params.set("orderId", filters.orderId);
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  const rows = await apiFetch<WireMovementRow[]>(`${BASE}/stock-movements?${params}`, { signal });
+  return rows.map((row) => ({ ...movementFromWire(row), orderNumber: row.orderNumber ?? null }));
 }
 
 /** Newest first. An order with no movements returns an empty list, not a 404. */

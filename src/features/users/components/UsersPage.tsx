@@ -2,9 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Plus, UserMinus, Users } from "lucide-react";
+import { KeyRound, Plus, UserCheck, UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
-import { changeUserRole, deactivateUser, listUsers, userKeys } from "@/features/users/api";
+import {
+  changeUserRole,
+  deactivateUser,
+  listUsers,
+  reactivateUser,
+  userKeys,
+} from "@/features/users/api";
 import type { AdminUserView } from "@/features/users/types";
 import { CreateUserDialog } from "@/features/users/components/CreateUserDialog";
 import { ResetPasswordDialog } from "@/features/users/components/ResetPasswordDialog";
@@ -68,6 +74,15 @@ export function UsersPage() {
       setDeactivating(null);
     },
     onError: (mutationError) => onMutationError(mutationError, "Could not deactivate the user."),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (userId: string) => reactivateUser(userId),
+    onSuccess: (user) => {
+      queryClient.invalidateQueries({ queryKey: userKeys.all });
+      toast.success(`${user.username} is active again as ${user.role}`);
+    },
+    onError: (mutationError) => onMutationError(mutationError, "Could not reactivate the user."),
   });
 
   function reasonRoleLocked(user: AdminUserView): string | null {
@@ -172,16 +187,29 @@ export function UsersPage() {
                           <KeyRound />
                           Reset
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={deactivateLocked !== null}
-                          title={deactivateLocked ?? undefined}
-                          onClick={() => setDeactivating(user)}
-                        >
-                          <UserMinus />
-                          Deactivate
-                        </Button>
+                        {user.active ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={deactivateLocked !== null}
+                            title={deactivateLocked ?? undefined}
+                            onClick={() => setDeactivating(user)}
+                          >
+                            <UserMinus />
+                            Deactivate
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!canWrite || reactivateMutation.isPending}
+                            title={canWrite ? undefined : "You do not have permission to reactivate users."}
+                            onClick={() => reactivateMutation.mutate(user.id)}
+                          >
+                            <UserCheck />
+                            Reactivate
+                          </Button>
+                        )}
                       </div>
                     </TD>
                   </TR>
@@ -238,7 +266,7 @@ export function UsersPage() {
         }
       >
         <p className="text-sm text-muted-foreground">
-          This cannot be undone from the back office — there is no reactivate endpoint.
+          You can bring them back later with Reactivate; they keep their role and password.
         </p>
       </Dialog>
     </div>

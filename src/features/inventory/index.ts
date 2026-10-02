@@ -1,4 +1,5 @@
 export {
+  listStockMovements,
   listStockMovementsByOrder,
   recordStockMovement,
   deriveAvailability,
@@ -9,6 +10,8 @@ export { RecordMovementDialog } from "./components/RecordMovementDialog";
 export { AvailabilityPage } from "./components/AvailabilityPage";
 export type {
   StockMovementView,
+  StockMovementRow,
+  StockMovementFilters,
   MovedLineView,
   MovementDirection,
   RecordStockMovementRequest,

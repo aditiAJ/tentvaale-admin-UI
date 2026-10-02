@@ -1,4 +1,5 @@
 import type { Money } from "@/lib/money";
+import type { OrderStatus } from "@/features/orders/types";
 
 /**
  * Mirrors com.tentvaale.reporting.api.AdminDashboardView.
@@ -16,4 +17,9 @@ export interface AdminDashboardView {
   convertedQuotations: number;
   totalOrders: number;
   totalOrderValue: Money;
+  /**
+   * Every order status with its count, zero included. Absent in demo mode, whose seeded orders
+   * have no statuses to count.
+   */
+  ordersByStatus?: Record<OrderStatus, number>;
 }

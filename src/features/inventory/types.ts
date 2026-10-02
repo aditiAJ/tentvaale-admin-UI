@@ -39,6 +39,23 @@ export interface StockMovementView {
 }
 
 /**
+ * One row of the stock movement list: a movement plus the number of its order, so the list can show
+ * "SO-000024" instead of an id. Mirrors com.tentvaale.inventory.api.StockMovementListItem.
+ */
+export interface StockMovementRow extends StockMovementView {
+  orderNumber?: string | null;
+}
+
+/** What the list can be narrowed by. `q` matches the movement number or the order number. */
+export interface StockMovementFilters {
+  direction?: MovementDirection;
+  orderId?: string;
+  q?: string;
+  /** How many to load, newest first. The backend caps it at 200. */
+  limit: number;
+}
+
+/**
  * Availability has no backend at all — no entity, no table, no endpoint, so
  * this shape is this UI's invention. In mock mode, in stock is the warehouse
  * counts, which movements decrease and increase, and on rent is outward minus

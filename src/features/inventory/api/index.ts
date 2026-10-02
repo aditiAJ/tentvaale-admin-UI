@@ -2,18 +2,34 @@ import * as backend from "@/features/inventory/api/backend";
 import { IS_MOCK } from "@/services/data-source";
 import {
   mockDeriveAvailability,
+  mockListStockMovements,
   mockListStockMovementsByOrder,
   mockRecordStockMovement,
 } from "@/mock-data/store";
 import type {
   AvailabilityRow,
   RecordStockMovementRequest,
+  StockMovementFilters,
+  StockMovementRow,
   StockMovementView,
 } from "@/features/inventory/types";
 
 /**
- * Movements read back per order, newest first. There is still no way to browse them across
- * orders ("what went out this week?" has no query behind it).
+ * Movements across every order, newest first, each with its order's number. Optionally narrowed by
+ * direction, by one order, or by text (matches the movement number or the order number). Capped at
+ * 200. Nothing matching is an empty list, not an error.
+ */
+export function listStockMovements(
+  filters: StockMovementFilters,
+  signal?: AbortSignal,
+): Promise<StockMovementRow[]> {
+  if (IS_MOCK) return mockListStockMovements(filters);
+  return backend.listStockMovements(filters, signal);
+}
+
+/**
+ * Movements read back for one order, newest first. The order screens use this; the Stock movement
+ * list uses `listStockMovements`.
  *
  * An order with no movements returns an empty list, not a 404.
  */
@@ -52,6 +68,9 @@ export function deriveAvailability(signal?: AbortSignal): Promise<AvailabilityRo
 }
 
 export const inventoryKeys = {
+  /** Prefix of every cached movement list, so one call refreshes them all. */
+  movementLists: ["inventory", "movement-list"] as const,
+  movementList: (filters: StockMovementFilters) => ["inventory", "movement-list", filters] as const,
   movementsByOrder: (orderId: string) => ["inventory", "movements", orderId] as const,
   availability: ["inventory", "availability"] as const,
 };
