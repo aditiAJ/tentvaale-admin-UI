@@ -45,6 +45,10 @@ interface WireQuotation {
   securityDeposit: Money;
   sourceReference?: string | null;
   validUntil?: string | null;
+  subtotalAmount?: Money;
+  deliveryCharge?: Money;
+  discountAmount?: Money;
+  changeRequestNote?: string | null;
   createdAt?: string | null;
   sentAt?: string | null;
   acceptedAt?: string | null;
@@ -81,6 +85,10 @@ function fromWire(q: WireQuotation): QuotationView {
     totalSecurityDeposit: q.securityDeposit,
     sourceReference: q.sourceReference ?? null,
     validUntil: q.validUntil ?? null,
+    subtotalAmount: q.subtotalAmount,
+    deliveryCharge: q.deliveryCharge,
+    discountAmount: q.discountAmount,
+    changeRequestNote: q.changeRequestNote ?? null,
     createdAt: q.createdAt ?? null,
     sentAt: q.sentAt ?? null,
     acceptedAt: q.acceptedAt ?? null,
@@ -108,6 +116,8 @@ export async function createQuotation(request: CreateQuotationRequest): Promise<
       customerId: Number(request.customerId),
       eventDate: request.eventDate || undefined,
       securityDeposit: request.securityDeposit,
+      deliveryCharge: request.deliveryCharge || undefined,
+      discountAmount: request.discountAmount || undefined,
       validUntil: request.validUntil || undefined,
       lines: request.lines.map((line) => ({
         productId: Number(line.productId),
@@ -134,6 +144,8 @@ export async function updateQuotation(
       customerId: Number(request.customerId),
       eventDate: request.eventDate || undefined,
       securityDeposit: request.securityDeposit,
+      deliveryCharge: request.deliveryCharge || undefined,
+      discountAmount: request.discountAmount || undefined,
       lines: request.lines.map((line) => ({
         id: line.lineId,
         productId: Number(line.productId),

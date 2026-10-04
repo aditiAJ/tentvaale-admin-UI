@@ -64,6 +64,11 @@ export interface QuotationView {
   sourceReference: string | null;
   /** Last day the quotation can be offered; it expires after this. */
   validUntil?: string | null;
+  subtotalAmount?: Money;
+  deliveryCharge?: Money;
+  discountAmount?: Money;
+  /** What the customer last asked to change; the quotation is a draft until it is re-sent. */
+  changeRequestNote?: string | null;
   createdAt?: string | null;
   sentAt?: string | null;
   acceptedAt?: string | null;
@@ -112,6 +117,10 @@ export interface CreateQuotationRequest {
   eventDate?: string;
   /** In INR, zero or more. Stored as the quotation's totalSecurityDeposit. */
   securityDeposit: number;
+  /** Actual delivery cost in INR, entered by staff; part of the total. Omitted: none. */
+  deliveryCharge?: number;
+  /** A flat amount off in INR. Omitted: none. */
+  discountAmount?: number;
   /** ISO yyyy-MM-dd. Omitted: the backend's default validity (15 days) applies. */
   validUntil?: string;
   lines: CreateQuotationLineRequest[];
@@ -141,5 +150,7 @@ export interface UpdateQuotationRequest {
   /** ISO yyyy-MM-dd, or omitted to clear it. */
   eventDate?: string;
   securityDeposit: number;
+  deliveryCharge?: number;
+  discountAmount?: number;
   lines: UpdateQuotationLineRequest[];
 }

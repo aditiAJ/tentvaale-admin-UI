@@ -443,6 +443,10 @@ function QuotationDetail({
                 </div>
               </dl>
 
+              {data.changeRequestNote ? (
+                <Alert tone="warning" title={`Customer asked for changes: ${data.changeRequestNote}`} className="mt-4" />
+              ) : null}
+
               {data.status === "REJECTED" && data.rejectionReason ? (
                 <Alert tone="error" title={`Rejected: ${data.rejectionReason}`} className="mt-4" />
               ) : null}

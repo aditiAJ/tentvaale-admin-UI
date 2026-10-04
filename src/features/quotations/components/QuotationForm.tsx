@@ -35,6 +35,17 @@ const schema = z.object({
   // One amount for the whole booking: products no longer carry a deposit of
   // their own, so nothing on the lines can add up to one.
   securityDeposit: amountField("Security deposit"),
+  // Entered by staff; blank means none. The total the customer sees is items + delivery - discount.
+  deliveryCharge: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), "Enter an amount like 500 or 500.50")
+    .transform((v) => (v === "" ? 0 : Number(v))),
+  discountAmount: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), "Enter an amount like 500 or 500.50")
+    .transform((v) => (v === "" ? 0 : Number(v))),
   // Last day the quotation can be offered. Blank: the backend applies its default (15 days).
   validUntil: z
     .string()
@@ -128,6 +139,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           eventDate: existing.eventDate ?? "",
           validUntil: existing.validUntil ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
+          deliveryCharge: existing.deliveryCharge ? String(Number(existing.deliveryCharge.amount)) : "",
+          discountAmount: existing.discountAmount ? String(Number(existing.discountAmount.amount)) : "",
           lines: existing.lines.map((line) => ({
             lineId: line.id,
             productId: line.productId,
@@ -142,6 +155,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           eventDate: "",
           validUntil: defaultValidUntil(),
           securityDeposit: "",
+          deliveryCharge: "",
+          discountAmount: "",
           lines: [emptyLine()],
         },
   });
@@ -180,7 +195,12 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     return rate * count * days;
   };
 
-  const estimate = watchedLines.reduce((running, line) => running + (priceLine(line) ?? 0), 0);
+  const watchedDelivery = Number(useWatch({ control, name: "deliveryCharge" })) || 0;
+  const watchedDiscount = Number(useWatch({ control, name: "discountAmount" })) || 0;
+  const estimate = Math.max(
+    watchedLines.reduce((running, line) => running + (priceLine(line) ?? 0), 0) + watchedDelivery - watchedDiscount,
+    0,
+  );
 
   // The name is typed, but a quotation still belongs to a customer record by
   // id — its order, deposit and credit notes all hang off that id — so the
@@ -208,6 +228,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           customerId,
           eventDate: values.eventDate,
           securityDeposit: values.securityDeposit,
+          deliveryCharge: values.deliveryCharge,
+          discountAmount: values.discountAmount,
           lines: values.lines.map((line) => ({
             lineId: line.lineId || undefined,
             productId: line.productId,
@@ -226,6 +248,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         customerEmail: customer?.email,
         eventDate: values.eventDate,
         securityDeposit: values.securityDeposit,
+        deliveryCharge: values.deliveryCharge,
+        discountAmount: values.discountAmount,
         validUntil: values.validUntil,
         lines: values.lines.map(({ productId, variantId, quantity, rentalDays }) => ({
           productId,
@@ -622,6 +646,40 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                 {...register("securityDeposit")}
                 inputMode="decimal"
                 placeholder="5000.00"
+                disabled={mutation.isPending}
+                className="tabular text-right"
+              />
+            )}
+          </Field>
+          <Field
+            label="Delivery charge"
+            error={errors.deliveryCharge?.message}
+            hint="Actual cost, in INR. Blank if none."
+            className="w-56"
+          >
+            {(props) => (
+              <Input
+                {...props}
+                {...register("deliveryCharge")}
+                inputMode="decimal"
+                placeholder="0.00"
+                disabled={mutation.isPending}
+                className="tabular text-right"
+              />
+            )}
+          </Field>
+          <Field
+            label="Discount"
+            error={errors.discountAmount?.message}
+            hint="A flat amount off, in INR. Blank if none."
+            className="w-56"
+          >
+            {(props) => (
+              <Input
+                {...props}
+                {...register("discountAmount")}
+                inputMode="decimal"
+                placeholder="0.00"
                 disabled={mutation.isPending}
                 className="tabular text-right"
               />
