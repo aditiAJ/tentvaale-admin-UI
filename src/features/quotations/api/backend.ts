@@ -5,6 +5,7 @@ import type {
   CreateQuotationRequest,
   QuotationLineView,
   QuotationStatus,
+  QuotationPlan,
   QuotationView,
   UpdateQuotationRequest,
 } from "@/features/quotations/types";
@@ -53,6 +54,7 @@ interface WireQuotation {
   tax?: QuotationView["tax"];
   depositWaiver?: QuotationView["depositWaiver"];
   policies?: QuotationView["policies"];
+  venue?: QuotationView["venue"];
   changeRequestNote?: string | null;
   changeRequestedAt?: string | null;
   createdAt?: string | null;
@@ -98,6 +100,7 @@ function fromWire(q: WireQuotation): QuotationView {
     tax: q.tax,
     depositWaiver: q.depositWaiver,
     policies: q.policies ?? [],
+    venue: q.venue ?? null,
     changeRequestNote: q.changeRequestNote ?? null,
     changeRequestedAt: q.changeRequestedAt ?? null,
     createdAt: q.createdAt ?? null,
@@ -214,4 +217,9 @@ export async function acceptOnBehalf(quotationId: string): Promise<{ id: string;
     method: "POST",
     body: { quotationId },
   });
+}
+
+/** The customer's plan behind a storefront quotation. 404 for a quotation staff raised themselves. */
+export function getQuotationPlan(quotationId: string, signal?: AbortSignal): Promise<QuotationPlan> {
+  return apiFetch<QuotationPlan>(`/admin/ordering/quotations/${id(quotationId)}/plan`, { signal });
 }

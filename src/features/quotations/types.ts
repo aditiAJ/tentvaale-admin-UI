@@ -75,6 +75,8 @@ export interface QuotationView {
   depositWaiver?: { waived: boolean; amount: Money; reason: string | null; waivedBy: string | null };
   /** The policy versions the quotation was sent with. */
   policies?: { kind: string; version: number }[];
+  /** Where the event is, copied from the customer's plan. */
+  venue?: QuotationVenue | null;
   /** What the customer last asked to change; the quotation is a draft until it is re-sent. */
   changeRequestNote?: string | null;
   changeRequestedAt?: string | null;
@@ -185,4 +187,23 @@ export interface QuotationTax {
   igst: Money;
   placeOfSupply: string | null;
   intraState: boolean;
+}
+
+export interface QuotationVenue {
+  text: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  placeId?: string | null;
+}
+
+/** The customer's plan as staff read it (read-only). */
+export interface QuotationPlan {
+  subEvents: {
+    id: string;
+    name: string;
+    scheduledOn?: string | null;
+    venueDetail?: { label: string; addressText: string } | null;
+    items: { id: string; productName: string; quantity: number; rentalDays: number; subEventIds: string[] }[];
+  }[];
+  generalItems: { id: string; productName: string; quantity: number; rentalDays: number; subEventIds: string[] }[];
 }

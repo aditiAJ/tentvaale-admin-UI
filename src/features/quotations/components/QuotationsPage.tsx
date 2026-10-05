@@ -14,6 +14,7 @@ import { getQuotation, listQuotations, quotationKeys } from "@/features/quotatio
 import type { QuotationView } from "@/features/quotations/types";
 import { bucketOf, isFromStorefront, type QuotationBucket } from "@/features/quotations/source";
 import { QuotationBreakdown, QuotationVersions, ReceivedPanel } from "@/features/quotations/components/QuotationPanels";
+import { QuotationPlanPanel } from "@/features/quotations/components/QuotationPlanPanel";
 import { useCan } from "@/features/auth";
 import { ConvertToOrderDialog } from "@/features/orders";
 import { QuotationActions } from "@/features/quotations/components/QuotationActions";
@@ -444,6 +445,7 @@ function QuotationDetail({
 
             <CardContent>
               <QuotationBreakdown quotation={data} />
+              <QuotationPlanPanel quotation={data} />
               <p className="mt-3 text-xs text-muted-foreground">
                 Event date <span className="tabular text-foreground">{formatEventDate(data.eventDate)}</span>
               </p>

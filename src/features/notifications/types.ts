@@ -35,4 +35,6 @@ export interface NotificationLogView {
   failureReason?: string;
   /** ISO-8601 instant. */
   attemptedAt: string;
+  /** How many times sending was tried (a failed email is retried a few times, and by staff on request). */
+  attempts?: number;
 }

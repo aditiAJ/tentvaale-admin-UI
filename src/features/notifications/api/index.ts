@@ -18,6 +18,11 @@ export function listNotificationsBySubject(subjectReference: string, signal?: Ab
   );
 }
 
+/** Tries a failed email again now. Needs CONFIG_WRITE (Admin). */
+export function retryNotification(id: string) {
+  return apiFetch<void>(`/admin/notifications/log/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
 export const notificationKeys = {
   recent: (limit: number) => ["notifications", "recent", limit] as const,
   bySubject: (subject: string) => ["notifications", "by-subject", subject] as const,

@@ -1,7 +1,11 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useCan } from "@/features/auth";
+import { ApiError } from "@/services/api-client";
+import { retryNotification } from "@/features/notifications/api";
 import { Bell, CircleAlert, CircleCheck, CircleSlash, Clock, Search } from "lucide-react";
 import {
   listNotifications,
@@ -63,6 +67,16 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
 export function NotificationsPage() {
   const [limit, setLimit] = useState(LIMITS[0]);
   const [channel, setChannel] = useState("");
+  const canRetry = useCan("CONFIG_WRITE");
+  const queryClient = useQueryClient();
+  const retry = useMutation({
+    mutationFn: (id: string) => retryNotification(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      toast.success("Email sent again");
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not send it again."),
+  });
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   // `subject` is committed on submit, not on every keystroke: it is a separate
@@ -233,6 +247,20 @@ export function NotificationsPage() {
                       <span className="mt-1 block max-w-64 text-xs text-destructive">
                         {row.failureReason}
                       </span>
+                    ) : null}
+                    {row.attempts && row.attempts > 1 ? (
+                      <span className="mt-1 block text-xs text-muted-foreground">Tried {row.attempts} times</span>
+                    ) : null}
+                    {row.status === "FAILED" && row.channel === "EMAIL" && canRetry ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-1"
+                        disabled={retry.isPending}
+                        onClick={() => retry.mutate(row.id)}
+                      >
+                        Send again
+                      </Button>
                     ) : null}
                   </TD>
                 </TR>

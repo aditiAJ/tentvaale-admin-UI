@@ -9,6 +9,7 @@ import {
 import * as backend from "@/features/quotations/api/backend";
 import type {
   CreateQuotationRequest,
+  QuotationPlan,
   QuotationVersionView,
   QuotationView,
   UpdateQuotationRequest,
@@ -90,6 +91,7 @@ export function listQuotationVersions(quotationId: string, signal?: AbortSignal)
 export const quotationKeys = {
   byId: (quotationId: string) => ["quotations", quotationId] as const,
   list: ["quotations", "list"] as const,
+  plan: (quotationId: string) => ["quotations", quotationId, "plan"] as const,
 };
 
 /** Needs DEPOSIT_WAIVE (Admin): the deposit is not collected and the reason is on record. */
@@ -102,4 +104,9 @@ export function waiveDeposit(quotationId: string, reason: string): Promise<Quota
 export function acceptOnBehalf(quotationId: string): Promise<{ id: string; orderNumber: string }> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.acceptOnBehalf(quotationId);
+}
+
+export function getQuotationPlan(quotationId: string, signal?: AbortSignal): Promise<QuotationPlan> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.getQuotationPlan(quotationId, signal);
 }
