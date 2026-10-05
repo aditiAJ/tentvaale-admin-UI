@@ -42,6 +42,9 @@ import {
 } from "@/mock-data/store";
 import type {
   AddWarehouseProductRequest,
+  FacetOption,
+  StockGrid,
+  VariantCombination,
   BundleOccasionView,
   BundleView,
   CategoryView,
@@ -90,6 +93,26 @@ import type {
  * no paging, no filter and no way to list inactive products yet, so the table
  * sorts and filters client-side over the full set.
  */
+const VARIANTS_NEED_BACKEND = "Variants and stock grids need the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
+const variantsNeedBackend = <T>() => Promise.reject<T>(new ApiError(VARIANTS_NEED_BACKEND, 422));
+
+export const listFacetOptions = (signal?: AbortSignal) =>
+  IS_MOCK ? variantsNeedBackend<FacetOption[]>() : backend.listFacetOptions(signal);
+export const setProductAxes = (productId: string, facetIds: string[]) =>
+  IS_MOCK ? variantsNeedBackend<ProductView>() : backend.setProductAxes(productId, facetIds);
+export const listVariantCombinations = (productId: string, signal?: AbortSignal) =>
+  IS_MOCK ? variantsNeedBackend<VariantCombination[]>() : backend.listVariantCombinations(productId, signal);
+export const generateVariants = (productId: string, combinations: string[][]) =>
+  IS_MOCK ? variantsNeedBackend<ProductVariantView[]>() : backend.generateVariants(productId, combinations);
+export const setVariantActive = (variantId: string, active: boolean) =>
+  IS_MOCK ? variantsNeedBackend<ProductVariantView>() : backend.setVariantActive(variantId, active);
+export const getStockGrid = (productId: string, signal?: AbortSignal) =>
+  IS_MOCK ? variantsNeedBackend<StockGrid>() : backend.getStockGrid(productId, signal);
+export const saveStockGrid = (
+  productId: string,
+  cells: { variantId: string; warehouseId: string; quantity: number }[],
+) => (IS_MOCK ? variantsNeedBackend<StockGrid>() : backend.saveStockGrid(productId, cells));
+
 export function listProducts(
   signal?: AbortSignal,
   options?: { includeInactive?: boolean },

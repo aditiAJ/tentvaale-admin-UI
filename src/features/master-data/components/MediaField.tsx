@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IS_MOCK } from "@/services/data-source";
-import { mediaFromUrl } from "@/features/master-data/api/backend";
+import { mediaFromUrl, uploadMedia } from "@/features/master-data/api/backend";
 
 /**
  * Picks, previews and removes a catalogue record's images and video — a
@@ -88,6 +88,35 @@ export function MediaField({
     setBusy(true);
     onBusyChange(true);
     const added: MediaAsset[] = [];
+    if (!IS_MOCK) {
+      // Live backend: images go to storage in one request, each file with its own outcome.
+      const toSend = accepted.filter(([, kind]) => kind === "IMAGE").map(([file]) => file);
+      if (accepted.some(([, kind]) => kind === "VIDEO")) {
+        problems.push("Video upload is not available yet; paste a video URL instead.");
+      }
+      try {
+        for (const result of toSend.length ? await uploadMedia(toSend) : []) {
+          if (result.ok && result.url) {
+            added.push({
+              id: crypto.randomUUID(),
+              kind: "IMAGE",
+              fileName: result.fileName,
+              contentType: result.contentType ?? "",
+              sizeBytes: result.sizeBytes,
+              url: result.url,
+              thumbnailUrl: result.thumbnailUrl,
+              width: result.width,
+              height: result.height,
+            });
+          } else {
+            problems.push(`${result.fileName}: ${result.error ?? "could not be stored"}`);
+          }
+        }
+      } catch (caught) {
+        problems.push(caught instanceof Error ? caught.message : "The upload failed.");
+      }
+      accepted.length = 0;
+    }
     // One at a time: each image is decoded onto a canvas, and a batch of
     // large photos decoded at once can briefly hold a lot of memory.
     for (const [file, kind] of accepted) {
@@ -115,6 +144,16 @@ export function MediaField({
   };
 
   const locked = disabled || busy;
+
+  /** The first image is the primary one (shown on cards and lists); move another to the front. */
+  const makePrimary = (item: MediaAsset) => {
+    const first = media.findIndex((candidate) => candidate.kind === "IMAGE");
+    const at = media.findIndex((candidate) => candidate.id === item.id);
+    if (first < 0 || at <= first) return;
+    const next = media.filter((candidate) => candidate.id !== item.id);
+    next.splice(first, 0, item);
+    onChange(next);
+  };
 
   /** api mode: the backend stores image URLs only, so the admin pastes one instead of uploading. */
   const addUrl = () => {
@@ -159,7 +198,7 @@ export function MediaField({
         </div>
       ) : null}
 
-      <div className={IS_MOCK ? "flex flex-wrap items-center gap-2" : "hidden"}>
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="outline"
@@ -202,7 +241,7 @@ export function MediaField({
                   // made in this browser, which next/image has nothing to
                   // optimise.
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.url} alt={item.fileName} className="size-full object-cover" />
+                  <img src={item.thumbnailUrl ?? item.url} alt={item.fileName} className="size-full object-cover" />
                 ) : item.url ? (
                   <video
                     src={item.url}
@@ -233,7 +272,18 @@ export function MediaField({
               </div>
               <p className="mt-1 truncate text-xs" title={item.fileName}>
                 {item.fileName}
+                {item.kind === "IMAGE" && item.id === images[0]?.id && images.length > 1 ? " · Primary" : ""}
               </p>
+              {item.kind === "IMAGE" && images.length > 1 && item.id !== images[0]?.id ? (
+                <button
+                  type="button"
+                  className="text-[0.7rem] text-primary hover:underline disabled:opacity-50"
+                  disabled={locked}
+                  onClick={() => makePrimary(item)}
+                >
+                  Make primary
+                </button>
+              ) : null}
               <p className="text-[0.7rem] text-muted-foreground tabular">
                 {item.kind === "VIDEO" ? "Video · " : ""}
                 {item.sizeBytes ? formatBytes(item.sizeBytes) : "Linked URL"}

@@ -23,13 +23,17 @@ export interface MediaAsset {
   contentType: string;
   sizeBytes: number;
   url: string | null;
+  /** Set for images uploaded to storage; shown wherever a small picture is enough. */
+  thumbnailUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
 }
 
 /** Shown wherever a record has no image — including every product in api mode. */
 export const FALLBACK_IMAGE = "/mock-media/placeholder.svg";
 
 /** The most a product can carry, enforced by the form and the mock alike. */
-export const PRODUCT_MEDIA_LIMITS = { images: 6, videos: 1 } as const;
+export const PRODUCT_MEDIA_LIMITS = { images: 20, videos: 1 } as const;
 
 /** A category, bundle or featured collection: one representative image, no video. */
 export const CATALOGUE_MEDIA_LIMITS = { images: 1, videos: 0 } as const;
@@ -114,8 +118,10 @@ export interface ProductView extends Partial<ProductStorefrontDetails> {
    * warehouse or out on rent without a variant.
    */
   hasVariants: boolean;
-  /** Its variants, sorted by name. Always empty when hasVariants is false. */
+  /** Every product has at least one variant (the default, hidden while it is the only one). */
   variants: ProductVariantView[];
+  /** The facets this product's variants vary on, in display order. Empty until the admin picks (the demo data has none). */
+  axes?: VariantAxis[];
   /**
    * Images first, in the order they were added, then the video if any.
    * Optional because the real ProductView has no media: in api mode it is
@@ -142,8 +148,43 @@ export interface ProductVariantView {
   /** Per day, like the product's own rates. */
   wholesaleRate: Money;
   retailRate: Money;
-  /** Units across every warehouse. Read-only; added through a warehouse. */
+  /** Units across every warehouse. Read-only; written in the Stock grid. */
   stock: number;
+  /** Generated as `<product SKU>-V01`, `-V02`. */
+  sku?: string;
+  isDefault?: boolean;
+  active?: boolean;
+  /** True when the variant sits on the product's axes (so the axes can no longer change). */
+  hasAttributes?: boolean;
+}
+
+export interface VariantAxis {
+  facetId: string;
+  code: string;
+  label: string;
+}
+
+/** A shared facet (colour, fabric, size ...) and its values: what an axis is picked from. */
+export interface FacetOption {
+  id: string;
+  code: string;
+  label: string;
+  values: { id: string; value: string; active: boolean }[];
+}
+
+/** One cell of the combination grid: a value per axis, and the variant already holding it. */
+export interface VariantCombination {
+  valueIds: string[];
+  label: string;
+  existingVariantId: string | null;
+}
+
+export interface StockGrid {
+  variants: { id: string; name: string; sku: string; active: boolean }[];
+  warehouses: { id: string; name: string }[];
+  cells: { variantId: string; warehouseId: string; quantity: number }[];
+  /** What customers are shown: the sum of the active variants' cells. */
+  shownToCustomers: number;
 }
 
 export interface CreateProductVariantRequest {

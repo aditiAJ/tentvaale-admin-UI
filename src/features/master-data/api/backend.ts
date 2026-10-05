@@ -16,6 +16,9 @@ import type {
   PlannerApplicationRequest,
   PlannerProfileView,
   ProductVariantView,
+  FacetOption,
+  StockGrid,
+  VariantCombination,
   ProductView,
   SetSupplierStockRequest,
   SubCategoryView,
@@ -92,6 +95,10 @@ interface WireVariant {
   effectiveRate: number;
   ownedStock: number;
   supplierStock: number;
+  sku: string;
+  isDefault: boolean;
+  active: boolean;
+  attributes?: Record<string, number>;
 }
 
 interface WireProduct {
@@ -111,9 +118,20 @@ interface WireProduct {
   tag: string | null;
   hasVariants: boolean;
   active: boolean;
-  media?: { id: number; type: "IMAGE" | "VIDEO"; url: string; altText: string | null }[];
+  media?: {
+    id: number;
+    type: "IMAGE" | "VIDEO";
+    url: string;
+    altText: string | null;
+    thumbnailUrl?: string | null;
+    sizeBytes?: number | null;
+    contentType?: string | null;
+    width?: number | null;
+    height?: number | null;
+  }[];
   facets?: { facetCode: string; facetLabel: string; value: string }[];
   variants?: WireVariant[];
+  axes?: { facetId: number; code: string; label: string }[];
 }
 
 const RATE_TO_WIRE: Record<RateType, WireProduct["rateType"]> = {
@@ -260,6 +278,10 @@ function variantFromWire(variant: WireVariant): ProductVariantView {
     name: variant.name,
     wholesaleRate: money(variant.wholesaleRate),
     retailRate: money(variant.effectiveRate),
+    sku: variant.sku,
+    isDefault: variant.isDefault,
+    active: variant.active,
+    hasAttributes: Object.keys(variant.attributes ?? {}).length > 0,
     stock: variant.ownedStock + variant.supplierStock,
   };
 }
@@ -301,13 +323,21 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
     retailRate: money(product.dailyRate),
     hasVariants: product.hasVariants,
     variants: list.map(variantFromWire),
+    axes: (product.axes ?? []).map((axis) => ({
+      facetId: String(axis.facetId),
+      code: axis.code,
+      label: axis.label,
+    })),
     media: product.media?.map((m) => ({
       id: String(m.id),
       kind: m.type,
       fileName: m.altText ?? m.url.split("/").pop() ?? "media",
-      contentType: "",
-      sizeBytes: 0,
+      contentType: m.contentType ?? "",
+      sizeBytes: m.sizeBytes ?? 0,
       url: m.url,
+      thumbnailUrl: m.thumbnailUrl ?? null,
+      width: m.width ?? null,
+      height: m.height ?? null,
     })),
     rateType: RATE_FROM_WIRE[product.rateType],
     size: facetValues(product, "size")[0] ?? null,
@@ -355,10 +385,41 @@ function productBody(request: CreateProductRequest) {
   };
 }
 
+/** The first image is the primary one; the backend keeps it first. */
 function mediaBody(media: MediaAsset[]) {
+  const firstImage = media.find((m) => m.kind === "IMAGE" && m.url);
   return media
     .filter((m) => m.url)
-    .map((m) => ({ type: m.kind, url: m.url as string, altText: m.fileName }));
+    .map((m) => ({
+      type: m.kind,
+      url: m.url as string,
+      altText: m.fileName,
+      thumbnailUrl: m.thumbnailUrl ?? undefined,
+      sizeBytes: m.sizeBytes || undefined,
+      contentType: m.contentType || undefined,
+      width: m.width ?? undefined,
+      height: m.height ?? undefined,
+      primary: m === firstImage,
+    }));
+}
+
+export interface UploadResult {
+  fileName: string;
+  ok: boolean;
+  error: string | null;
+  url: string | null;
+  thumbnailUrl: string | null;
+  contentType: string | null;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+}
+
+/** Sends images to the backend (stored in R2, with a thumbnail); every file has its own result. */
+export function uploadMedia(files: File[]): Promise<UploadResult[]> {
+  const form = new FormData();
+  files.forEach((file) => form.append("files", file));
+  return apiFetch<UploadResult[]>(`${BASE}/media/upload`, { method: "POST", body: form });
 }
 
 function storefrontDetailsBody(request: CreateProductRequest) {
@@ -374,22 +435,18 @@ function storefrontDetailsBody(request: CreateProductRequest) {
   };
 }
 
+function completeBody(request: CreateProductRequest) {
+  return {
+    product: productBody(request),
+    media: mediaBody(request.media),
+    details: storefrontDetailsBody(request),
+  };
+}
+
+/** One request, one transaction: a failure leaves nothing half-created. */
 export async function createProduct(request: CreateProductRequest): Promise<ProductView> {
-  const created = await apiFetch<WireProduct>(`${BASE}/products`, {
-    method: "POST",
-    body: productBody(request),
-  });
-  if (request.media.length) {
-    await apiFetch<WireProduct>(`${BASE}/products/${created.id}/media`, {
-      method: "PUT",
-      body: mediaBody(request.media),
-    });
-  }
   return productFromWire(
-    await apiFetch<WireProduct>(`${BASE}/products/${created.id}/storefront-details`, {
-      method: "PUT",
-      body: storefrontDetailsBody(request),
-    }),
+    await apiFetch<WireProduct>(`${BASE}/products/complete`, { method: "POST", body: completeBody(request) }),
   );
 }
 
@@ -397,18 +454,10 @@ export async function updateProduct(
   productId: string,
   request: CreateProductRequest,
 ): Promise<ProductView> {
-  await apiFetch<WireProduct>(`${BASE}/products/${productId}`, {
-    method: "PUT",
-    body: productBody(request),
-  });
-  await apiFetch<WireProduct>(`${BASE}/products/${productId}/media`, {
-    method: "PUT",
-    body: mediaBody(request.media),
-  });
   return productFromWire(
-    await apiFetch<WireProduct>(`${BASE}/products/${productId}/storefront-details`, {
+    await apiFetch<WireProduct>(`${BASE}/products/${productId}/complete`, {
       method: "PUT",
-      body: storefrontDetailsBody(request),
+      body: completeBody(request),
     }),
   );
 }
@@ -448,6 +497,111 @@ export async function updateProductVariant(
 
 export function deleteProductVariant(_productId: string, variantId: string): Promise<void> {
   return apiFetch<void>(`${BASE}/variants/${variantId}`, { method: "DELETE" });
+}
+
+export async function setVariantActive(variantId: string, active: boolean): Promise<ProductVariantView> {
+  return variantFromWire(
+    await apiFetch<WireVariant>(`${BASE}/variants/${variantId}/${active ? "activate" : "deactivate"}`, {
+      method: "POST",
+    }),
+  );
+}
+
+interface WireFacet {
+  id: number;
+  code: string;
+  label: string;
+  active: boolean;
+  values: { id: number; value: string; active: boolean }[];
+}
+
+/** Active facets with their values: the pool an axis is picked from. */
+export async function listFacetOptions(signal?: AbortSignal): Promise<FacetOption[]> {
+  const rows = await apiFetch<WireFacet[]>(`${BASE}/facets`, { signal });
+  return rows
+    .filter((facet) => facet.active)
+    .map((facet) => ({
+      id: String(facet.id),
+      code: facet.code,
+      label: facet.label,
+      values: facet.values.map((v) => ({ id: String(v.id), value: v.value, active: v.active })),
+    }));
+}
+
+export async function setProductAxes(productId: string, facetIds: string[]): Promise<ProductView> {
+  return productFromWire(
+    await apiFetch<WireProduct>(`${BASE}/products/${productId}/variant-axes`, {
+      method: "PUT",
+      body: facetIds.map(Number),
+    }),
+  );
+}
+
+export async function listVariantCombinations(
+  productId: string,
+  signal?: AbortSignal,
+): Promise<VariantCombination[]> {
+  const rows = await apiFetch<
+    { valueIds: number[]; label: string; existingVariantId: number | null }[]
+  >(`${BASE}/products/${productId}/variant-combinations`, { signal });
+  return rows.map((row) => ({
+    valueIds: row.valueIds.map(String),
+    label: row.label,
+    existingVariantId: row.existingVariantId == null ? null : String(row.existingVariantId),
+  }));
+}
+
+/** Creates one variant per ticked combination (one value id per axis, in axis order). */
+export async function generateVariants(
+  productId: string,
+  combinations: string[][],
+): Promise<ProductVariantView[]> {
+  const rows = await apiFetch<WireVariant[]>(`${BASE}/products/${productId}/variants/generate`, {
+    method: "POST",
+    body: combinations.map((combo) => combo.map(Number)),
+  });
+  return rows.map(variantFromWire);
+}
+
+interface WireStockGrid {
+  variants: { id: number; name: string; sku: string; active: boolean }[];
+  warehouses: { id: number; name: string }[];
+  cells: { variantId: number; warehouseId: number; quantity: number }[];
+  shownToCustomers: number;
+}
+
+function gridFromWire(grid: WireStockGrid): StockGrid {
+  return {
+    variants: grid.variants.map((v) => ({ ...v, id: String(v.id) })),
+    warehouses: grid.warehouses.map((w) => ({ ...w, id: String(w.id) })),
+    cells: grid.cells.map((c) => ({
+      variantId: String(c.variantId),
+      warehouseId: String(c.warehouseId),
+      quantity: c.quantity,
+    })),
+    shownToCustomers: grid.shownToCustomers,
+  };
+}
+
+export async function getStockGrid(productId: string, signal?: AbortSignal): Promise<StockGrid> {
+  return gridFromWire(await apiFetch<WireStockGrid>(`${BASE}/products/${productId}/stock-grid`, { signal }));
+}
+
+/** Saves the cells as written (a set, not an add). */
+export async function saveStockGrid(
+  productId: string,
+  cells: { variantId: string; warehouseId: string; quantity: number }[],
+): Promise<StockGrid> {
+  return gridFromWire(
+    await apiFetch<WireStockGrid>(`${BASE}/products/${productId}/stock-grid`, {
+      method: "PUT",
+      body: cells.map((c) => ({
+        variantId: Number(c.variantId),
+        warehouseId: Number(c.warehouseId),
+        quantity: c.quantity,
+      })),
+    }),
+  );
 }
 
 // ----------------------------------------------------------------- customers

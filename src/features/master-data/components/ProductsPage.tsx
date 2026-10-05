@@ -218,19 +218,17 @@ export function ProductsPage() {
                       </TD>
                       <TD>
                         <div className="flex justify-end gap-1">
-                          {/* Only a product set to have variants has any to
-                              manage, so the rest get no button at all. */}
-                          {product.hasVariants ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setManagingVariants(product)}
-                              aria-label={`Variants of ${product.name}`}
-                            >
-                              <Layers />
-                              Variants
-                            </Button>
-                          ) : null}
+                          {/* Every product has a variant (the default), so every product has stock to
+                              write and may gain variants. */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setManagingVariants(product)}
+                            aria-label={`Variants and stock of ${product.name}`}
+                          >
+                            <Layers />
+                            Variants & stock
+                          </Button>
                           {canWrite ? (
                             <Button
                               variant="ghost"

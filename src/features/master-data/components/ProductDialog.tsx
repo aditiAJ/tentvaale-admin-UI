@@ -348,15 +348,6 @@ export function ProductDialog({
           <Field label="Tag" required error={errors.tag?.message}>
             {(props) => <Input {...props} {...register("tag")} placeholder="Furniture" />}
           </Field>
-
-          <Field label="Has variants?" required error={errors.hasVariants?.message}>
-            {(props) => (
-              <Select {...props} {...register("hasVariants")}>
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </Select>
-            )}
-          </Field>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

@@ -98,7 +98,7 @@ export function WarehouseProductsDialog({
       const label = entry.variantName
         ? `${entry.productName} (${entry.variantName})`
         : entry.productName;
-      toast.success(`${values.quantity} × ${label} added`, {
+      toast.success(`${label} set to ${values.quantity}`, {
         description: `${warehouse.name} now holds ${entry.quantity}`,
       });
       reset();
@@ -180,7 +180,7 @@ export function WarehouseProductsDialog({
             error={errors.productId?.message}
             hint={
               alreadyHeld && !needsVariant
-                ? `Already holds ${alreadyHeld.quantity}. The quantity below is added to it.`
+                ? `Already holds ${alreadyHeld.quantity}. The quantity below replaces it.`
                 : undefined
             }
           >
@@ -215,7 +215,7 @@ export function WarehouseProductsDialog({
                 !selectedProduct.variants.length
                   ? "This product has no variants yet. Add them from Products first."
                   : alreadyHeld
-                    ? `Already holds ${alreadyHeld.quantity}. The quantity below is added to it.`
+                    ? `Already holds ${alreadyHeld.quantity}. The quantity below replaces it.`
                     : undefined
               }
             >

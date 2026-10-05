@@ -53,13 +53,15 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const token = getAuthToken();
 
+  // A FormData body (file upload) sets its own multipart Content-Type; everything else is JSON.
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   const res = await fetch(`${API_BASE_PATH}/${path.replace(/^\//, "")}`, {
     method,
     headers: {
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
     signal,
   });
 
