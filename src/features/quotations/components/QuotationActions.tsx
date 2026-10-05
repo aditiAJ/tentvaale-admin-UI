@@ -15,6 +15,7 @@ import {
 } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { useCan } from "@/features/auth";
+import { isFromStorefront } from "@/features/quotations/source";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -38,9 +39,12 @@ type Pending = "send" | "accept" | "reject" | null;
 export function QuotationActions({
   quotation,
   onConvert,
+  received = false,
 }: {
   quotation: QuotationView;
   onConvert: () => void;
+  /** Shown in the Received panel: bigger buttons, and wording for pricing a customer's request. */
+  received?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -49,6 +53,9 @@ export function QuotationActions({
   const canApprove = useCan("QUOTATION_APPROVE");
   const canConvert = useCan("ORDER_WRITE");
   const { status } = quotation;
+  const size = received ? "default" : "sm";
+  // An order from a storefront request is placed by the customer, so staff do not convert it.
+  const fromStorefront = isFromStorefront(quotation);
 
   /** The detail, every list and the dashboard all move when a quotation changes status. */
   const refresh = (updated: QuotationView) => {
@@ -75,7 +82,7 @@ export function QuotationActions({
       {canWrite && editable ? (
         <Link
           href={`/quotations/edit?id=${quotation.id}`}
-          className={buttonVariants({ variant: "outline", size: "sm" })}
+          className={buttonVariants({ variant: "outline", size })}
           title={
             status === "SENT"
               ? "Editing a sent quotation returns it to Draft; it must be sent again"
@@ -83,24 +90,24 @@ export function QuotationActions({
           }
         >
           <Pencil />
-          Edit
+          {received ? "Edit & price" : "Edit"}
         </Link>
       ) : null}
 
       {canWrite && status === "DRAFT" ? (
-        <Button size="sm" onClick={() => setPending("send")}>
+        <Button size={size} onClick={() => setPending("send")}>
           <Send />
-          Send
+          {received ? "Send to customer" : "Send"}
         </Button>
       ) : null}
 
       {canApprove && status === "SENT" ? (
         <>
-          <Button size="sm" onClick={() => setPending("accept")}>
+          <Button size={size} onClick={() => setPending("accept")}>
             <Check />
             Accept
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setPending("reject")}>
+          <Button variant="outline" size={size} onClick={() => setPending("reject")}>
             <X />
             Reject
           </Button>
@@ -109,10 +116,10 @@ export function QuotationActions({
 
       {canConvert ? (
         <Button
-          variant={status === "ACCEPTED" ? "default" : "outline"}
-          size="sm"
-          disabled={status !== "ACCEPTED"}
-          title={convertHint(status)}
+          variant={status === "ACCEPTED" && !fromStorefront ? "default" : "outline"}
+          size={size}
+          disabled={status !== "ACCEPTED" || fromStorefront}
+          title={fromStorefront ? "The customer places this order from the storefront" : convertHint(status)}
           onClick={onConvert}
         >
           Convert to order
@@ -122,7 +129,7 @@ export function QuotationActions({
       {canWrite ? (
         <Button
           variant="ghost"
-          size="sm"
+          size={size}
           disabled={duplicate.isPending}
           onClick={() => duplicate.mutate()}
           title="Start a new draft with the same customer and lines, priced at current rates"
@@ -153,7 +160,11 @@ export function QuotationActions({
       {pending === "accept" ? (
         <ConfirmDialog
           title={`Accept ${quotation.quotationNumber}`}
-          description="Approves the quotation. It can then be turned into an order. Nobody can edit it after this."
+          description={
+            fromStorefront
+              ? "Approves the quotation. The customer is asked to place the order from the storefront. Nobody can edit it after this."
+              : "Approves the quotation. It can then be turned into an order. Nobody can edit it after this."
+          }
           confirmLabel="Accept quotation"
           destructive={false}
           fallbackError="Could not accept the quotation."

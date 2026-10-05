@@ -1,6 +1,7 @@
 import { apiFetch } from "@/services/api-client";
 import type { Money } from "@/lib/money";
 import type {
+  QuotationVersionView,
   CreateQuotationRequest,
   QuotationLineView,
   QuotationStatus,
@@ -49,6 +50,7 @@ interface WireQuotation {
   deliveryCharge?: Money;
   discountAmount?: Money;
   changeRequestNote?: string | null;
+  changeRequestedAt?: string | null;
   createdAt?: string | null;
   sentAt?: string | null;
   acceptedAt?: string | null;
@@ -89,6 +91,7 @@ function fromWire(q: WireQuotation): QuotationView {
     deliveryCharge: q.deliveryCharge,
     discountAmount: q.discountAmount,
     changeRequestNote: q.changeRequestNote ?? null,
+    changeRequestedAt: q.changeRequestedAt ?? null,
     createdAt: q.createdAt ?? null,
     sentAt: q.sentAt ?? null,
     acceptedAt: q.acceptedAt ?? null,
@@ -183,4 +186,9 @@ export async function duplicateQuotation(quotationId: string): Promise<Quotation
   return fromWire(
     await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/duplicate`, { method: "POST" }),
   );
+}
+
+/** Every version sent to the customer, oldest first. */
+export function listQuotationVersions(quotationId: string, signal?: AbortSignal): Promise<QuotationVersionView[]> {
+  return apiFetch<QuotationVersionView[]>(`${BASE}/${id(quotationId)}/versions`, { signal });
 }

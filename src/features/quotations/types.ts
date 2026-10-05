@@ -69,6 +69,7 @@ export interface QuotationView {
   discountAmount?: Money;
   /** What the customer last asked to change; the quotation is a draft until it is re-sent. */
   changeRequestNote?: string | null;
+  changeRequestedAt?: string | null;
   createdAt?: string | null;
   sentAt?: string | null;
   acceptedAt?: string | null;
@@ -153,4 +154,17 @@ export interface UpdateQuotationRequest {
   deliveryCharge?: number;
   discountAmount?: number;
   lines: UpdateQuotationLineRequest[];
+}
+
+/** One version sent to the customer (QuotationVersionView on the backend). */
+export interface QuotationVersionView {
+  versionNo: number;
+  sentAt: string;
+  validUntil?: string | null;
+  subtotalAmount: Money;
+  deliveryCharge: Money;
+  discountAmount: Money;
+  totalAmount: Money;
+  securityDeposit: Money;
+  lines: { productName: string; quantity: number; rentalDays: number; lineTotal: Money }[];
 }

@@ -9,6 +9,7 @@ import {
 import * as backend from "@/features/quotations/api/backend";
 import type {
   CreateQuotationRequest,
+  QuotationVersionView,
   QuotationView,
   UpdateQuotationRequest,
 } from "@/features/quotations/types";
@@ -78,6 +79,12 @@ export function rejectQuotation(quotationId: string, reason: string): Promise<Qu
 export function duplicateQuotation(quotationId: string): Promise<QuotationView> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.duplicateQuotation(quotationId);
+}
+
+/** Every version sent to the customer. Real backend only. */
+export function listQuotationVersions(quotationId: string, signal?: AbortSignal): Promise<QuotationVersionView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listQuotationVersions(quotationId, signal);
 }
 
 export const quotationKeys = {

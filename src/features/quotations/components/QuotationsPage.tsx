@@ -11,7 +11,9 @@ import {
   SearchX,
 } from "lucide-react";
 import { getQuotation, listQuotations, quotationKeys } from "@/features/quotations/api";
-import type { QuotationStatus, QuotationView } from "@/features/quotations/types";
+import type { QuotationView } from "@/features/quotations/types";
+import { bucketOf, isFromStorefront, type QuotationBucket } from "@/features/quotations/source";
+import { QuotationBreakdown, QuotationVersions, ReceivedPanel } from "@/features/quotations/components/QuotationPanels";
 import { useCan } from "@/features/auth";
 import { ConvertToOrderDialog } from "@/features/orders";
 import { QuotationActions } from "@/features/quotations/components/QuotationActions";
@@ -35,9 +37,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const STATUS_VARIANT: Record<
-  QuotationStatus,
+  QuotationBucket,
   "default" | "success" | "warning" | "destructive" | "outline"
 > = {
+  RECEIVED: "warning",
   NEW: "outline",
   REVIEWED: "warning",
   DISCARDED: "destructive",
@@ -56,14 +59,16 @@ const STATUS_VARIANT: Record<
  * Converted, Rejected, Expired. The seeded mock data also uses New, Reviewed and Discarded, which
  * the backend does not have, so those only show in mock mode.
  */
-const MOCK_ONLY_FILTERS: { key: string; label: string; status?: QuotationStatus }[] = [
+const MOCK_ONLY_FILTERS: { key: string; label: string; status?: QuotationBucket }[] = [
   { key: "new", label: "New", status: "NEW" },
   { key: "reviewed", label: "Reviewed", status: "REVIEWED" },
   { key: "discarded", label: "Discarded", status: "DISCARDED" },
 ];
 
-const FILTERS: { key: string; label: string; status?: QuotationStatus }[] = [
+const FILTERS: { key: string; label: string; status?: QuotationBucket }[] = [
   { key: "", label: "All quotations" },
+  // Requests from the storefront waiting on the team, ahead of everything else.
+  { key: "received", label: "Received", status: "RECEIVED" },
   ...(IS_MOCK ? MOCK_ONLY_FILTERS.slice(0, 2) : []),
   { key: "draft", label: "Draft", status: "DRAFT" },
   { key: "sent", label: "Sent", status: "SENT" },
@@ -118,7 +123,8 @@ export function QuotationsPage({ quotationId, status }: { quotationId: string; s
   const counts = useMemo(() => {
     const byStatus = new Map<string, number>();
     for (const quotation of list.data ?? []) {
-      byStatus.set(quotation.status, (byStatus.get(quotation.status) ?? 0) + 1);
+      const bucket = bucketOf(quotation);
+      byStatus.set(bucket, (byStatus.get(bucket) ?? 0) + 1);
     }
     return byStatus;
   }, [list.data]);
@@ -196,7 +202,7 @@ function QuotationList({
   const inFilter = useMemo(
     () =>
       (quotations ?? []).filter(
-        (quotation) => !filter.status || quotation.status === filter.status,
+        (quotation) => !filter.status || bucketOf(quotation) === filter.status,
       ),
     [quotations, filter.status],
   );
@@ -301,7 +307,10 @@ function QuotationList({
                       <span className="truncate text-sm font-semibold">
                         {quotation.customerName}
                       </span>
-                      <Badge variant={STATUS_VARIANT[quotation.status]}>{quotation.status}</Badge>
+                      <Badge variant={STATUS_VARIANT[bucketOf(quotation)]}>{bucketOf(quotation)}</Badge>
+                      {isFromStorefront(quotation) ? (
+                        <Badge variant="outline">Storefront</Badge>
+                      ) : null}
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                       <span className="font-mono">{quotation.quotationNumber}</span>
@@ -403,12 +412,20 @@ function QuotationDetail({
 
       {data ? (
         <>
+          {bucketOf(data) === "RECEIVED" ? (
+            <ReceivedPanel
+              quotation={data}
+              actions={<QuotationActions quotation={data} received onConvert={() => setConverting(true)} />}
+            />
+          ) : null}
+
           <Card>
             <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle className="text-lg wrap-break-word">{data.customerName}</CardTitle>
-                  <Badge variant={STATUS_VARIANT[data.status]}>{data.status}</Badge>
+                  <Badge variant={STATUS_VARIANT[bucketOf(data)]}>{bucketOf(data)}</Badge>
+                  {isFromStorefront(data) ? <Badge variant="outline">From storefront</Badge> : null}
                 </div>
                 <p className="font-mono text-sm text-foreground">{data.quotationNumber}</p>
                 {data.customerEmail ? (
@@ -419,31 +436,19 @@ function QuotationDetail({
                 ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <QuotationActions quotation={data} onConvert={() => setConverting(true)} />
+                {bucketOf(data) === "RECEIVED" ? null : (
+                  <QuotationActions quotation={data} onConvert={() => setConverting(true)} />
+                )}
               </div>
             </CardHeader>
 
             <CardContent>
-              <dl className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Total</dt>
-                  <dd className="mt-0.5 text-lg font-semibold">{formatMoney(data.totalAmount)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Security deposit</dt>
-                  <dd className="mt-0.5 text-lg font-semibold">
-                    {formatMoney(data.totalSecurityDeposit)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Event date</dt>
-                  <dd className="tabular mt-0.5 text-lg font-semibold">
-                    {formatEventDate(data.eventDate)}
-                  </dd>
-                </div>
-              </dl>
+              <QuotationBreakdown quotation={data} />
+              <p className="mt-3 text-xs text-muted-foreground">
+                Event date <span className="tabular text-foreground">{formatEventDate(data.eventDate)}</span>
+              </p>
 
-              {data.changeRequestNote ? (
+              {data.changeRequestNote && bucketOf(data) !== "RECEIVED" ? (
                 <Alert tone="warning" title={`Customer asked for changes: ${data.changeRequestNote}`} className="mt-4" />
               ) : null}
 
@@ -505,6 +510,8 @@ function QuotationDetail({
               a product&apos;s rate does not alter a quote that has already gone out.
             </CardContent>
           </Card>
+
+          <QuotationVersions quotationId={data.id} />
 
           {converting ? (
             <ConvertToOrderDialog quotation={data} onClose={() => setConverting(false)} />
