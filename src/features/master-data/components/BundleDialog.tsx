@@ -82,6 +82,13 @@ const schema = z
       .trim()
       .regex(/^(\d+(\.\d)?)?$/, "Hours, with at most one decimal")
       .transform((value) => (value === "" ? undefined : Number(value))),
+    // Percent off the one-day sum, 0 to 90, at most two decimals: "10" or "12.5".
+    discountPercent: z
+      .string()
+      .trim()
+      .regex(/^(\d{1,2}(\.\d{1,2})?)?$/, "A percentage such as 10 or 12.5")
+      .transform((value) => (value === "" ? 0 : Number(value)))
+      .refine((value) => value <= 90, "At most 90%"),
     highlights: z
       .array(
         z.object({
@@ -175,6 +182,7 @@ export function BundleDialog({
       guestMin: existing?.guestMin != null ? String(existing.guestMin) : "",
       guestMax: existing?.guestMax != null ? String(existing.guestMax) : "",
       setupHours: existing?.setupHours != null ? String(existing.setupHours) : "",
+      discountPercent: existing?.discountPercent ? String(existing.discountPercent) : "",
       highlights: (existing?.highlights ?? []).map((text) => ({ text })),
     },
   });
@@ -314,6 +322,7 @@ export function BundleDialog({
         guestMin: values.guestMin ?? null,
         guestMax: values.guestMax ?? null,
         setupHours: values.setupHours ?? null,
+        discountPercent: values.discountPercent,
         highlights: values.highlights.map((row) => row.text),
       };
       return existing ? updateBundle(existing.id, request) : createBundle(request);
@@ -438,6 +447,11 @@ export function BundleDialog({
           <Field label="Guests to" error={errors.guestMax?.message}>
             {(props) => (
               <Input {...props} {...register("guestMax")} inputMode="numeric" placeholder="500" />
+            )}
+          </Field>
+          <Field label="Discount (%)" error={errors.discountPercent?.message} hint="Off the one-day sum of the items">
+            {(props) => (
+              <Input {...props} {...register("discountPercent")} inputMode="decimal" placeholder="0" />
             )}
           </Field>
           <Field label="Setup time (hours)" error={errors.setupHours?.message}>
@@ -621,7 +635,12 @@ export function BundleDialog({
 
         {existing ? (
           <p className="rounded-md bg-muted px-3 py-2 text-sm">
-            Price: <span className="font-medium">From {formatMoney(existing.rentalRate)} per event</span>
+            Price: <span className="font-medium">One-day sum {formatMoney(existing.rentalRate)}</span>
+            {existing.discountPercent ? (
+              <span className="ml-2 font-medium">
+                {existing.discountPercent}% off = {formatMoney(existing.discountedPrice ?? existing.rentalRate)}
+              </span>
+            ) : null}
             <span className="block text-xs text-muted-foreground">
               Worked out from the products above for one day. Saving recalculates it.
             </span>

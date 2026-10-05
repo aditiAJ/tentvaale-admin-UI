@@ -7,11 +7,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Loader2, Pencil, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import {
+  acceptOnBehalf,
   acceptQuotation,
   duplicateQuotation,
   quotationKeys,
   rejectQuotation,
   sendQuotation,
+  waiveDeposit,
 } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { useCan } from "@/features/auth";
@@ -25,7 +27,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
-type Pending = "send" | "accept" | "reject" | null;
+type Pending = "send" | "accept" | "behalf" | "reject" | "waive" | null;
 
 /**
  * The actions a quotation offers, and to whom.
@@ -52,6 +54,7 @@ export function QuotationActions({
   const canWrite = useCan("QUOTATION_WRITE");
   const canApprove = useCan("QUOTATION_APPROVE");
   const canConvert = useCan("ORDER_WRITE");
+  const canWaive = useCan("DEPOSIT_WAIVE");
   const { status } = quotation;
   const size = received ? "default" : "sm";
   // An order from a storefront request is placed by the customer, so staff do not convert it.
@@ -111,7 +114,18 @@ export function QuotationActions({
             <X />
             Reject
           </Button>
+          <Button variant="outline" size={size} onClick={() => setPending("behalf")}
+            title="Accept for the customer and create the order in one step">
+            <Check />
+            Accept on behalf of customer
+          </Button>
         </>
+      ) : null}
+
+      {canWaive && status === "DRAFT" && !quotation.depositWaiver?.waived && Number(quotation.totalSecurityDeposit.amount) > 0 ? (
+        <Button variant="outline" size={size} onClick={() => setPending("waive")}>
+          Waive deposit
+        </Button>
       ) : null}
 
       {canConvert ? (
@@ -180,6 +194,37 @@ export function QuotationActions({
         />
       ) : null}
 
+      {pending === "behalf" ? (
+        <ConfirmDialog
+          title={`Accept ${quotation.quotationNumber} on behalf of the customer`}
+          description="Accepts the quotation and creates the order now. The customer will see the order on their account."
+          confirmLabel="Accept and create order"
+          destructive={false}
+          fallbackError="Could not accept on the customer's behalf."
+          action={() => acceptOnBehalf(quotation.id)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: quotationKeys.byId(quotation.id) });
+            queryClient.invalidateQueries({ queryKey: quotationKeys.list });
+            queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+            toast.success(`${quotation.quotationNumber} accepted and the order created`);
+            setPending(null);
+          }}
+          onClose={() => setPending(null)}
+        />
+      ) : null}
+
+      {pending === "waive" ? (
+        <WaiveDialog
+          quotation={quotation}
+          onDone={(updated) => {
+            refresh(updated);
+            toast.success(`Deposit waived on ${updated.quotationNumber}`);
+            setPending(null);
+          }}
+          onClose={() => setPending(null)}
+        />
+      ) : null}
+
       {pending === "reject" ? (
         <RejectDialog
           quotation={quotation}
@@ -207,6 +252,59 @@ function convertHint(status: QuotationView["status"]): string | undefined {
     default:
       return `A ${status.toLowerCase()} quotation cannot be turned into an order`;
   }
+}
+
+/** Waiving the deposit needs a written reason, which is kept on the quotation. Admin only. */
+function WaiveDialog({
+  quotation,
+  onDone,
+  onClose,
+}: {
+  quotation: QuotationView;
+  onDone: (updated: QuotationView) => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => waiveDeposit(quotation.id, reason.trim()),
+    onSuccess: onDone,
+    onError: (e) => setError(e instanceof ApiError ? e.message : "Could not waive the deposit."),
+  });
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Waive the deposit on ${quotation.quotationNumber}`}
+      description="No deposit is collected for this order. It shows as Waived, with your reason."
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            Back
+          </Button>
+          <Button
+            disabled={mutation.isPending || reason.trim() === ""}
+            onClick={() => {
+              setError(null);
+              mutation.mutate();
+            }}
+          >
+            {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
+            Waive deposit
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {error ? <Alert tone="error" title={error} /> : null}
+        <Field label="Reason" required hint="Required. Kept on the quotation with your name.">
+          {(props) => (
+            <Input {...props} value={reason} maxLength={1000} onChange={(e) => setReason(e.target.value)} disabled={mutation.isPending} />
+          )}
+        </Field>
+      </div>
+    </Dialog>
+  );
 }
 
 /** Rejecting needs a reason, which is kept on the quotation. */

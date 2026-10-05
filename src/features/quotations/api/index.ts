@@ -91,3 +91,15 @@ export const quotationKeys = {
   byId: (quotationId: string) => ["quotations", quotationId] as const,
   list: ["quotations", "list"] as const,
 };
+
+/** Needs DEPOSIT_WAIVE (Admin): the deposit is not collected and the reason is on record. */
+export function waiveDeposit(quotationId: string, reason: string): Promise<QuotationView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.waiveDeposit(quotationId, reason);
+}
+
+/** SENT to an order in one step, for the customer. Needs QUOTATION_APPROVE (Admin). */
+export function acceptOnBehalf(quotationId: string): Promise<{ id: string; orderNumber: string }> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.acceptOnBehalf(quotationId);
+}

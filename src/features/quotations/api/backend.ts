@@ -49,6 +49,10 @@ interface WireQuotation {
   subtotalAmount?: Money;
   deliveryCharge?: Money;
   discountAmount?: Money;
+  bundleDiscounts?: { name: string; percent: number; amount: Money }[];
+  tax?: QuotationView["tax"];
+  depositWaiver?: QuotationView["depositWaiver"];
+  policies?: QuotationView["policies"];
   changeRequestNote?: string | null;
   changeRequestedAt?: string | null;
   createdAt?: string | null;
@@ -90,6 +94,10 @@ function fromWire(q: WireQuotation): QuotationView {
     subtotalAmount: q.subtotalAmount,
     deliveryCharge: q.deliveryCharge,
     discountAmount: q.discountAmount,
+    bundleDiscounts: q.bundleDiscounts ?? [],
+    tax: q.tax,
+    depositWaiver: q.depositWaiver,
+    policies: q.policies ?? [],
     changeRequestNote: q.changeRequestNote ?? null,
     changeRequestedAt: q.changeRequestedAt ?? null,
     createdAt: q.createdAt ?? null,
@@ -191,4 +199,19 @@ export async function duplicateQuotation(quotationId: string): Promise<Quotation
 /** Every version sent to the customer, oldest first. */
 export function listQuotationVersions(quotationId: string, signal?: AbortSignal): Promise<QuotationVersionView[]> {
   return apiFetch<QuotationVersionView[]>(`${BASE}/${id(quotationId)}/versions`, { signal });
+}
+
+/** The deposit is not collected; the reason is kept. Needs DEPOSIT_WAIVE (Admin). */
+export async function waiveDeposit(quotationId: string, reason: string): Promise<QuotationView> {
+  return fromWire(
+    await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/waive-deposit`, { method: "POST", body: { reason } }),
+  );
+}
+
+/** Accepts a sent quotation for the customer and creates the order at once. Needs QUOTATION_APPROVE. */
+export async function acceptOnBehalf(quotationId: string): Promise<{ id: string; orderNumber: string }> {
+  return apiFetch<{ id: string; orderNumber: string }>("/admin/orders/accept-on-behalf", {
+    method: "POST",
+    body: { quotationId },
+  });
 }

@@ -19,9 +19,27 @@ const formatDay = (value?: string | null) => (value ? dateFormat.format(new Date
  * Items, delivery, discount, total and deposit as the customer will see them, so staff can check the
  * figures before sending. The totals are the backend's.
  */
+/** GST rows: the taxable amount, then CGST + SGST (same state) or IGST. Delivery comes after, untaxed. */
+function taxRows(quotation: QuotationView): { label: string; value: string; muted?: boolean }[] {
+  const tax = quotation.tax;
+  if (!tax || tax.rate == null) return [{ label: "GST", value: "Not set", muted: true }];
+  const rows = [{ label: "Taxable amount", value: formatMoney(tax.taxableAmount) }];
+  if (tax.intraState) {
+    rows.push({ label: `CGST (${tax.rate / 2}%)`, value: formatMoney(tax.cgst) }, { label: `SGST (${tax.rate / 2}%)`, value: formatMoney(tax.sgst) });
+  } else {
+    rows.push({ label: `IGST (${tax.rate}%)`, value: formatMoney(tax.igst) });
+  }
+  return rows;
+}
+
 export function QuotationBreakdown({ quotation }: { quotation: QuotationView }) {
   const rows: { label: string; value: string; strong?: boolean; muted?: boolean }[] = [
     { label: "Items", value: formatMoney(quotation.subtotalAmount ?? quotation.totalAmount) },
+    // One discount line per bundle, then the flat discount below.
+    ...(quotation.bundleDiscounts ?? []).map((bundle) => ({
+      label: `${bundle.name} (${bundle.percent}% off)`,
+      value: `− ${formatMoney(bundle.amount)}`,
+    })),
     {
       label: "Delivery",
       value: isPositive(quotation.deliveryCharge) ? formatMoney(quotation.deliveryCharge) : "None",
@@ -32,8 +50,18 @@ export function QuotationBreakdown({ quotation }: { quotation: QuotationView }) 
       value: isPositive(quotation.discountAmount) ? `− ${formatMoney(quotation.discountAmount)}` : "None",
       muted: !isPositive(quotation.discountAmount),
     },
+    ...taxRows(quotation),
     { label: "Total", value: formatMoney(quotation.totalAmount), strong: true },
-    { label: "Security deposit (refundable)", value: formatMoney(quotation.totalSecurityDeposit) },
+    quotation.depositWaiver?.waived
+      ? {
+          label: "Security deposit",
+          value: `Waived (${formatMoney(quotation.depositWaiver.amount)})`,
+          muted: true,
+        }
+      : { label: "Security deposit (refundable, no GST)", value: formatMoney(quotation.totalSecurityDeposit) },
+    ...(quotation.policies ?? []).length
+      ? [{ label: "Policies sent with it", value: (quotation.policies ?? []).map((p) => `${p.kind.toLowerCase()} v${p.version}`).join(", ") }]
+      : [],
     { label: "Valid until", value: formatDay(quotation.validUntil) },
   ];
   return (

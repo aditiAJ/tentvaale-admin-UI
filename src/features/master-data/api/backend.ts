@@ -627,6 +627,7 @@ interface WireCustomer {
   phone?: string | null;
   accountType: CustomerView["accountType"];
   gstin?: string | null;
+  state?: string | null;
   active: boolean;
   storefrontAccountId?: string | null;
   plannerProfile?: WirePlannerProfile | null;
@@ -656,6 +657,7 @@ function customerFromWire(customer: WireCustomer): CustomerView {
     phone: customer.phone ?? null,
     accountType: customer.accountType,
     gstin: customer.gstin ?? null,
+    state: customer.state ?? null,
     active: customer.active,
     storefrontAccountId: customer.storefrontAccountId ?? null,
     plannerProfile: customer.plannerProfile ? plannerFromWire(customer.plannerProfile) : null,
@@ -671,6 +673,8 @@ function customerBody(request: CreateCustomerRequest | UpdateCustomerRequest) {
     phone: request.phone || undefined,
     accountType: request.accountType,
     gstin: request.gstin || undefined,
+    // Always sent: blank clears it (an absent state would leave the old one).
+    state: request.state ?? "",
   };
 }
 
@@ -1022,6 +1026,8 @@ interface WireBundle {
   occasionIds: number[];
   items: WireBundleItem[];
   fromPricePerEvent: number;
+  discountPercent?: number;
+  discountedPrice?: number;
 }
 
 interface WireCollection {
@@ -1149,6 +1155,8 @@ function bundleFromWire(bundle: WireBundle, occasions: Map<number, WireOccasion>
     })),
     // Derived from the items on the backend, never typed in (ADR-005): "from ₹X per event".
     rentalRate: money(bundle.fromPricePerEvent),
+    discountPercent: bundle.discountPercent ?? 0,
+    discountedPrice: money(bundle.discountedPrice ?? bundle.fromPricePerEvent),
     media: bundle.imageUrl ? [mediaFromUrl(bundle.imageUrl)] : [],
     occasions: bundle.occasionIds.flatMap((id) => {
       const occasion = occasions.get(id);
@@ -1165,6 +1173,7 @@ function bundleBody(request: CreateBundleRequest) {
     guestMin: request.guestMin ?? undefined,
     guestMax: request.guestMax ?? undefined,
     setupHours: request.setupHours ?? undefined,
+    discountPercent: request.discountPercent ?? 0,
     imageUrl: request.media[0]?.url || undefined,
     highlights: request.highlights,
     occasionIds: request.occasionIds.map(Number),

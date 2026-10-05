@@ -291,6 +291,8 @@ export interface CustomerView {
   phone: string | null;
   accountType: CustomerType;
   gstin?: string | null;
+  /** Place of supply: decides CGST + SGST (the company's state) or IGST. Needed before a quotation is sent. */
+  state?: string | null;
   active?: boolean;
   storefrontAccountId?: string | null;
   /** Present once the customer, an event planner, has applied for trade pricing. */
@@ -323,6 +325,10 @@ export interface BundleView extends BundleStorefrontDetails {
    * pricing decision rather than a sum.
    */
   rentalRate: Money;
+  /** Percent off the one-day sum, set by the admin (0 to 90). Real backend only. */
+  discountPercent?: number;
+  /** The one-day sum after the discount. Real backend only. */
+  discountedPrice?: Money;
   /** The bundle's own representative image, not a composite of its products'. */
   media: MediaAsset[];
   /**
@@ -624,6 +630,8 @@ export interface CreateBundleRequest extends BundleStorefrontDetails {
    * never typed in. Only the demo data still reads it.
    */
   rentalRate?: number;
+  /** Percent off the one-day sum, 0 to 90. */
+  discountPercent?: number;
   /** At most one image. On update, the full set to keep: an empty list removes it. */
   media: MediaAsset[];
   /**
@@ -657,6 +665,7 @@ export interface CreateCustomerRequest {
   phone?: string;
   accountType: CustomerType;
   gstin?: string;
+  state?: string;
 }
 
 export interface PlannerApplicationRequest {

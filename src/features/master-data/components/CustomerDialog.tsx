@@ -43,6 +43,11 @@ const schema = z.object({
     .trim()
     .max(20, "Maximum 20 characters")
     .transform((value) => (value === "" ? undefined : value)),
+  state: z
+    .string()
+    .trim()
+    .max(100, "Maximum 100 characters")
+    .transform((value) => (value === "" ? undefined : value)),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -76,6 +81,7 @@ export function CustomerDialog({
       phone: existing?.phone ?? "",
       accountType: existing?.accountType ?? "CUSTOMER",
       gstin: existing?.gstin ?? "",
+      state: existing?.state ?? "",
     },
   });
 
@@ -163,6 +169,10 @@ export function CustomerDialog({
 
           <Field label="GSTIN" error={errors.gstin?.message}>
             {(props) => <Input {...props} {...register("gstin")} placeholder="Optional" />}
+          </Field>
+
+          <Field label="State" error={errors.state?.message} hint="Decides CGST + SGST or IGST. Needed before a quotation is sent.">
+            {(props) => <Input {...props} {...register("state")} placeholder="Gujarat" />}
           </Field>
         </div>
       </form>

@@ -67,6 +67,14 @@ export interface QuotationView {
   subtotalAmount?: Money;
   deliveryCharge?: Money;
   discountAmount?: Money;
+  /** One line per bundle on the quotation: its percentage off what its items add up to. */
+  bundleDiscounts?: { name: string; percent: number; amount: Money }[];
+  /** GST on the items after discounts: CGST + SGST in the company's state, IGST elsewhere. */
+  tax?: QuotationTax;
+  /** A deposit the administrator chose not to collect, with the reason. */
+  depositWaiver?: { waived: boolean; amount: Money; reason: string | null; waivedBy: string | null };
+  /** The policy versions the quotation was sent with. */
+  policies?: { kind: string; version: number }[];
   /** What the customer last asked to change; the quotation is a draft until it is re-sent. */
   changeRequestNote?: string | null;
   changeRequestedAt?: string | null;
@@ -167,4 +175,14 @@ export interface QuotationVersionView {
   totalAmount: Money;
   securityDeposit: Money;
   lines: { productName: string; quantity: number; rentalDays: number; lineTotal: Money }[];
+}
+
+export interface QuotationTax {
+  rate: number | null;
+  taxableAmount: Money;
+  cgst: Money;
+  sgst: Money;
+  igst: Money;
+  placeOfSupply: string | null;
+  intraState: boolean;
 }
