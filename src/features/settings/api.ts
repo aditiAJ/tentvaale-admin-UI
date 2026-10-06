@@ -20,6 +20,15 @@ export interface CompanyProfile {
   youtubeUrl: string | null;
   /** The one GST rate (percent) charged on a quotation's items; null until set. */
   gstRate: number | null;
+  pan: string | null;
+  bankName: string | null;
+  bankAccount: string | null;
+  bankIfsc: string | null;
+  upiId: string | null;
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export const getCompany = (signal?: AbortSignal) =>
@@ -48,7 +57,26 @@ export const policyHistory = (kind: PolicyKind, signal?: AbortSignal) =>
 export const publishPolicy = (kind: PolicyKind, input: { title: string; body: string }) =>
   apiFetch<Policy>(`${BASE}/config/policies/${kind}`, { method: "PUT", body: input });
 
+export type NumberedDocument = "QUOTATION" | "ORDER" | "CREDIT_NOTE" | "STOCK_MOVEMENT" | "INVOICE" | "RECEIPT";
+
+/** How one kind of document is numbered; `example` is the next number as it will look. */
+export interface Numbering {
+  documentType: NumberedDocument;
+  prefix: string;
+  nextValue: number;
+  padding: number;
+  fyReset: boolean;
+  periodKey: string | null;
+  example: string;
+}
+
+export const listNumbering = (signal?: AbortSignal) => apiFetch<Numbering[]>(`${BASE}/config/numbering`, { signal });
+
+export const updateNumbering = (type: NumberedDocument, input: Pick<Numbering, "prefix" | "nextValue" | "padding" | "fyReset">) =>
+  apiFetch<Numbering>(`${BASE}/config/numbering/${type}`, { method: "PUT", body: input });
+
 export const settingsKeys = {
+  numbering: ["settings", "numbering"] as const,
   company: ["settings", "company"] as const,
   policies: ["settings", "policies"] as const,
   history: (kind: PolicyKind) => ["settings", "policies", kind, "history"] as const,

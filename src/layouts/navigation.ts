@@ -6,6 +6,8 @@ import {
   ClipboardList,
   FileText,
   Gem,
+  Hash,
+  Landmark,
   Package,
   Percent,
   PiggyBank,
@@ -154,6 +156,13 @@ export const NAVIGATION: NavSection[] = [
         permission: "CONFIG_WRITE",
         status: "ready",
       },
+      {
+        label: "Numbering",
+        href: "/settings/numbering",
+        icon: Hash,
+        permission: "CONFIG_WRITE",
+        status: "ready",
+      },
     ],
   },
   {
@@ -197,6 +206,13 @@ export const NAVIGATION: NavSection[] = [
   {
     label: "Finance",
     items: [
+      {
+        label: "Payments",
+        href: "/billing/payments",
+        icon: Landmark,
+        permission: "PAYMENT_READ",
+        status: "ready",
+      },
       {
         label: "Deposits",
         href: "/deposits",

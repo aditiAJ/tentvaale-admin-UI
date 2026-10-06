@@ -33,6 +33,7 @@ import {
   type SettleAction,
 } from "@/features/deposits/components/SettleDepositDialog";
 import { useCan } from "@/features/auth";
+import { OrderBillingPanel } from "@/features/billing";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
@@ -115,6 +116,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const canReadStock = useCan("INVENTORY_READ");
   const canWriteStock = useCan("INVENTORY_WRITE");
   const canReadDeposit = useCan("DEPOSIT_READ");
+  const canReadPayments = useCan("PAYMENT_READ");
   const canWriteDeposit = useCan("DEPOSIT_WRITE");
   const canReadQuotation = useCan("QUOTATION_READ");
   const productMedia = useProductMedia();
@@ -312,6 +314,8 @@ function OrderWorkspace({ order }: { order: OrderView }) {
           </CardContent>
         </Card>
       ) : null}
+
+      {canReadPayments ? <OrderBillingPanel orderId={order.id} completed={order.status === "COMPLETED"} /> : null}
 
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3">

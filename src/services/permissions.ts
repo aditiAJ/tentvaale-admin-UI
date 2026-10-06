@@ -24,6 +24,11 @@ export const PERMISSIONS = [
   "DEPOSIT_READ",
   "DEPOSIT_WRITE",
   "DEPOSIT_WAIVE",
+  "PAYMENT_READ",
+  "PAYMENT_WRITE",
+  "PAYMENT_VERIFY",
+  "INVOICE_READ",
+  "INVOICE_WRITE",
   "REPORTING_READ",
   "NOTIFICATION_READ",
   "CONFIG_WRITE",
@@ -43,7 +48,7 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   ADMIN: "Full access, including settings and user management. Typically the owner.",
   SALES: "Drafts, edits and sends quotations and turns accepted ones into orders. An Admin approves quotations. Cannot move stock or issue credit.",
   WAREHOUSE: "Dispatches and receives goods. Reads orders; no financial access.",
-  ACCOUNTS: "Credit notes, deposits and reporting. Cannot create orders or move stock.",
+  ACCOUNTS: "Payments received (records and verifies them), invoices, credit notes, deposits and reporting. Cannot create orders or move stock.",
 };
 
 /** The marker authority every admin token carries, separating identity spaces. */
