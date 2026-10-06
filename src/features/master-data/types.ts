@@ -33,7 +33,7 @@ export interface MediaAsset {
 export const FALLBACK_IMAGE = "/mock-media/placeholder.svg";
 
 /** The most a product can carry, enforced by the form and the mock alike. */
-export const PRODUCT_MEDIA_LIMITS = { images: 20, videos: 1 } as const;
+export const PRODUCT_MEDIA_LIMITS = { images: 5, videos: 1 } as const;
 
 /** A category, bundle or featured collection: one representative image, no video. */
 export const CATALOGUE_MEDIA_LIMITS = { images: 1, videos: 0 } as const;

@@ -31,11 +31,11 @@ export function DocumentPage({ documentId }: { documentId: string }) {
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Link
-          href={`/orders?id=${d.orderId}`}
+          href={d.orderId ? `/orders?id=${d.orderId}` : "/quotations"}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Back to order {d.orderNumber}
+          {d.orderId ? `Back to order ${d.orderNumber}` : "Back to quotations"}
         </Link>
         <Button size="sm" onClick={() => window.print()}>
           <Printer /> Print
@@ -62,7 +62,9 @@ export function DocumentPage({ documentId }: { documentId: string }) {
             <h2 className="text-xl font-semibold uppercase">{DOCUMENT_LABEL[d.kind]}</h2>
             <p className="tabular">{d.number}</p>
             <p className="text-muted-foreground">Dated {d.issuedOn}</p>
-            <p className="text-muted-foreground">Order {d.orderNumber}</p>
+            <p className="text-muted-foreground">
+              {d.orderNumber ? `Order ${d.orderNumber}` : b.quotationNumber ? `Quotation ${b.quotationNumber}` : ""}
+            </p>
           </div>
         </header>
 

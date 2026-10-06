@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Loader2, Pencil, Send, X } from "lucide-react";
+import { Check, Copy, Loader2, Pencil, Printer, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   acceptOnBehalf,
@@ -82,6 +82,11 @@ export function QuotationActions({
 
   return (
     <>
+      <Link href={`/quotations/print?id=${quotation.id}`} className={buttonVariants({ variant: "outline", size })}>
+        <Printer />
+        Print / PDF
+      </Link>
+
       {canWrite && editable ? (
         <Link
           href={`/quotations/edit?id=${quotation.id}`}

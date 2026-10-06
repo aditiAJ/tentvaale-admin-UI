@@ -413,12 +413,18 @@ export interface UploadResult {
   sizeBytes: number;
   width: number | null;
   height: number | null;
+  /** Stored, but short of a guideline (for example not square). */
+  warning: string | null;
 }
 
-/** Sends images to the backend (stored in R2, with a thumbnail); every file has its own result. */
-export function uploadMedia(files: File[]): Promise<UploadResult[]> {
+/**
+ * Sends images to the backend (stored in R2, with a thumbnail); every file has its own result. `product` applies
+ * the product media rules (PNG or JPEG under 2 MB, 800 to 3000 pixels, or one MP4 under 10 MB, 30 s, 1080p).
+ */
+export function uploadMedia(files: File[], purpose: "general" | "product" = "general"): Promise<UploadResult[]> {
   const form = new FormData();
   files.forEach((file) => form.append("files", file));
+  form.append("purpose", purpose);
   return apiFetch<UploadResult[]>(`${BASE}/media/upload`, { method: "POST", body: form });
 }
 

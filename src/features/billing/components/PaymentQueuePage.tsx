@@ -88,8 +88,11 @@ export function PaymentQueuePage() {
               {list.data.map((p) => (
                 <TR key={p.id}>
                   <TD>
-                    <Link href={`/orders?id=${p.orderId}`} className="underline">
-                      {p.orderNumber}
+                    <Link
+                      href={p.orderId ? `/orders?id=${p.orderId}` : `/quotations?id=${p.quotationId}`}
+                      className="underline"
+                    >
+                      {p.orderNumber ?? p.quotationNumber}
                     </Link>
                   </TD>
                   <TD>{p.paidOn}</TD>

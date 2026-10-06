@@ -46,6 +46,7 @@ export function MediaField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [urlText, setUrlText] = useState("");
+  const [notes, setNotes] = useState<string | null>(null);
 
   const images = media.filter((item) => item.kind === "IMAGE");
   const videos = media.filter((item) => item.kind === "VIDEO");
@@ -53,7 +54,12 @@ export function MediaField({
   const imagesLeft = replacesImage ? 1 : limits.images - images.length;
   const videosLeft = limits.videos - videos.length;
   const acceptsVideo = limits.videos > 0;
-  const types = acceptsVideo ? [...IMAGE_TYPES, ...VIDEO_TYPES] : [...IMAGE_TYPES];
+  // Live product media: PNG or JPEG and one MP4, exactly what the backend accepts for products.
+  const types: string[] = !IS_MOCK && acceptsVideo
+    ? ["image/png", "image/jpeg", "video/mp4"]
+    : acceptsVideo
+      ? [...IMAGE_TYPES, ...VIDEO_TYPES]
+      : [...IMAGE_TYPES];
 
   /**
    * One picker takes both kinds, so each file is sorted by its type first and
@@ -90,16 +96,15 @@ export function MediaField({
     const added: MediaAsset[] = [];
     if (!IS_MOCK) {
       // Live backend: images go to storage in one request, each file with its own outcome.
-      const toSend = accepted.filter(([, kind]) => kind === "IMAGE").map(([file]) => file);
-      if (accepted.some(([, kind]) => kind === "VIDEO")) {
-        problems.push("Video upload is not available yet; paste a video URL instead.");
-      }
+      const toSend = accepted.map(([file]) => file);
+      const warnings: string[] = [];
       try {
-        for (const result of toSend.length ? await uploadMedia(toSend) : []) {
+        for (const result of toSend.length ? await uploadMedia(toSend, acceptsVideo ? "product" : "general") : []) {
           if (result.ok && result.url) {
+            if (result.warning) warnings.push(`${result.fileName}: ${result.warning}`);
             added.push({
               id: crypto.randomUUID(),
-              kind: "IMAGE",
+              kind: result.contentType?.startsWith("video/") ? "VIDEO" : "IMAGE",
               fileName: result.fileName,
               contentType: result.contentType ?? "",
               sizeBytes: result.sizeBytes,
@@ -116,6 +121,7 @@ export function MediaField({
         problems.push(caught instanceof Error ? caught.message : "The upload failed.");
       }
       accepted.length = 0;
+      setNotes(warnings.length ? warnings.join(" ") : null);
     }
     // One at a time: each image is decoded onto a canvas, and a batch of
     // large photos decoded at once can briefly hold a lot of memory.
@@ -209,6 +215,13 @@ export function MediaField({
           <Upload />
           {replacesImage && images.length ? "Replace" : "Upload"}
         </Button>
+        {acceptsVideo && !IS_MOCK ? (
+          <p className="basis-full text-xs text-muted-foreground">
+            Up to {limits.images} images (PNG or JPEG, square, 1200 x 1200 recommended, 800 to 3000 pixels, under 2 MB each)
+            and one MP4 video (under 10 MB, 30 seconds, up to 1080p).
+          </p>
+        ) : null}
+        {notes ? <p className="basis-full text-xs text-[var(--warning)]">{notes}</p> : null}
         {busy ? (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />

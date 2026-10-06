@@ -13,10 +13,13 @@ import {
   PAYMENT_MODES,
   billingKeys,
   getOrderBalance,
+  getQuotationBalance,
   issueFinalInvoice,
   issueTaxInvoice,
   listDocuments,
+  listQuotationDocuments,
   recordPayment,
+  recordQuotationPayment,
   rejectPayment,
   saveSchedule,
   verifyPayment,
@@ -45,22 +48,39 @@ const STATUS_VARIANT: Record<PaymentStatus, "warning" | "success" | "destructive
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /** Money received against one order, the balance, the instalments and the documents. */
-export function OrderBillingPanel({ orderId, completed }: { orderId: string; completed: boolean }) {
+export function OrderBillingPanel({
+  orderId,
+  quotationId,
+  completed = false,
+  acceptsOnPayment = false,
+}: {
+  /** An order... */
+  orderId?: string;
+  /** ...or a quotation that is not an order yet. */
+  quotationId?: string;
+  completed?: boolean;
+  /** A sent quotation: a verified payment accepts it. */
+  acceptsOnPayment?: boolean;
+}) {
+  const forQuotation = !orderId;
+  const targetId = (orderId ?? quotationId) as string;
   const canWrite = useCan("PAYMENT_WRITE");
   const canVerify = useCan("PAYMENT_VERIFY");
   const canReadInvoices = useCan("INVOICE_READ");
   const canWriteInvoices = useCan("INVOICE_WRITE");
   const queryClient = useQueryClient();
-  const balance = useQuery({ queryKey: billingKeys.order(orderId), queryFn: ({ signal }) => getOrderBalance(orderId, signal) });
+  const balance = useQuery({
+    queryKey: forQuotation ? billingKeys.quotation(targetId) : billingKeys.order(targetId),
+    queryFn: ({ signal }) => (forQuotation ? getQuotationBalance(targetId, signal) : getOrderBalance(targetId, signal)),
+  });
   const documents = useQuery({
-    queryKey: billingKeys.documents(orderId),
-    queryFn: ({ signal }) => listDocuments(orderId, signal),
+    queryKey: forQuotation ? billingKeys.quotationDocuments(targetId) : billingKeys.documents(targetId),
+    queryFn: ({ signal }) => (forQuotation ? listQuotationDocuments(targetId, signal) : listDocuments(targetId, signal)),
     enabled: canReadInvoices,
   });
   const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: billingKeys.order(orderId) });
-    queryClient.invalidateQueries({ queryKey: billingKeys.documents(orderId) });
-    queryClient.invalidateQueries({ queryKey: ["billing", "queue"] });
+    queryClient.invalidateQueries({ queryKey: ["billing"] });
+    queryClient.invalidateQueries({ queryKey: ["quotations"] });
   };
 
   const verify = useMutation({
@@ -80,7 +100,7 @@ export function OrderBillingPanel({ orderId, completed }: { orderId: string; com
     onError: (e) => toast.error(message(e, "Could not reject the payment.")),
   });
   const invoice = useMutation({
-    mutationFn: (kind: "tax" | "final") => (kind === "tax" ? issueTaxInvoice(orderId) : issueFinalInvoice(orderId)),
+    mutationFn: (kind: "tax" | "final") => (kind === "tax" ? issueTaxInvoice(targetId) : issueFinalInvoice(targetId)),
     onSuccess: (d) => {
       refresh();
       toast.success(`${DOCUMENT_LABEL[d.kind]} ${d.number} issued`);
@@ -97,7 +117,7 @@ export function OrderBillingPanel({ orderId, completed }: { orderId: string; com
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle>Payments</CardTitle>
-        {canWriteInvoices ? (
+        {canWriteInvoices && !forQuotation ? (
           <div className="flex gap-2">
             {!hasInvoice("TAX_INVOICE") ? (
               <Button size="sm" variant="outline" onClick={() => invoice.mutate("tax")} disabled={invoice.isPending}>
@@ -120,6 +140,11 @@ export function OrderBillingPanel({ orderId, completed }: { orderId: string; com
           <Figure label="Waiting to be verified" value={formatMoney(b.pendingVerification)} />
           <Figure label="Balance" value={formatMoney(b.balance)} strong />
         </dl>
+        {forQuotation && acceptsOnPayment ? (
+          <p className="text-sm text-muted-foreground">
+            Once Accounts verify a payment recorded here, this quotation is accepted. The payment then moves onto the order when it is created.
+          </p>
+        ) : null}
         {Number(b.depositRequired.amount) > 0 ? (
           <p className="text-sm text-muted-foreground">
             Security deposit {formatMoney(b.depositRequired)}; received and verified {formatMoney(b.depositReceived)}.
@@ -158,7 +183,7 @@ export function OrderBillingPanel({ orderId, completed }: { orderId: string; com
           </TableWrapper>
         )}
 
-        {b.schedule.length > 0 ? (
+        {!forQuotation && b.schedule.length > 0 ? (
           <div>
             <h3 className="mb-2 text-sm font-medium">Agreed instalments</h3>
             <ul className="space-y-1 text-sm">
@@ -179,8 +204,8 @@ export function OrderBillingPanel({ orderId, completed }: { orderId: string; com
 
         {canWrite ? (
           <>
-            <RecordPaymentForm orderId={orderId} onDone={refresh} />
-            <ScheduleForm orderId={orderId} onDone={refresh} />
+            <RecordPaymentForm targetId={targetId} forQuotation={forQuotation} onDone={refresh} />
+            {forQuotation ? null : <ScheduleForm orderId={targetId} onDone={refresh} />}
           </>
         ) : null}
 
@@ -273,7 +298,7 @@ function PaymentRow({
   );
 }
 
-function RecordPaymentForm({ orderId, onDone }: { orderId: string; onDone: () => void }) {
+function RecordPaymentForm({ targetId, forQuotation, onDone }: { targetId: string; forQuotation: boolean; onDone: () => void }) {
   const [purpose, setPurpose] = useState<PaymentPurpose>("RENTAL");
   const [mode, setMode] = useState<PaymentMode>("UPI");
   const [amount, setAmount] = useState("");
@@ -290,7 +315,7 @@ function RecordPaymentForm({ orderId, onDone }: { orderId: string; onDone: () =>
         if (!result?.ok || !result.url) throw new Error(result?.error ?? "The proof could not be uploaded.");
         proofUrl = result.url;
       }
-      return recordPayment(orderId, {
+      return (forQuotation ? recordQuotationPayment : recordPayment)(targetId, {
         purpose,
         mode,
         amount: Number(amount),

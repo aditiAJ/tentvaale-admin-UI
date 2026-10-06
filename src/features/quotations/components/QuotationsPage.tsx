@@ -18,6 +18,7 @@ import { QuotationPlanPanel } from "@/features/quotations/components/QuotationPl
 import { useCan } from "@/features/auth";
 import { ConvertToOrderDialog } from "@/features/orders";
 import { QuotationActions } from "@/features/quotations/components/QuotationActions";
+import { OrderBillingPanel } from "@/features/billing";
 import { IS_MOCK } from "@/services/data-source";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
@@ -375,6 +376,7 @@ function QuotationDetail({
   backLabel: string;
 }) {
   const [converting, setConverting] = useState(false);
+  const canReadPayments = useCan("PAYMENT_READ");
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: quotationKeys.byId(quotationId),
@@ -512,6 +514,10 @@ function QuotationDetail({
               a product&apos;s rate does not alter a quote that has already gone out.
             </CardContent>
           </Card>
+
+          {canReadPayments && (data.status === "SENT" || data.status === "ACCEPTED") ? (
+            <OrderBillingPanel quotationId={data.id} acceptsOnPayment={data.status === "SENT"} />
+          ) : null}
 
           <QuotationVersions quotationId={data.id} />
 

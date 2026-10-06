@@ -12,8 +12,11 @@ export const PAYMENT_MODES: PaymentMode[] = ["BANK_TRANSFER", "UPI", "CASH", "CA
 
 export interface Payment {
   id: string;
-  orderId: string;
-  orderNumber: string;
+  /** Absent while the money sits on a quotation that is not an order yet. */
+  orderId?: string | null;
+  orderNumber?: string | null;
+  quotationId?: string | null;
+  quotationNumber?: string | null;
   purpose: PaymentPurpose;
   mode: PaymentMode;
   amount: Money;
@@ -39,7 +42,9 @@ export interface ScheduleLine {
 
 /** What an order is worth, what has been received (verified only) and what is left. */
 export interface OrderBalance {
-  orderId: string;
+  /** Absent for a quotation. */
+  orderId?: string | null;
+  /** The order number, or the quotation number for a quotation. */
   orderNumber: string;
   total: Money;
   creditApplied: Money;
@@ -56,6 +61,7 @@ export interface OrderBalance {
 export interface DocumentBody {
   documentNumber?: string;
   orderNumber?: string;
+  quotationNumber?: string;
   eventDate?: string | null;
   seller?: {
     name?: string;
@@ -105,8 +111,8 @@ export interface BillingDocument {
   id: string;
   kind: DocumentKind;
   number: string;
-  orderId: string;
-  orderNumber: string;
+  orderId?: string | null;
+  orderNumber?: string | null;
   paymentId: string | null;
   issuedOn: string;
   total: Money;
@@ -130,6 +136,16 @@ export interface ScheduleInput {
 
 export const getOrderBalance = (orderId: string, signal?: AbortSignal) =>
   apiFetch<OrderBalance>(`${BASE}/orders/${orderId}`, { signal });
+
+export const getQuotationBalance = (quotationId: string, signal?: AbortSignal) =>
+  apiFetch<OrderBalance>(`${BASE}/quotations/${quotationId}`, { signal });
+
+/** Money received on a sent quotation; once Accounts verify it the quotation is accepted. */
+export const recordQuotationPayment = (quotationId: string, input: RecordPaymentInput) =>
+  apiFetch<Payment>(`${BASE}/quotations/${quotationId}/payments`, { method: "POST", body: input });
+
+export const listQuotationDocuments = (quotationId: string, signal?: AbortSignal) =>
+  apiFetch<BillingDocument[]>(`${BASE}/quotations/${quotationId}/documents`, { signal });
 
 export const listPayments = (status: PaymentStatus, signal?: AbortSignal) =>
   apiFetch<Payment[]>(`${BASE}/payments?status=${status}`, { signal });
@@ -160,6 +176,8 @@ export const issueFinalInvoice = (orderId: string) =>
 
 export const billingKeys = {
   order: (orderId: string) => ["billing", "order", orderId] as const,
+  quotation: (quotationId: string) => ["billing", "quotation", quotationId] as const,
+  quotationDocuments: (quotationId: string) => ["billing", "quotation-documents", quotationId] as const,
   documents: (orderId: string) => ["billing", "documents", orderId] as const,
   document: (id: string) => ["billing", "document", id] as const,
   queue: (status: PaymentStatus) => ["billing", "queue", status] as const,
