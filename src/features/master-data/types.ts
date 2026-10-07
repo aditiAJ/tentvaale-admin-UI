@@ -48,11 +48,30 @@ export interface MediaLimits {
  * the spec table on a product page and the facets its catalogue filters by.
  * The names are the storefront's own, so one can be passed to the other as is.
  */
+/** Feet and inches only. Older rows in centimetres or metres are converted when they are read. */
+export const DIMENSION_UNITS = ["ft", "in"] as const;
+export type DimensionUnit = (typeof DIMENSION_UNITS)[number];
+
+/** A product's real size: length, width, height. Any side may be absent (a rug has no height); one unit covers all three. */
+export interface ProductDimensions {
+  length: number | null;
+  width: number | null;
+  height: number | null;
+  unit: DimensionUnit;
+}
+
 export interface ProductStorefrontDetails {
   /** What the retail rate is counted in: per unit, per running foot or per square foot. */
   rateType: RateType;
-  /** Free text, as the storefront shows it: "40 × 45 × 92 cm". */
+  /**
+   * An older free-text size note ("40 × 45 × 92 cm"). The product form no longer edits it
+   * (it edits `dimensions`), and sends it back unchanged so saving never drops it.
+   */
   size: string | null;
+  /** Length, width and height with their unit. Absent in mock mode. */
+  dimensions?: ProductDimensions | null;
+  /** How much floor a roll or runner covers. Not edited in the form; sent back so a save keeps it. */
+  maxCoverageSqft?: number | null;
   setting: ProductSetting | null;
   colours: string[];
   materials: string[];
@@ -72,7 +91,7 @@ export interface ProductStorefrontDetails {
 
 /**
  * Started as a mirror of com.tentvaale.masterdata.api.ProductView, and has
- * since moved ahead of it: `genericName`, `tag` and the wholesale/retail pair
+ * since moved ahead of it: `genericName` and the wholesale/retail pair
  * are this UI's proposal, and the backend's single rentalRate and per-product
  * securityDeposit were dropped. A security deposit is taken per booking, on
  * the quotation, not per product.
@@ -99,14 +118,6 @@ export interface ProductView extends Partial<ProductStorefrontDetails> {
   categoryName: string | null;
   subCategoryId: string | null;
   subCategoryName: string | null;
-  /**
-   * The broad group the product is filed under for filtering — "Furniture",
-   * "Lighting". Free text, and separate from Category: categories are
-   * company-managed records a product points at loosely by id, while a tag is
-   * whatever the admin types. Stored trimmed, so "Lighting " and "Lighting"
-   * are the same tag.
-   */
-  tag: string;
   /** Per day. Not used in pricing yet: every quotation line is priced at retail. */
   wholesaleRate: Money;
   /** Per day, and the rate a quotation line is priced at. */
@@ -201,12 +212,13 @@ export interface CreateProductRequest extends ProductStorefrontDetails {
   categoryId: string;
   /** One of that category's sub-categories. */
   subCategoryId: string;
-  sku: string;
+  /** Not sent by the form: a new product is numbered by the system (FUR-001), and a SKU never changes once given. */
+  sku?: string;
+  /** Who owns the stock behind the SKU; Tentvaale unless it is sub-hired from a partner. */
   skuOwner: string;
   name: string;
   genericName: string;
   description?: string;
-  tag: string;
   wholesaleRate: number;
   retailRate: number;
   hasVariants: boolean;
@@ -238,6 +250,8 @@ export interface CategoryView {
    * listed. One level only: a sub-category has no sub-categories of its own.
    */
   subCategories: SubCategoryView[];
+  /** What new products in this category have their SKU start with: FUR gives FUR-001. Absent in mock mode. */
+  skuPrefix?: string | null;
 }
 
 /**
@@ -257,6 +271,8 @@ export interface CreateCategoryRequest {
   subCategories?: string[];
   /** At most one image. On update, the full set to keep: an empty list removes it. */
   media: MediaAsset[];
+  /** 2 to 6 letters or digits. Left out, the backend takes it from the name. */
+  skuPrefix?: string;
 }
 
 export type CustomerType = "CUSTOMER" | "EVENT_PLANNER";
@@ -559,6 +575,8 @@ export interface UpdateCategoryRequest {
   name: string;
   subCategories: { id?: string; name: string }[];
   media: MediaAsset[];
+  /** Left out or blank keeps the current code; a new one only affects products created afterwards. */
+  skuPrefix?: string;
 }
 
 export interface CreateWarehouseRequest {

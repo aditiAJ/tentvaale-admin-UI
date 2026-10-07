@@ -29,7 +29,6 @@ function matches(product: ProductView, term: string): boolean {
     product.genericName,
     product.categoryName ?? "",
     product.subCategoryName ?? "",
-    product.tag,
     // The storefront facets, so "velvet" or "royal heritage" finds its products.
     ...(product.colours ?? []),
     ...(product.materials ?? []),
@@ -45,7 +44,7 @@ function matches(product: ProductView, term: string): boolean {
 export function ProductsPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
   const [search, setSearch] = useState("");
-  const [tag, setTag] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
   const [managingVariants, setManagingVariants] = useState<ProductView | null>(null);
@@ -54,7 +53,7 @@ export function ProductsPage() {
   const queryClient = useQueryClient();
 
   // Actions is always shown: anyone who can see a product can see its variants.
-  const columns = 8;
+  const columns = 6;
 
   // The list is unpaged and filtered in the browser, so typing re-renders every
   // row. Deferring the term keeps the input responsive on a large catalogue;
@@ -66,26 +65,28 @@ export function ProductsPage() {
     queryFn: ({ signal }) => listProducts(signal, { includeInactive: showInactive }),
   });
 
-  // Tags are free text, so the filter offers the ones the catalogue actually
-  // uses rather than a fixed list. Compared case-insensitively, so "lighting"
-  // and "Lighting" are one option and one filter.
-  const tags = useMemo(() => {
-    const byKey = new Map<string, string>();
+  // The filter offers the categories the catalogue actually uses, each with how many products it holds.
+  const categories = useMemo(() => {
+    const byId = new Map<string, { name: string; count: number }>();
     for (const product of data ?? []) {
-      const key = product.tag.toLowerCase();
-      if (!byKey.has(key)) byKey.set(key, product.tag);
+      if (!product.categoryId) continue;
+      const entry = byId.get(product.categoryId) ?? { name: product.categoryName ?? product.categoryId, count: 0 };
+      entry.count += 1;
+      byId.set(product.categoryId, entry);
     }
-    return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+    return [...byId.entries()]
+      .map(([id, entry]) => ({ id, ...entry }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
   const visible = useMemo(() => {
     const term = deferredSearch.trim().toLowerCase();
     return (data ?? []).filter(
       (product) =>
-        (!tag || product.tag.toLowerCase() === tag.toLowerCase()) &&
+        (!categoryId || product.categoryId === categoryId) &&
         (!term || matches(product, term)),
     );
-  }, [data, deferredSearch, tag]);
+  }, [data, deferredSearch, categoryId]);
 
   return (
     <div className="space-y-4">
@@ -108,21 +109,21 @@ export function ProductsPage() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search SKU, owner, name, category or tag"
+            placeholder="Search SKU, name, category or colour"
             className="pl-8"
             aria-label="Search products"
           />
         </div>
         <Select
-          value={tag}
-          onChange={(event) => setTag(event.target.value)}
-          aria-label="Tag"
-          className="w-40"
+          value={categoryId}
+          onChange={(event) => setCategoryId(event.target.value)}
+          aria-label="Category"
+          className="w-52"
         >
-          <option value="">All tags</option>
-          {tags.map((value) => (
-            <option key={value} value={value}>
-              {value}
+          <option value="">All categories</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name} ({category.count})
             </option>
           ))}
         </Select>
@@ -148,11 +149,9 @@ export function ProductsPage() {
               <tr>
                 <TH>SKU</TH>
                 <TH>Name</TH>
-                <TH>Generic name</TH>
                 <TH>Category</TH>
-                <TH>Tag</TH>
-                <TH className="text-right">Wholesale rate</TH>
-                <TH className="text-right">Retail rate</TH>
+                <TH className="text-right">Wholesale</TH>
+                <TH className="text-right">Retail</TH>
                 <TH className="text-right">Actions</TH>
               </tr>
             </THead>
@@ -163,7 +162,7 @@ export function ProductsPage() {
                 ? visible.map((product) => (
                     <TR key={product.id}>
                       <TD>
-                        <span className="font-mono text-xs">{product.sku}</span>
+                        <span className="font-mono text-xs whitespace-nowrap">{product.sku}</span>
                         <span className="block text-xs text-muted-foreground">
                           {product.skuOwner}
                         </span>
@@ -182,15 +181,14 @@ export function ProductsPage() {
                                 {product.variants.length === 1 ? "variant" : "variants"}
                               </Badge>
                             ) : null}
-                            {product.description ? (
-                              <span className="block max-w-sm truncate text-xs text-muted-foreground">
-                                {product.description}
+                            {product.genericName || product.description ? (
+                              <span className="block max-w-[15rem] truncate text-xs text-muted-foreground xl:max-w-xs">
+                                {[product.genericName, product.description].filter(Boolean).join(" · ")}
                               </span>
                             ) : null}
                           </div>
                         </div>
                       </TD>
-                      <TD>{product.genericName}</TD>
                       <TD>
                         {product.categoryName ? (
                           <>
@@ -205,7 +203,6 @@ export function ProductsPage() {
                           <span className="text-xs text-muted-foreground">Uncategorised</span>
                         )}
                       </TD>
-                      <TD>{product.tag}</TD>
                       <TD className="text-right tabular">{formatMoney(product.wholesaleRate)}</TD>
                       <TD className="text-right tabular">
                         {formatMoney(product.retailRate)}
@@ -225,9 +222,10 @@ export function ProductsPage() {
                             size="sm"
                             onClick={() => setManagingVariants(product)}
                             aria-label={`Variants and stock of ${product.name}`}
+                            title="Variants & stock"
                           >
                             <Layers />
-                            Variants & stock
+                            <span className="hidden 2xl:inline">Variants & stock</span>
                           </Button>
                           {canWrite ? (
                             <Button
@@ -278,7 +276,7 @@ export function ProductsPage() {
             title={data?.length ? "No products match those filters" : "No products yet"}
             description={
               data?.length
-                ? "Try a different search or tag."
+                ? "Try a different search or category."
                 : "Add the first item in this company's rental catalogue."
             }
             action={

@@ -379,8 +379,6 @@ function checkProductRequest(request: CreateProductRequest | UpdateProductReques
   }
   checkMedia(request.media, PRODUCT_MEDIA_LIMITS, "A product");
   if (!request.genericName?.trim()) throw businessRule("Generic name is required");
-  if (!request.skuOwner?.trim()) throw businessRule("SKU owner is required");
-  if (!request.tag?.trim()) throw businessRule("Tag is required");
   for (const [label, amount] of [
     ["Wholesale rate", request.wholesaleRate],
     ["Retail rate", request.retailRate],
@@ -567,27 +565,36 @@ function saveWithMedia(current: MockState, previous: Partial<MockState>): void {
   );
 }
 
+/** PRD-001, PRD-002 ...: the mock has no category codes, so every product shares one. */
+function nextMockSku(existing: string[]): string {
+  const highest = existing
+    .map((sku) => /^PRD-(\d+)$/i.exec(sku)?.[1])
+    .filter((n): n is string => Boolean(n))
+    .reduce((max, n) => Math.max(max, Number(n)), 0);
+  return `PRD-${String(highest + 1).padStart(3, "0")}`;
+}
+
 export async function mockCreateProduct(request: CreateProductRequest): Promise<ProductView> {
   await delay();
   const current = state();
 
-  if (current.products.some((p) => p.sku.toLowerCase() === request.sku.toLowerCase())) {
-    throw businessRule(`A product with SKU ${request.sku} already exists for this company`);
+  const sku = request.sku?.trim() || nextMockSku(current.products.map((p) => p.sku));
+  if (current.products.some((p) => p.sku.toLowerCase() === sku.toLowerCase())) {
+    throw businessRule(`A product with SKU ${sku} already exists for this company`);
   }
-  checkProductRequest(request);
+  checkProductRequest({ ...request, sku });
   checkProductCategory(request, current);
 
   const created: ProductRecord = {
     id: crypto.randomUUID(),
     companyId: COMPANY_ID,
-    sku: request.sku,
-    skuOwner: request.skuOwner.trim(),
+    sku,
+    skuOwner: request.skuOwner?.trim() || "Tentvaale",
     name: request.name,
     genericName: request.genericName.trim(),
     description: request.description?.trim() ? request.description : null,
     categoryId: request.categoryId,
     subCategoryId: request.subCategoryId,
-    tag: request.tag.trim(),
     wholesaleRate: { amount: request.wholesaleRate, currency: "INR" },
     retailRate: { amount: request.retailRate, currency: "INR" },
     hasVariants: request.hasVariants,
@@ -613,10 +620,7 @@ export async function mockUpdateProduct(
   const index = current.products.findIndex((product) => product.id === productId);
   if (index === -1) throw notFound(`Product ${productId} not found`);
 
-  const others = current.products.filter((product) => product.id !== productId);
-  if (others.some((p) => p.sku.toLowerCase() === request.sku.toLowerCase())) {
-    throw businessRule(`A product with SKU ${request.sku} already exists for this company`);
-  }
+  // A SKU never changes once given, so whatever the request carries is ignored (as the backend does).
   checkProductRequest(request);
   const existing = current.products[index];
   checkProductCategory(request, current, existing);
@@ -657,14 +661,13 @@ export async function mockUpdateProduct(
   const updated: ProductRecord = {
     id: existing.id,
     companyId: existing.companyId,
-    sku: request.sku,
-    skuOwner: request.skuOwner.trim(),
+    sku: existing.sku,
+    skuOwner: request.skuOwner?.trim() || "Tentvaale",
     name: request.name,
     genericName: request.genericName.trim(),
     description: request.description?.trim() ? request.description : null,
     categoryId: request.categoryId,
     subCategoryId: request.subCategoryId,
-    tag: request.tag.trim(),
     wholesaleRate: { amount: request.wholesaleRate, currency: "INR" },
     retailRate: { amount: request.retailRate, currency: "INR" },
     hasVariants: request.hasVariants,

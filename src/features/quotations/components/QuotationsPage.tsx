@@ -23,6 +23,7 @@ import { IS_MOCK } from "@/services/data-source";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
+import { formatDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import {
   WorkspaceLayout,
@@ -447,10 +448,38 @@ function QuotationDetail({
 
             <CardContent>
               <QuotationBreakdown quotation={data} />
+
+              <dl className="mt-5 grid gap-x-8 gap-y-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Event date</dt>
+                  <dd className="tabular mt-0.5 text-sm font-medium">{formatEventDate(data.eventDate)}</dd>
+                </div>
+                {data.sentAt ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Sent to customer</dt>
+                    <dd className="tabular mt-0.5 text-sm font-medium">{formatDateTime(data.sentAt)}</dd>
+                  </div>
+                ) : null}
+                {data.acceptedAt ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Accepted</dt>
+                    <dd className="tabular mt-0.5 text-sm font-medium">{formatDateTime(data.acceptedAt)}</dd>
+                  </div>
+                ) : null}
+                {isFromStorefront(data) ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Came from</dt>
+                    <dd
+                      className="mt-0.5 text-sm font-medium"
+                      title={data.sourceReference ?? undefined}
+                    >
+                      The customer&apos;s storefront plan
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+
               <QuotationPlanPanel quotation={data} />
-              <p className="mt-3 text-xs text-muted-foreground">
-                Event date <span className="tabular text-foreground">{formatEventDate(data.eventDate)}</span>
-              </p>
 
               {data.changeRequestNote && bucketOf(data) !== "RECEIVED" ? (
                 <Alert tone="warning" title={`Customer asked for changes: ${data.changeRequestNote}`} className="mt-4" />
@@ -460,15 +489,7 @@ function QuotationDetail({
                 <Alert tone="error" title={`Rejected: ${data.rejectionReason}`} className="mt-4" />
               ) : null}
 
-              {data.validUntil || data.sentAt || data.acceptedAt ? (
-                <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-                  {data.validUntil ? <>Valid until {formatEventDate(data.validUntil)}. </> : null}
-                  {data.sentAt ? <>Sent {formatEventDate(data.sentAt)}. </> : null}
-                  {data.acceptedAt ? <>Accepted {formatEventDate(data.acceptedAt)}.</> : null}
-                </p>
-              ) : null}
-
-              {data.sourceReference ? (
+              {data.sourceReference && !isFromStorefront(data) ? (
                 <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
                   Raised via <span className="font-mono">{data.sourceReference}</span>
                 </p>

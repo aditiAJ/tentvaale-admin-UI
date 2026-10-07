@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Film, Loader2, Upload, X } from "lucide-react";
+import { Film, ImagePlus, Loader2, Star, Upload, X } from "lucide-react";
 import type { MediaAsset, MediaLimits } from "@/features/master-data/types";
 import {
   formatBytes,
@@ -12,6 +12,7 @@ import {
 } from "@/features/master-data/media";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { IS_MOCK } from "@/services/data-source";
 import { mediaFromUrl, uploadMedia } from "@/features/master-data/api/backend";
 
@@ -34,6 +35,8 @@ export function MediaField({
   onChange,
   onBusyChange,
   disabled,
+  allowUrl = true,
+  expressive = false,
 }: {
   media: MediaAsset[];
   limits: MediaLimits;
@@ -41,7 +44,12 @@ export function MediaField({
   /** True while picked files are still being read, so the form can wait. */
   onBusyChange: (busy: boolean) => void;
   disabled?: boolean;
+  /** Show the "paste an image URL" row (live backend). Off where only uploading is wanted. */
+  allowUrl?: boolean;
+  /** A large drop zone and a photo-first gallery instead of the compact picker. */
+  expressive?: boolean;
 }) {
+  const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,11 +187,175 @@ export function MediaField({
     onChange([...(replaced ? videos : media), item]);
   };
 
+  if (expressive) {
+    const full = imagesLeft <= 0 && videosLeft <= 0;
+    const dropDisabled = locked || full;
+    return (
+      <div className="flex flex-col gap-4">
+        <div
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (!dropDisabled) setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            const files = Array.from(event.dataTransfer.files ?? []);
+            if (!dropDisabled && files.length) void add(files);
+          }}
+          className={cn(
+            "flex flex-col items-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors",
+            dragging
+              ? "border-primary bg-primary/10"
+              : "border-border bg-linear-to-b from-primary/5 to-transparent",
+            dropDisabled && "opacity-70",
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform",
+              dragging && "scale-110",
+            )}
+          >
+            {busy ? <Loader2 className="size-7 animate-spin" /> : <ImagePlus className="size-7" />}
+          </span>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">
+              {busy ? "Uploading…" : dragging ? "Drop to upload" : "Drag photos and a video here"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {full ? "The gallery is full. Remove one to add another." : "or choose them from your device"}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="h-10 rounded-full px-6 shadow-md"
+            disabled={dropDisabled}
+            onClick={() => input.current?.click()}
+          >
+            <Upload />
+            Upload
+          </Button>
+          <div className="flex flex-wrap justify-center gap-1.5 text-[0.7rem] text-muted-foreground">
+            <span className="rounded-full border border-border bg-card px-2.5 py-0.5">
+              {images.length} of {limits.images} images
+            </span>
+            {acceptsVideo ? (
+              <span className="rounded-full border border-border bg-card px-2.5 py-0.5">
+                {videos.length} of {limits.videos} video
+              </span>
+            ) : null}
+            <span className="rounded-full border border-border bg-card px-2.5 py-0.5">PNG or JPEG, under 2 MB</span>
+            {acceptsVideo ? (
+              <span className="rounded-full border border-border bg-card px-2.5 py-0.5">MP4, under 10 MB</span>
+            ) : null}
+            <span className="rounded-full border border-border bg-card px-2.5 py-0.5">Square, 1200 × 1200 is best</span>
+          </div>
+          <input
+            ref={input}
+            type="file"
+            accept={types.join(",")}
+            multiple={limits.images + limits.videos > 1}
+            hidden
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              // Cleared so picking the same file again still fires a change.
+              event.target.value = "";
+              if (files.length) void add(files);
+            }}
+          />
+        </div>
+
+        {notes ? <p className="text-xs text-[var(--warning)]">{notes}</p> : null}
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+
+        {media.length ? (
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {media.map((item) => {
+              const primary = item.kind === "IMAGE" && item.id === images[0]?.id;
+              return (
+                <li
+                  key={item.id}
+                  className="relative aspect-square overflow-hidden rounded-xl border border-border bg-muted shadow-sm"
+                >
+                  {item.kind === "IMAGE" && item.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.thumbnailUrl ?? item.url} alt={item.fileName} className="size-full object-cover" />
+                  ) : item.url ? (
+                    <video
+                      src={item.url}
+                      muted
+                      preload="metadata"
+                      controls
+                      className="size-full bg-black object-contain"
+                      aria-label={item.fileName}
+                    />
+                  ) : (
+                    <div className="flex size-full flex-col items-center justify-center gap-1 px-2 text-center text-muted-foreground">
+                      <Film className="size-5" />
+                      <span className="text-[0.7rem]">Preview not kept after reload</span>
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute top-2 left-2">
+                    {primary ? (
+                      <span className="flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[0.65rem] font-semibold text-primary-foreground shadow">
+                        <Star className="size-3" /> Primary
+                      </span>
+                    ) : item.kind === "VIDEO" ? (
+                      <span className="flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[0.65rem] font-semibold text-white">
+                        <Film className="size-3" /> Video
+                      </span>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="absolute top-2 right-2 size-7 rounded-full bg-card/95 shadow"
+                    disabled={locked}
+                    onClick={() => remove(item)}
+                    aria-label={`Remove ${item.fileName}`}
+                    title="Remove"
+                  >
+                    <X />
+                  </Button>
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/70 to-transparent px-2.5 pt-6 pb-2 text-white">
+                    <p className="truncate text-xs font-medium" title={item.fileName}>
+                      {item.fileName}
+                    </p>
+                    <div className="flex items-center justify-between gap-2 text-[0.65rem] text-white/80">
+                      <span className="tabular">{item.sizeBytes ? formatBytes(item.sizeBytes) : "Linked URL"}</span>
+                      {item.kind === "IMAGE" && !primary && images.length > 1 ? (
+                        <button
+                          type="button"
+                          className="pointer-events-auto rounded-full bg-white/20 px-2 py-0.5 font-medium hover:bg-white/30 disabled:opacity-50"
+                          disabled={locked}
+                          onClick={() => makePrimary(item)}
+                        >
+                          Make primary
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-center text-xs text-muted-foreground">
+            No photos yet. The first image you add becomes the cover shown on cards and lists.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-xs font-medium">{acceptsVideo ? "Media" : "Image"}</p>
 
-      {!IS_MOCK ? (
+      {!IS_MOCK && allowUrl ? (
         <div className="flex items-center gap-2">
           <Input
             value={urlText}

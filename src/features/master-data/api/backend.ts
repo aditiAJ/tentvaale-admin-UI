@@ -12,9 +12,11 @@ import type {
   CreateTruckRequest,
   CreateWarehouseRequest,
   CustomerView,
+  DimensionUnit,
   MediaAsset,
   PlannerApplicationRequest,
   PlannerProfileView,
+  ProductDimensions,
   ProductVariantView,
   FacetOption,
   StockGrid,
@@ -82,8 +84,10 @@ interface WireCategory {
   id: number;
   name: string;
   imageUrl: string | null;
+  displayOrder?: number;
   active: boolean;
   subCategories: WireSubCategory[];
+  skuPrefix?: string | null;
 }
 
 interface WireVariant {
@@ -118,6 +122,11 @@ interface WireProduct {
   tag: string | null;
   hasVariants: boolean;
   active: boolean;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+  dimensionUnit?: string | null;
+  maxCoverageSqft?: number | null;
   media?: {
     id: number;
     type: "IMAGE" | "VIDEO";
@@ -191,6 +200,7 @@ function categoryFromWire(category: WireCategory): CategoryView {
     subCategories: [...category.subCategories]
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(subCategoryFromWire),
+    skuPrefix: category.skuPrefix ?? null,
   };
 }
 
@@ -206,6 +216,7 @@ export async function createCategory(request: CreateCategoryRequest): Promise<Ca
       name: request.name,
       imageUrl: request.media[0]?.url ?? null,
       subCategories: request.subCategories ?? [],
+      skuPrefix: request.skuPrefix?.trim() || null,
     },
   });
   return categoryFromWire(created);
@@ -223,7 +234,13 @@ export async function updateCategory(
   const current = await apiFetch<WireCategory>(`${BASE}/categories/${categoryId}`);
   await apiFetch<WireCategory>(`${BASE}/categories/${categoryId}`, {
     method: "PUT",
-    body: { name: request.name, imageUrl: request.media[0]?.url ?? null },
+    // displayOrder goes back as stored: the backend sets it from the request, so leaving it out reset it to 0.
+    body: {
+      name: request.name,
+      imageUrl: request.media[0]?.url ?? null,
+      displayOrder: current.displayOrder,
+      skuPrefix: request.skuPrefix?.trim() || null,
+    },
   });
 
   const keptIds = new Set(request.subCategories.filter((s) => s.id).map((s) => s.id));
@@ -304,6 +321,20 @@ function attributesFromWire(product: WireProduct): Record<string, string> {
   );
 }
 
+/** Rounds to two places, which is plenty for a tent pole or a rug. */
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+function dimensionsFromWire(product: WireProduct): ProductDimensions | null {
+  const { length, width, height } = product;
+  if (length == null && width == null && height == null) return null;
+  // The form offers feet and inches only: a size stored in cm or m is shown converted (and saved that way).
+  const wire = (product.dimensionUnit ?? "").toUpperCase();
+  const [factor, unit]: [number, DimensionUnit] =
+    wire === "CM" ? [1 / 2.54, "in"] : wire === "M" ? [3.28084, "ft"] : [1, wire === "IN" ? "in" : "ft"];
+  const convert = (side: number | null | undefined) => (side == null ? null : factor === 1 ? Number(side) : round2(Number(side) * factor));
+  return { length: convert(length), width: convert(width), height: convert(height), unit };
+}
+
 function productFromWire(product: WireProduct, variants: WireVariant[] = []): ProductView {
   const list = product.variants ?? variants;
   return {
@@ -318,7 +349,6 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
     categoryName: product.categoryName,
     subCategoryId: String(product.subCategoryId),
     subCategoryName: product.subCategoryName,
-    tag: product.tag ?? "",
     wholesaleRate: money(product.wholesaleRate),
     retailRate: money(product.dailyRate),
     hasVariants: product.hasVariants,
@@ -341,6 +371,8 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
     })),
     rateType: RATE_FROM_WIRE[product.rateType],
     size: facetValues(product, "size")[0] ?? null,
+    dimensions: dimensionsFromWire(product),
+    maxCoverageSqft: product.maxCoverageSqft ?? null,
     setting: (facetValues(product, "setting")[0] as ProductSetting | undefined) ?? null,
     colours: facetValues(product, "colour"),
     materials: facetValues(product, "material"),
@@ -372,7 +404,8 @@ export async function listProducts(
 function productBody(request: CreateProductRequest) {
   return {
     subCategoryId: Number(request.subCategoryId),
-    sku: request.sku,
+    // Left out, the backend numbers a new product (FUR-001); on an edit it is ignored, a SKU never changes.
+    sku: request.sku?.trim() || null,
     name: request.name,
     description: request.description || null,
     rateType: RATE_TO_WIRE[request.rateType],
@@ -380,8 +413,13 @@ function productBody(request: CreateProductRequest) {
     wholesaleRate: request.wholesaleRate,
     skuOwner: request.skuOwner,
     genericName: request.genericName,
-    tag: request.tag,
     hasVariants: request.hasVariants,
+    // Sent on every save: the backend replaces these, so leaving them out would erase them.
+    length: request.dimensions?.length ?? null,
+    width: request.dimensions?.width ?? null,
+    height: request.dimensions?.height ?? null,
+    dimensionUnit: request.dimensions ? request.dimensions.unit.toUpperCase() : null,
+    maxCoverageSqft: request.maxCoverageSqft ?? null,
   };
 }
 
