@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/features/auth";
-import { uploadMedia } from "@/features/master-data/api/backend";
 import { ApiError } from "@/services/api-client";
 import { getCompany, settingsKeys, updateCompany, type CompanyProfile } from "@/features/settings/api";
 import { Button } from "@/components/ui/button";
@@ -27,14 +26,19 @@ function CompanyForm({ initial }: { initial: CompanyProfile }) {
   const [name, setName] = useState(initial.name);
   const [gstin, setGstin] = useState(initial.gstin ?? "");
   const [state, setState] = useState(initial.state ?? "");
+  const [addressLine, setAddressLine] = useState(initial.addressLine ?? "");
+  const [city, setCity] = useState(initial.city ?? "");
+  const [postalCode, setPostalCode] = useState(initial.postalCode ?? "");
+  const [primaryPhone, setPrimaryPhone] = useState(initial.primaryPhone ?? "");
+  const [secondaryPhone, setSecondaryPhone] = useState(initial.secondaryPhone ?? "");
+  const [publicEmail, setPublicEmail] = useState(initial.publicEmail ?? "");
+  const [websiteUrl, setWebsiteUrl] = useState(initial.websiteUrl ?? "");
   const [gstRate, setGstRate] = useState(initial.gstRate == null ? "" : String(initial.gstRate));
   const [pan, setPan] = useState(initial.pan ?? "");
   const [bankName, setBankName] = useState(initial.bankName ?? "");
   const [bankAccount, setBankAccount] = useState(initial.bankAccount ?? "");
   const [bankIfsc, setBankIfsc] = useState(initial.bankIfsc ?? "");
   const [upiId, setUpiId] = useState(initial.upiId ?? "");
-  const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? "");
-  const [signatureUrl, setSignatureUrl] = useState(initial.signatureUrl ?? "");
   const [latitude, setLatitude] = useState(initial.latitude == null ? "" : String(initial.latitude));
   const [longitude, setLongitude] = useState(initial.longitude == null ? "" : String(initial.longitude));
   const [error, setError] = useState<string | null>(null);
@@ -46,13 +50,6 @@ function CompanyForm({ initial }: { initial: CompanyProfile }) {
     (latNumber !== null && (Number.isNaN(latNumber) || latNumber < -90 || latNumber > 90)) ||
     (lngNumber !== null && (Number.isNaN(lngNumber) || lngNumber < -180 || lngNumber > 180));
 
-  const upload = async (file: File | undefined, set: (url: string) => void) => {
-    if (!file) return;
-    const [result] = await uploadMedia([file]);
-    if (result?.ok && result.url) set(result.url);
-    else setError(result?.error ?? "The image could not be uploaded.");
-  };
-
   const rateNumber = gstRate.trim() === "" ? null : Number(gstRate);
   const rateInvalid = rateNumber !== null && (Number.isNaN(rateNumber) || rateNumber < 0 || rateNumber > 100);
 
@@ -62,15 +59,22 @@ function CompanyForm({ initial }: { initial: CompanyProfile }) {
         ...initial,
         name: name.trim(),
         gstin: gstin.trim() || null,
+        addressLine: addressLine.trim() || null,
+        city: city.trim() || null,
         state: state.trim() || null,
+        postalCode: postalCode.trim() || null,
+        primaryPhone: primaryPhone.trim() || null,
+        secondaryPhone: secondaryPhone.trim() || null,
+        publicEmail: publicEmail.trim() || null,
+        websiteUrl: websiteUrl.trim() || null,
         gstRate: rateNumber,
         pan: pan.trim() || null,
         bankName: bankName.trim() || null,
         bankAccount: bankAccount.trim() || null,
         bankIfsc: bankIfsc.trim() || null,
         upiId: upiId.trim() || null,
-        logoUrl: logoUrl || null,
-        signatureUrl: signatureUrl || null,
+        logoUrl: initial.logoUrl ?? null,
+        signatureUrl: initial.signatureUrl ?? null,
         latitude: latNumber,
         longitude: lngNumber,
       }),
@@ -118,6 +122,81 @@ function CompanyForm({ initial }: { initial: CompanyProfile }) {
             />
           )}
         </Field>
+
+        <h2 className="pt-2 text-sm font-semibold">Address & Contact</h2>
+        <Field label="Address line">
+          {(props) => (
+            <Input
+              {...props}
+              value={addressLine}
+              placeholder="e.g. 123 Ring Road, Industrial Area"
+              onChange={(e) => setAddressLine(e.target.value)}
+              disabled={!canWrite}
+            />
+          )}
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="City">
+            {(props) => <Input {...props} value={city} onChange={(e) => setCity(e.target.value)} disabled={!canWrite} />}
+          </Field>
+          <Field label="Postal code">
+            {(props) => (
+              <Input {...props} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} disabled={!canWrite} />
+            )}
+          </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Primary phone">
+            {(props) => (
+              <Input
+                {...props}
+                type="tel"
+                value={primaryPhone}
+                placeholder="+91 98765 43210"
+                onChange={(e) => setPrimaryPhone(e.target.value)}
+                disabled={!canWrite}
+              />
+            )}
+          </Field>
+          <Field label="Secondary phone">
+            {(props) => (
+              <Input
+                {...props}
+                type="tel"
+                value={secondaryPhone}
+                onChange={(e) => setSecondaryPhone(e.target.value)}
+                disabled={!canWrite}
+              />
+            )}
+          </Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Public email">
+            {(props) => (
+              <Input
+                {...props}
+                type="email"
+                value={publicEmail}
+                placeholder="contact@example.com"
+                onChange={(e) => setPublicEmail(e.target.value)}
+                disabled={!canWrite}
+              />
+            )}
+          </Field>
+          <Field label="Website URL">
+            {(props) => (
+              <Input
+                {...props}
+                type="url"
+                value={websiteUrl}
+                placeholder="https://example.com"
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                disabled={!canWrite}
+              />
+            )}
+          </Field>
+        </div>
+
         <h2 className="pt-2 text-sm font-semibold">On invoices and receipts</h2>
         <Field label="PAN">
           {(props) => <Input {...props} value={pan} onChange={(e) => setPan(e.target.value)} disabled={!canWrite} />}
@@ -134,16 +213,8 @@ function CompanyForm({ initial }: { initial: CompanyProfile }) {
         <Field label="UPI id">
           {(props) => <Input {...props} value={upiId} onChange={(e) => setUpiId(e.target.value)} disabled={!canWrite} />}
         </Field>
-        <Field label="Logo" hint={logoUrl ? logoUrl : "An image printed at the top of every document."}>
-          {(props) => (
-            <Input {...props} type="file" accept="image/*" disabled={!canWrite} onChange={(e) => upload(e.target.files?.[0], setLogoUrl)} />
-          )}
-        </Field>
-        <Field label="Signature" hint={signatureUrl ? signatureUrl : "An image of the authorised signatory's signature."}>
-          {(props) => (
-            <Input {...props} type="file" accept="image/*" disabled={!canWrite} onChange={(e) => upload(e.target.files?.[0], setSignatureUrl)} />
-          )}
-        </Field>
+
+        <h2 className="pt-2 text-sm font-semibold">Location coordinates</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Latitude" error={coordsInvalid ? "Give both, within the valid range" : undefined}>
             {(props) => <Input {...props} value={latitude} inputMode="decimal" onChange={(e) => setLatitude(e.target.value)} disabled={!canWrite} />}

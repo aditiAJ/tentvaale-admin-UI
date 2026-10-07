@@ -226,7 +226,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       if (existing) {
         return updateQuotation(existing.id, {
           customerId,
-          eventDate: values.eventDate,
+          eventDate: existing.eventDate ?? values.eventDate,
           securityDeposit: values.securityDeposit,
           deliveryCharge: values.deliveryCharge,
           discountAmount: values.discountAmount,
@@ -404,13 +404,19 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             )}
           </Field>
 
-          <Field label="Event date" error={errors.eventDate?.message}>
+          <Field
+            label="Event date"
+            hint={existing ? "Set by the customer's request and cannot be changed here." : undefined}
+            error={errors.eventDate?.message}
+          >
             {(props) => (
               <Input
                 {...props}
                 {...register("eventDate")}
                 type="date"
                 disabled={mutation.isPending}
+                readOnly={Boolean(existing)}
+                className={existing ? "bg-muted cursor-not-allowed" : undefined}
               />
             )}
           </Field>
