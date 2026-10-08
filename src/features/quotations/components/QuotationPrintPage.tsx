@@ -1,40 +1,75 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Printer } from "lucide-react";
+import { useTheme } from "next-themes";
+import { ArrowLeft, Download, Loader2, Printer } from "lucide-react";
 import { getQuotation, quotationKeys } from "@/features/quotations/api";
 import { getCompany, settingsKeys } from "@/features/settings/api";
-import { formatMoney } from "@/lib/money";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const POLICY_TITLE: Record<string, string> = {
-  CANCELLATION: "Cancellation policy",
-  DAMAGE: "Damage policy",
-  DELIVERY: "Delivery policy",
-  TERMS: "Terms and conditions",
-};
-
-/** A quotation as it prints or saves to PDF (browser print): the same figures staff and the customer see. */
+/**
+ * A quotation as a real PDF (A4, selectable text, page numbers), in the storefront's look. It follows the
+ * back office theme: dark when the screen is dark, light otherwise. Previewed here, then downloaded or printed.
+ */
 export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
+  const { resolvedTheme } = useTheme();
+  const theme = resolvedTheme === "dark" ? "dark" : "light";
   const quotation = useQuery({
     queryKey: quotationKeys.byId(quotationId),
     queryFn: ({ signal }) => getQuotation(quotationId, signal),
     enabled: quotationId !== "",
   });
   const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal) });
+  const [pdf, setPdf] = useState<{ key: string; url: string } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const q = quotation.data;
+  const c = company.data;
+  const ready = Boolean(q) && !company.isPending;
+  const key = `${q?.id}:${q?.status}:${q?.totalAmount.amount}:${theme}`;
+
+  useEffect(() => {
+    if (!ready || !q) return;
+    let cancelled = false;
+    let made: string | null = null;
+    void (async () => {
+      try {
+        // Loaded here only: the PDF engine is large and runs in the browser.
+        const [{ pdf: render }, { QuotationDocument }, { buildQuotationDoc }] = await Promise.all([
+          import("@react-pdf/renderer"),
+          import("@/features/quotations/components/QuotationDocument"),
+          import("@/features/quotations/components/buildQuotationDoc"),
+        ]);
+        const doc = await buildQuotationDoc(q, c);
+        const blob = await render(<QuotationDocument doc={doc} theme={theme} />).toBlob();
+        if (cancelled) return;
+        made = URL.createObjectURL(blob);
+        setPdf({ key, url: made });
+        setFailed(null);
+      } catch (error) {
+        if (!cancelled) setFailed(error instanceof Error ? error.message : "The PDF could not be made.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [ready, q, c, theme, key]);
 
   if (quotationId === "") return <Alert tone="error" title="No quotation was chosen." />;
   if (quotation.isPending || company.isPending) return <Skeleton className="h-96" />;
-  if (quotation.isError) return <Alert tone="error" title="The quotation could not be loaded." />;
-  const q = quotation.data;
-  const c = company.data;
+  if (quotation.isError || !q) return <Alert tone="error" title="The quotation could not be loaded." />;
+
+  const current = pdf?.key === key ? pdf.url : null;
+  const fileName = `Quotation-${q.quotationNumber}.pdf`;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <div className="flex items-center justify-between gap-3 print:hidden">
+    <div className="mx-auto max-w-4xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href={`/quotations?id=${q.id}`}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -42,109 +77,44 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
           <ArrowLeft className="size-4" />
           Back to quotation {q.quotationNumber}
         </Link>
-        <Button size="sm" onClick={() => window.print()}>
-          <Printer /> Print / save as PDF
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!current}
+            onClick={() => current && window.open(current, "_blank", "noopener")}
+          >
+            <Printer /> Open to print
+          </Button>
+          <Button
+            size="sm"
+            disabled={!current}
+            onClick={() => {
+              if (!current) return;
+              const a = document.createElement("a");
+              a.href = current;
+              a.download = fileName;
+              a.click();
+            }}
+          >
+            <Download /> Download PDF
+          </Button>
+        </div>
       </div>
 
-      <article className="space-y-6 rounded-lg border border-border bg-card p-8 text-sm text-card-foreground print:border-0 print:p-0">
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            {c?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={c.logoUrl} alt={c.name} className="mb-2 h-14 w-auto" />
-            ) : null}
-            <h1 className="text-lg font-semibold">{c?.name}</h1>
-            <p className="text-muted-foreground">
-              {[c?.addressLine, c?.city, c?.state, c?.postalCode].filter(Boolean).join(", ")}
-            </p>
-            <p className="text-muted-foreground">
-              {c?.gstin ? `GSTIN ${c.gstin}` : ""}
-              {c?.pan ? ` · PAN ${c.pan}` : ""}
-            </p>
-            <p className="text-muted-foreground">{[c?.primaryPhone, c?.publicEmail].filter(Boolean).join(" · ")}</p>
-          </div>
-          <div className="text-right">
-            <h2 className="text-xl font-semibold uppercase">Quotation</h2>
-            <p className="tabular">{q.quotationNumber}</p>
-            {q.sentAt ? <p className="text-muted-foreground">Sent {q.sentAt.slice(0, 10)}</p> : null}
-            {q.validUntil ? <p className="text-muted-foreground">Valid until {q.validUntil}</p> : null}
-          </div>
-        </header>
+      <p className="text-xs text-muted-foreground">
+        {theme === "dark" ? "Dark" : "Light"} edition, following the back office theme. Switch the theme to get the other.
+      </p>
 
-        <section>
-          <h3 className="text-xs font-medium uppercase text-muted-foreground">Prepared for</h3>
-          <p className="font-medium">{q.customerName}</p>
-          {q.customerEmail ? <p className="text-muted-foreground">{q.customerEmail}</p> : null}
-          {q.eventDate ? <p className="text-muted-foreground">Event date {q.eventDate}</p> : null}
-          {q.venue?.text ? <p className="text-muted-foreground">Venue {q.venue.text}</p> : null}
-        </section>
+      {failed ? <Alert tone="error" title={`The PDF could not be made: ${failed}`} /> : null}
 
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
-              <th className="py-2">Item</th>
-              <th className="py-2 text-right">Rate / day</th>
-              <th className="py-2 text-right">Qty</th>
-              <th className="py-2 text-right">Days</th>
-              <th className="py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {q.lines.map((l) => (
-              <tr key={l.id} className="border-b border-border">
-                <td className="py-2">{l.productName}</td>
-                <td className="tabular py-2 text-right">{formatMoney(l.unitRatePerDay)}</td>
-                <td className="tabular py-2 text-right">{l.quantity}</td>
-                <td className="tabular py-2 text-right">{l.rentalDays}</td>
-                <td className="tabular py-2 text-right">{formatMoney(l.lineTotal)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <dl className="ml-auto w-80 space-y-1">
-          {q.subtotalAmount ? <Row label="Items" value={formatMoney(q.subtotalAmount)} /> : null}
-          {(q.bundleDiscounts ?? []).map((d) => (
-            <Row key={d.name} label={`${d.name} (${d.percent}% off)`} value={`− ${formatMoney(d.amount)}`} />
-          ))}
-          {q.discountAmount && Number(q.discountAmount.amount) > 0 ? (
-            <Row label="Discount" value={`− ${formatMoney(q.discountAmount)}`} />
-          ) : null}
-          {q.tax ? <Row label="Taxable amount" value={formatMoney(q.tax.taxableAmount)} /> : null}
-          {q.tax && q.tax.intraState ? (
-            <>
-              <Row label={`CGST (${(q.tax.rate ?? 0) / 2}%)`} value={formatMoney(q.tax.cgst)} />
-              <Row label={`SGST (${(q.tax.rate ?? 0) / 2}%)`} value={formatMoney(q.tax.sgst)} />
-            </>
-          ) : null}
-          {q.tax && !q.tax.intraState ? <Row label={`IGST (${q.tax.rate ?? 0}%)`} value={formatMoney(q.tax.igst)} /> : null}
-          {q.deliveryCharge && Number(q.deliveryCharge.amount) > 0 ? (
-            <Row label="Delivery" value={formatMoney(q.deliveryCharge)} />
-          ) : null}
-          <Row label="Total" value={formatMoney(q.totalAmount)} strong />
-          <Row
-            label={q.depositWaiver?.waived ? "Security deposit (waived)" : "Refundable security deposit (not taxed)"}
-            value={q.depositWaiver?.waived ? formatMoney(q.depositWaiver.amount) : formatMoney(q.totalSecurityDeposit)}
-          />
-        </dl>
-
-        {q.policies && q.policies.length > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            This quotation is subject to:{" "}
-            {q.policies.map((p) => `${POLICY_TITLE[p.kind] ?? p.kind} (version ${p.version})`).join(", ")}.
-          </p>
-        ) : null}
-      </article>
-    </div>
-  );
-}
-
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className={strong ? "flex justify-between border-t border-border pt-1 font-semibold" : "flex justify-between"}>
-      <dt>{label}</dt>
-      <dd className="tabular">{value}</dd>
+      {current ? (
+        <iframe title={fileName} src={current} className="h-[80vh] w-full rounded-lg border border-border bg-card" />
+      ) : failed ? null : (
+        <div className="flex h-[60vh] items-center justify-center gap-2 rounded-lg border border-border bg-card text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Preparing the PDF…
+        </div>
+      )}
     </div>
   );
 }

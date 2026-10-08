@@ -39,6 +39,15 @@ export interface QuotationLineView {
   rentalDays: number;
   unitRatePerDay: Money;
   lineTotal: Money;
+  /** What the quotation document groups and pictures the line by; absent on a quotation written before they were kept. */
+  categoryName?: string | null;
+  imageUrl?: string | null;
+  functionName?: string | null;
+  /** yyyy-MM-dd */
+  functionDate?: string | null;
+  /** HH:mm */
+  functionStartTime?: string | null;
+  functionVenue?: string | null;
 }
 
 /**

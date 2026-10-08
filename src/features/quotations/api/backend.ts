@@ -32,6 +32,12 @@ interface WireLine {
   unitRatePerDay: Money;
   lineTotal: Money;
   tradePrice?: boolean;
+  categoryName?: string | null;
+  imageUrl?: string | null;
+  functionName?: string | null;
+  functionDate?: string | null;
+  functionStartTime?: string | null;
+  functionVenue?: string | null;
 }
 
 interface WireQuotation {
@@ -76,6 +82,12 @@ function lineFromWire(line: WireLine): QuotationLineView {
     unitRatePerDay: line.unitRatePerDay,
     lineTotal: line.lineTotal,
     tradePrice: line.tradePrice ?? false,
+    categoryName: line.categoryName,
+    imageUrl: line.imageUrl,
+    functionName: line.functionName,
+    functionDate: line.functionDate,
+    functionStartTime: line.functionStartTime,
+    functionVenue: line.functionVenue,
   };
 }
 
