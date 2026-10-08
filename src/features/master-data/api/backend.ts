@@ -299,6 +299,7 @@ function variantFromWire(variant: WireVariant): ProductVariantView {
     isDefault: variant.isDefault,
     active: variant.active,
     hasAttributes: Object.keys(variant.attributes ?? {}).length > 0,
+    attributeFacetIds: Object.keys(variant.attributes ?? {}),
     stock: variant.ownedStock + variant.supplierStock,
   };
 }
@@ -479,11 +480,29 @@ function storefrontDetailsBody(request: CreateProductRequest) {
   };
 }
 
+function setupBody(setup: NonNullable<CreateProductRequest["setup"]>) {
+  const stock = (lines: { warehouseId: string; quantity: number }[]) =>
+    lines.map((line) => ({ warehouseId: Number(line.warehouseId), quantity: line.quantity }));
+  return {
+    variants: setup.variants?.map((variant) => ({
+      type: variant.type,
+      id: variant.id === undefined ? undefined : Number(variant.id),
+      active: variant.active,
+      name: variant.name,
+      wholesaleRate: variant.wholesaleRate,
+      dailyRate: variant.retailRate,
+      stock: stock(variant.stock),
+    })),
+    stock: stock(setup.stock ?? []),
+  };
+}
+
 function completeBody(request: CreateProductRequest) {
   return {
     product: productBody(request),
     media: mediaBody(request.media),
     details: storefrontDetailsBody(request),
+    setup: request.setup ? setupBody(request.setup) : undefined,
   };
 }
 

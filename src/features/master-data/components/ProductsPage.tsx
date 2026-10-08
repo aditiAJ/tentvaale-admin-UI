@@ -1,13 +1,12 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { Fragment, useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, Layers, Package, Pencil, Plus, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Package, Pencil, Plus, Search } from "lucide-react";
 import { listProducts, masterDataKeys, setProductActive } from "@/features/master-data/api";
 import type { ProductView } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
-import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
@@ -20,6 +19,103 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+
+/** The variants a customer can choose between: a lone untouched default is just the product itself. */
+function realVariants(product: ProductView) {
+  return product.variants.filter((variant) => !(variant.isDefault && !variant.hasAttributes));
+}
+
+/** What a variant differs by (Colour, Size ...), from the product's axes. */
+function variantType(product: ProductView, attributeFacetIds: string[] | undefined) {
+  return (attributeFacetIds ?? [])
+    .map((id) => product.axes?.find((axis) => axis.facetId === id)?.label)
+    .filter(Boolean)
+    .join(" / ");
+}
+
+/**
+ * A product's variants as rows of the product table itself, so their rates sit under the product's own columns and
+ * the full width is used. Same type together, in the order types first appear.
+ */
+function VariantRows({ product }: { product: ProductView }) {
+  const list = realVariants(product);
+  if (list.length === 0) {
+    return (
+      <tr className="bg-muted/30">
+        <td colSpan={6} className="border-l-2 border-primary/40 px-4 py-2 text-xs text-muted-foreground">
+          No variants yet. Add them from Edit.
+        </td>
+      </tr>
+    );
+  }
+  const typeOf = (variant: (typeof list)[number]) => variantType(product, variant.attributeFacetIds) || "Other";
+  const types = [...new Set(list.map(typeOf))];
+  const rows = types.flatMap((type) => list.filter((variant) => typeOf(variant) === type));
+  // The product's own pieces (its default variant) sit beside the variants, counted in the product's total.
+  const base = product.variants.find((variant) => variant.isDefault && !variant.hasAttributes);
+  return (
+    <>
+      {base && base.stock > 0 ? (
+        <tr className="bg-muted/30 text-xs">
+          <td className="border-l-2 border-primary/40 px-4 py-1.5">
+            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.65rem] font-semibold tracking-wide text-primary uppercase">
+              Main
+            </span>
+          </td>
+          <td className="py-1.5 pr-3">
+            <span className="flex items-center gap-2 pl-[3.1rem] font-medium">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-primary/50" />
+              {product.name} (the product itself)
+            </span>
+          </td>
+          <td className="py-1.5 pr-3">
+            <span className="inline-flex items-center gap-1.5 tabular text-success">
+              <span className="size-1.5 rounded-full bg-success" />
+              {base.stock} in stock
+            </span>
+          </td>
+          <td className="px-4 py-1.5 text-right tabular">{formatMoney(product.wholesaleRate)}</td>
+          <td className="px-4 py-1.5 text-right tabular">{formatMoney(product.retailRate)}</td>
+          <td />
+        </tr>
+      ) : null}
+      {rows.map((variant, index) => {
+        const type = typeOf(variant);
+        const firstOfType = index === 0 || typeOf(rows[index - 1]) !== type;
+        const off = variant.active === false;
+        return (
+          <tr key={variant.id} className={`bg-muted/30 text-xs ${off ? "opacity-60" : ""}`}>
+            <td className="border-l-2 border-primary/40 px-4 py-1.5">
+              {firstOfType ? (
+                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.65rem] font-semibold tracking-wide text-primary uppercase">
+                  {type}
+                </span>
+              ) : null}
+            </td>
+            <td className="py-1.5 pr-3">
+              <span className="flex items-center gap-2 pl-[3.1rem] font-medium">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-primary/50" />
+                {variant.name}
+                {off ? <Badge>Off</Badge> : null}
+              </span>
+            </td>
+            <td className="py-1.5 pr-3">
+              <span
+                className={`inline-flex items-center gap-1.5 tabular ${variant.stock > 0 ? "text-success" : "text-muted-foreground"}`}
+              >
+                <span className={`size-1.5 rounded-full ${variant.stock > 0 ? "bg-success" : "bg-muted-foreground/50"}`} />
+                {variant.stock > 0 ? `${variant.stock} in stock` : "No stock"}
+              </span>
+            </td>
+            <td className="px-4 py-1.5 text-right tabular">{formatMoney(variant.wholesaleRate)}</td>
+            <td className="px-4 py-1.5 text-right tabular">{formatMoney(variant.retailRate)}</td>
+            <td />
+          </tr>
+        );
+      })}
+    </>
+  );
+}
 
 function matches(product: ProductView, term: string): boolean {
   const haystack = [
@@ -47,9 +143,9 @@ export function ProductsPage() {
   const [categoryId, setCategoryId] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
-  const [managingVariants, setManagingVariants] = useState<ProductView | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [switching, setSwitching] = useState<ProductView | null>(null);
+  const [openVariants, setOpenVariants] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   // Actions is always shown: anyone who can see a product can see its variants.
@@ -160,7 +256,8 @@ export function ProductsPage() {
 
               {!isPending && visible.length > 0
                 ? visible.map((product) => (
-                    <TR key={product.id}>
+                    <Fragment key={product.id}>
+                    <TR>
                       <TD>
                         <span className="font-mono text-xs whitespace-nowrap">{product.sku}</span>
                         <span className="block text-xs text-muted-foreground">
@@ -174,12 +271,6 @@ export function ProductsPage() {
                             <span className="font-medium">{product.name}</span>
                             {product.active === false ? (
                               <Badge className="ml-1.5 align-middle">Inactive</Badge>
-                            ) : null}
-                            {product.hasVariants ? (
-                              <Badge className="ml-1.5 align-middle tabular">
-                                {product.variants.length}{" "}
-                                {product.variants.length === 1 ? "variant" : "variants"}
-                              </Badge>
                             ) : null}
                             {product.genericName || product.description ? (
                               <span className="block max-w-[15rem] truncate text-xs text-muted-foreground xl:max-w-xs">
@@ -215,17 +306,21 @@ export function ProductsPage() {
                       </TD>
                       <TD>
                         <div className="flex justify-end gap-1">
-                          {/* Every product has a variant (the default), so every product has stock to
-                              write and may gain variants. */}
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setManagingVariants(product)}
-                            aria-label={`Variants and stock of ${product.name}`}
-                            title="Variants & stock"
+                            onClick={() =>
+                              setOpenVariants((current) => {
+                                const next = new Set(current);
+                                if (!next.delete(product.id)) next.add(product.id);
+                                return next;
+                              })
+                            }
+                            aria-expanded={openVariants.has(product.id)}
+                            aria-label={`View variants of ${product.name}`}
                           >
-                            <Layers />
-                            <span className="hidden 2xl:inline">Variants & stock</span>
+                            {openVariants.has(product.id) ? <ChevronDown /> : <ChevronRight />}
+                            View variants
                           </Button>
                           {canWrite ? (
                             <Button
@@ -252,6 +347,8 @@ export function ProductsPage() {
                         </div>
                       </TD>
                     </TR>
+                    {openVariants.has(product.id) ? <VariantRows product={product} /> : null}
+                    </Fragment>
                   ))
                 : null}
             </TBody>
@@ -310,12 +407,6 @@ export function ProductsPage() {
             setSwitching(null);
           }}
           onClose={() => setSwitching(null)}
-        />
-      ) : null}
-      {managingVariants ? (
-        <ProductVariantsDialog
-          product={managingVariants}
-          onClose={() => setManagingVariants(null)}
         />
       ) : null}
     </div>

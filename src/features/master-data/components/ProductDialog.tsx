@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Controller, useFieldArray, useForm, useWatch, type FieldErrors } from "react-hook-form";
+import { Controller, FormProvider, useFieldArray, useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Trash2 } from "lucide-reac
 import { toast } from "sonner";
 import {
   createProduct,
+  getStockGrid,
   listCategories,
   listProducts,
   masterDataKeys,
@@ -32,8 +33,19 @@ import {
   type DimensionUnit,
   type MediaAsset,
   type ProductView,
+  type StockGrid,
 } from "@/features/master-data/types";
 import { MediaField } from "@/features/master-data/components/MediaField";
+import {
+  ProductVariantsStep,
+  StockFields,
+  blankStockLine,
+  blankVariant,
+  checkVariantStep,
+  stockLineUsed,
+  variantFilled,
+  variantStepShape,
+} from "@/features/master-data/components/ProductVariantsStep";
 import { ApiError } from "@/services/api-client";
 import { amountField } from "@/lib/forms";
 import { cn } from "@/lib/utils";
@@ -76,9 +88,8 @@ const schema = z.object({
   // submit nothing at all rather than "".
   categoryId: z.string({ error: "Choose a category" }).min(1, "Choose a category"),
   subCategoryId: z.string({ error: "Choose a sub-category" }).min(1, "Choose a sub-category"),
-  // A select's value is a string, so Yes/No travel as text and become the
-  // boolean the product stores only once they leave the form.
-  hasVariants: z.enum(["yes", "no"]).transform((value) => value === "yes"),
+  // The product's stock (step 1) and its variants with their own stock (step 2).
+  ...variantStepShape,
 
   // Storefront details. Lists are edited as chips and arrive already trimmed.
   rateType: z.enum(RATE_TYPES),
@@ -113,7 +124,7 @@ const schema = z.object({
         seen.add(key);
       });
     }),
-});
+}).superRefine(checkVariantStep);
 
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
@@ -130,6 +141,7 @@ const STEPS: {
   {
     label: "Product details",
     fields: [
+      "stock",
       "name",
       "genericName",
       "categoryId",
@@ -139,8 +151,11 @@ const STEPS: {
       "wholesaleRate",
       "rateType",
       "skuOwner",
-      "hasVariants",
     ],
+  },
+  {
+    label: "Variants & stock",
+    fields: ["variants"],
   },
   {
     label: "Storefront details",
@@ -260,11 +275,14 @@ function AffixInput({
  * and error, which is a cascading render for something a fresh mount does for
  * free.
  */
-export function ProductDialog({
+function ProductForm({
   existing,
+  grid,
   onClose,
 }: {
   existing?: ProductView;
+  /** An existing product's stock per variant and warehouse; absent when it could not be loaded. */
+  grid?: StockGrid;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -287,14 +305,23 @@ export function ProductDialog({
   const legacySize = existing && !existing.dimensions ? parseLegacySize(existing.size) : null;
   const unreadableSize = existing && !existing.dimensions && !legacySize ? existing.size : null;
 
-  const {
-    control,
-    register,
-    handleSubmit,
-    setValue,
-    trigger,
-    formState: { errors },
-  } = useForm<FormInput, unknown, FormOutput>({
+  // An existing product's variants and stock fill the form, so they can be changed there.
+  const setupLoaded = Boolean(existing && grid);
+  const defaultVariant = existing?.variants.find((variant) => variant.isDefault && !variant.hasAttributes);
+  const plain = Boolean(defaultVariant) && (existing?.variants.length ?? 0) <= 1;
+  const stockOf = (variantId: string) => {
+    const lines = (grid?.cells ?? [])
+      .filter((cell) => cell.variantId === variantId && cell.quantity > 0)
+      .map((cell) => ({ warehouseId: cell.warehouseId, quantity: String(cell.quantity) }));
+    return lines.length ? lines : [blankStockLine()];
+  };
+  const typeOf = (attributeFacetIds: string[] | undefined) =>
+    (attributeFacetIds ?? [])
+      .map((id) => existing?.axes?.find((axis) => axis.facetId === id)?.label)
+      .filter(Boolean)
+      .join(" / ");
+
+  const form = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     // Next validates a step with trigger(), which leaves its errors up; this is what takes
     // each one down as soon as the field is put right.
@@ -308,9 +335,23 @@ export function ProductDialog({
       retailRate: existing ? amountText(existing.retailRate.amount) : "",
       categoryId: existing?.categoryId ?? "",
       subCategoryId: existing?.subCategoryId ?? "",
-      // No, unless the product already says otherwise: most catalogue items
-      // come in one version, so that is the answer that saves a click.
-      hasVariants: existing?.hasVariants ? "yes" : "no",
+      // The variants the product has, then one empty row for the next: filled it is added, empty it is skipped.
+      variants: [
+        ...(setupLoaded && !plain
+          ? (existing?.variants ?? []).filter((variant) => variant !== defaultVariant).map((variant) => ({
+              id: variant.id,
+              active: variant.active !== false,
+              type: typeOf(variant.attributeFacetIds),
+              name: variant.name,
+              wholesaleRate: amountText(variant.wholesaleRate.amount),
+              retailRate: amountText(variant.retailRate.amount),
+              stock: stockOf(variant.id),
+            }))
+          : []),
+        blankVariant(),
+      ],
+      // The product's own stock: the plain pieces, kept on its default variant beside the variants.
+      stock: setupLoaded && defaultVariant ? stockOf(defaultVariant.id) : [blankStockLine()],
       // Every storefront detail may be absent — always so in api mode, where
       // the backend does not know them — so each falls back to empty.
       rateType: existing?.rateType ?? "Qty",
@@ -330,6 +371,15 @@ export function ProductDialog({
       })),
     },
   });
+
+  const {
+    control,
+    register,
+    handleSubmit,
+    setValue,
+    trigger,
+    formState: { errors },
+  } = form;
 
   const attributeRows = useFieldArray({ control, name: "attributes" });
 
@@ -381,7 +431,43 @@ export function ProductDialog({
 
   const mutation = useMutation({
     mutationFn: (values: FormOutput) => {
-      const { length, width, height, dimensionUnit, ...rest } = values;
+      const { length, width, height, dimensionUnit, variants, stock, ...rest } = values;
+      // A warehouse that held some of a variant and is no longer listed is emptied.
+      const emptied = (variantId: string | undefined, kept: { warehouseId: string }[]) =>
+        variantId
+          ? (grid?.cells ?? [])
+              .filter(
+                (cell) =>
+                  cell.variantId === variantId &&
+                  cell.quantity > 0 &&
+                  !kept.some((line) => line.warehouseId === cell.warehouseId),
+              )
+              .map((cell) => ({ warehouseId: cell.warehouseId, quantity: 0 }))
+          : [];
+      const linesOf = (rows: { warehouseId: string; quantity: string }[], variantId?: string) => {
+        const kept = rows.filter(stockLineUsed).map((row) => ({ warehouseId: row.warehouseId, quantity: Number(row.quantity) }));
+        return [...kept, ...emptied(variantId, kept)];
+      };
+      const filled = variants.filter(variantFilled);
+      // Empty rows are skipped; a rate left empty is the product's own.
+      const setupOf = () => {
+        if (filled.length > 0 || (existing && !plain)) {
+          return {
+            variants: filled.map((variant) => ({
+              id: variant.id,
+              active: variant.id ? variant.active : undefined,
+              type: variant.type,
+              name: variant.name,
+              wholesaleRate: variant.wholesaleRate === "" ? rest.wholesaleRate : Number(variant.wholesaleRate),
+              retailRate: variant.retailRate === "" ? rest.retailRate : Number(variant.retailRate),
+              stock: linesOf(variant.stock, variant.id),
+            })),
+            stock: linesOf(stock, defaultVariant?.id),
+          };
+        }
+        const lines = linesOf(stock, defaultVariant?.id);
+        return lines.length ? { stock: lines } : undefined;
+      };
       const sides = [length, width, height];
       const toNumber = (text: string) => (text === "" ? null : Number(text));
       const request = {
@@ -402,11 +488,16 @@ export function ProductDialog({
         setting: values.setting || null,
         attributes: Object.fromEntries(values.attributes.map((row) => [row.name, row.value])),
         media,
+        hasVariants: existing && !grid ? existing.hasVariants : filled.length > 0 || Boolean(existing && !plain),
+        setup: existing && !grid ? undefined : setupOf(),
       };
       return existing ? updateProduct(existing.id, request) : createProduct(request);
     },
     onSuccess: (product) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.products });
+      queryClient.invalidateQueries({ queryKey: ["master-data", "stock-grid"] });
+      // Stock entered with the product shows on the Warehouses page.
+      queryClient.invalidateQueries({ queryKey: masterDataKeys.warehouses });
       // Collections and bundles show each product's name (and collections its image).
       queryClient.invalidateQueries({ queryKey: masterDataKeys.featuredCollections });
       queryClient.invalidateQueries({ queryKey: masterDataKeys.bundles });
@@ -466,6 +557,9 @@ export function ProductDialog({
         categoryOptions.find((category) => category.id === selectedCategoryId),
         (products.data ?? []).map((product) => product.sku),
       );
+
+  const watchedVariants = useWatch({ control, name: "variants" });
+  const hasFilledVariants = (watchedVariants ?? []).some(variantFilled);
 
   const busy = mutation.isPending;
 
@@ -553,6 +647,7 @@ export function ProductDialog({
         </ol>
       </nav>
 
+      <FormProvider {...form}>
       <form
         id={FORM_ID}
         onSubmit={(event) => {
@@ -735,10 +830,32 @@ export function ProductDialog({
               )}
             </Field>
           </div>
+
+          {/* The product's own stock: plain pieces, counted in addition to its variants (100 plain + 20 Gold + 20 Silver = 140). */}
+          {!existing || (setupLoaded && defaultVariant) ? (
+            <fieldset className="space-y-2 rounded-lg border border-border p-3.5">
+              <legend className="px-1 text-xs font-semibold">Stock of the product itself</legend>
+              <StockFields name="stock" warehouseLabel="Add to warehouse" />
+              {hasFilledVariants ? (
+                <p className="text-xs text-muted-foreground">
+                  Counted in addition to the variants you add in the next step, which each carry their own stock.
+                </p>
+              ) : null}
+            </fieldset>
+          ) : null}
         </div>
 
-        {/* Step 2 — storefront details */}
+        {/* Step 2 — variants and stock */}
         <div className={cn("space-y-5", step !== 1 && "hidden")}>
+          {existing && !grid ? (
+            <Alert tone="info" title="The variants and stock of this product could not be loaded, so they cannot be changed here." />
+          ) : (
+            <ProductVariantsStep />
+          )}
+        </div>
+
+        {/* Step 3 — storefront details */}
+        <div className={cn("space-y-5", step !== 2 && "hidden")}>
           <Field label="Indoor / outdoor" error={errors.setting?.message}>
             {(props) => (
               <Select {...props} {...register("setting")}>
@@ -922,8 +1039,8 @@ export function ProductDialog({
           </div>
         </div>
 
-        {/* Step 3 — media */}
-        <div className={cn(step !== 2 && "hidden")}>
+        {/* Step 4 — media */}
+        <div className={cn(step !== 3 && "hidden")}>
           <MediaField
             media={media}
             limits={PRODUCT_MEDIA_LIMITS}
@@ -935,6 +1052,28 @@ export function ProductDialog({
           />
         </div>
       </form>
+      </FormProvider>
     </Dialog>
   );
+}
+
+/**
+ * The product form. For an existing product the stock per variant and warehouse is loaded first, since it is
+ * the starting point of the "Variants & stock" step.
+ */
+export function ProductDialog({ existing, onClose }: { existing?: ProductView; onClose: () => void }) {
+  const grid = useQuery({
+    queryKey: ["master-data", "stock-grid", existing?.id],
+    queryFn: ({ signal }) => getStockGrid(existing!.id, signal),
+    enabled: Boolean(existing),
+    gcTime: 0,
+  });
+  if (existing && grid.isPending) {
+    return (
+      <Dialog open onClose={onClose} title="Edit product" description={`SKU ${existing.sku}`} className="max-w-2xl">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </Dialog>
+    );
+  }
+  return <ProductForm existing={existing} grid={grid.data} onClose={onClose} />;
 }

@@ -167,6 +167,8 @@ export interface ProductVariantView {
   active?: boolean;
   /** True when the variant sits on the product's axes (so the axes can no longer change). */
   hasAttributes?: boolean;
+  /** The axes (facets) the variant has a value for, so what type it is. */
+  attributeFacetIds?: string[];
 }
 
 export interface VariantAxis {
@@ -206,6 +208,34 @@ export interface CreateProductVariantRequest {
 
 export type UpdateProductVariantRequest = CreateProductVariantRequest;
 
+/** How many of something sit in one warehouse. */
+export interface ProductSetupStock {
+  warehouseId: string;
+  quantity: number;
+}
+
+export interface ProductSetupVariant {
+  /** The variant being changed, when editing a product; a new one has none. */
+  id?: string;
+  /** Only for an existing variant: whether customers are offered it. */
+  active?: boolean;
+  /** What the variant differs by (Colour, Size ...); needed for a new variant. */
+  type?: string;
+  name: string;
+  wholesaleRate: number;
+  retailRate: number;
+  stock: ProductSetupStock[];
+}
+
+/**
+ * Variants (each with its own type, for example Colour or Size) and stock, saved together with the product. A plain
+ * product leaves `variants` out and puts its stock in `stock`.
+ */
+export interface ProductSetup {
+  variants?: ProductSetupVariant[];
+  stock?: ProductSetupStock[];
+}
+
 /** Every storefront detail is sent in full: on update, a list left empty is cleared. */
 export interface CreateProductRequest extends ProductStorefrontDetails {
   /** An existing category. Must be active, unless the product is already in it. */
@@ -224,6 +254,8 @@ export interface CreateProductRequest extends ProductStorefrontDetails {
   hasVariants: boolean;
   /** The full set to keep: on update, anything left out is removed. */
   media: MediaAsset[];
+  /** Only when creating: variants and opening stock saved with the product. */
+  setup?: ProductSetup;
 }
 
 /** The same fields as a create; every one is replaced. */
