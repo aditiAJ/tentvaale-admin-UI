@@ -1,4 +1,4 @@
-import type { CompanyProfile } from "@/features/settings/api";
+import { policyHistory, type CompanyProfile, type PolicyKind } from "@/features/settings/api";
 import type { QuotationView } from "@/features/quotations/types";
 import type { DocFunction, DocLine, QuotationDoc } from "./QuotationDocument";
 import { loadImageData, loadMarkData, loadQrCodes } from "./pdfAssets";
@@ -72,6 +72,20 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
   const images: Record<string, string> = {};
   for (const [url, data] of pictures) if (data) images[url] = data;
 
+  // The text of each policy at the version the quotation was sent with. A policy that cannot be read is left out.
+  const policyTexts = (
+    await Promise.all(
+      (q.policies ?? []).map(async (ref) => {
+        try {
+          const found = (await policyHistory(ref.kind as PolicyKind)).find((p) => p.version === ref.version);
+          return found && found.body.trim() ? { title: found.title, version: found.version, body: found.body } : null;
+        } catch {
+          return null;
+        }
+      }),
+    )
+  ).filter((p): p is { title: string; version: number; body: string } => p !== null);
+
   const name = company?.name ?? "Tentvaale";
   const qr = await loadQrCodes({ name, upiId: company?.upiId ?? null, phone: company?.primaryPhone ?? null });
   const tax = q.tax && q.tax.rate != null ? q.tax : null;
@@ -108,6 +122,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
       amount: waived ? amount(q.depositWaiver?.amount) : amount(q.totalSecurityDeposit),
     },
     policies: (q.policies ?? []).map((p) => `${POLICY_TITLE[p.kind] ?? p.kind} (v${p.version})`),
+    policyTexts,
     company: {
       name,
       address: [company?.addressLine, company?.city, company?.state, company?.postalCode].filter(Boolean).join(", ") || null,
@@ -124,6 +139,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
       signature,
     },
     images,
+    picturesMissing: urls.length - Object.keys(images).length,
     qr,
   };
 }

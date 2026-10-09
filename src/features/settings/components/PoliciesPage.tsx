@@ -34,9 +34,9 @@ export function PoliciesPage() {
   if (policies.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (policies.isError) return <Alert tone="error" title="Could not load the policies." />;
   return (
-    <div className="max-w-3xl space-y-8">
+    <div className="space-y-4">
       <header>
-        <h1 className="text-xl font-semibold">Policies</h1>
+        <h2 className="text-base font-semibold">Policies</h2>
         <p className="text-sm text-muted-foreground">
           Publishing creates a new version. Quotations already sent keep the version they were sent with.
         </p>

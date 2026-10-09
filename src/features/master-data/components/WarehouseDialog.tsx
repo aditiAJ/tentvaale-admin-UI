@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createWarehouse, masterDataKeys, updateWarehouse } from "@/features/master-data/api";
-import type { WarehouseView } from "@/features/master-data/types";
+import type { WarehouseLocationRequest, WarehouseView } from "@/features/master-data/types";
 import { ApiError } from "@/services/api-client";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { ActiveToggle } from "@/features/master-data/components/ActiveToggle";
+import { MAPS_KEY, cityOf, detailsOf, loadPlaces, type PlaceSelectEvent } from "@/lib/maps";
 
 const FORM_ID = "warehouse-form";
 
@@ -50,9 +51,14 @@ export function WarehouseDialog({
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
 
+  const searchRef = useRef<HTMLDivElement>(null);
+  // What Google resolved for the picked place; saved with the warehouse, never shown.
+  const pickedRef = useRef<WarehouseLocationRequest | undefined>(undefined);
+
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -64,9 +70,44 @@ export function WarehouseDialog({
     },
   });
 
+  // The search box exists once the dialog has rendered it; a picked place fills address and city.
+  useEffect(() => {
+    if (!MAPS_KEY) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void loadPlaces()
+        .then(({ PlaceAutocompleteElement }) => {
+          const host = searchRef.current;
+          if (cancelled || !host || host.firstChild) return;
+          const search = new PlaceAutocompleteElement();
+          host.appendChild(search);
+          search.addEventListener("gmp-select", async (event) => {
+            const place = (event as PlaceSelectEvent).placePrediction.toPlace();
+            await place.fetchFields({ fields: ["id", "location", "displayName", "formattedAddress", "addressComponents"] });
+            const address = place.formattedAddress ?? place.displayName;
+            if (!address) return;
+            pickedRef.current = detailsOf(place);
+            setValue("address", address.slice(0, 250), { shouldValidate: true, shouldDirty: true });
+            const city = cityOf(place);
+            if (city) setValue("city", city.slice(0, 100), { shouldValidate: true, shouldDirty: true });
+          });
+        })
+        .catch((error) => {
+          console.error("Google Places failed to start", error);
+          setFormError(`Google search is unavailable (${error instanceof Error ? error.message : "unknown error"}). Type the address instead.`);
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [setValue]);
+
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
-      existing ? updateWarehouse(existing.id, values) : createWarehouse(values),
+      existing
+        ? updateWarehouse(existing.id, { ...values, location: pickedRef.current })
+        : createWarehouse({ ...values, location: pickedRef.current }),
     onSuccess: (warehouse) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.warehouses });
       toast.success(existing ? `${warehouse.name} updated` : `${warehouse.name} added`, {
@@ -106,6 +147,12 @@ export function WarehouseDialog({
         })}
       >
         {formError ? <Alert tone="error" title={formError} /> : null}
+
+        {MAPS_KEY ? (
+          <Field label="Search on Google Maps" hint="Pick a result to fill the address and city.">
+            {() => <div ref={searchRef} />}
+          </Field>
+        ) : null}
 
         <Field label="Name" required error={errors.name?.message}>
           {(props) => (

@@ -1,10 +1,6 @@
-import { CompanySettingsPage } from "@/features/settings";
-import { RequirePermission } from "@/components/require-permission";
+import { redirect } from "next/navigation";
 
+/** The settings now live on one page; this keeps old links working. */
 export default function Page() {
-  return (
-    <RequirePermission permission="MASTER_DATA_READ">
-      <CompanySettingsPage />
-    </RequirePermission>
-  );
+  redirect("/settings?tab=profile");
 }
