@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Pencil, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Pencil, Plus, Search, X } from "lucide-react";
 import {
   createBundleOccasion,
   listBundleOccasions,
@@ -19,6 +19,9 @@ import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+
+type View = "all" | "shown" | "hidden";
 
 /**
  * The storefront's bundle filter row: add, rename, reorder, and show or hide
@@ -38,6 +41,8 @@ export function BundleOccasionsDialog({
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<View>("all");
 
   const occasions = useQuery({
     queryKey: masterDataKeys.bundleOccasions,
@@ -111,12 +116,27 @@ export function BundleOccasionsDialog({
     rename.mutate({ id: renaming.id, name });
   };
 
+  const shownCount = list.filter((occasion) => occasion.active).length;
+  const hiddenCount = list.length - shownCount;
+  // Reordering only makes sense on the whole list: with a filter or a search the neighbours are not each other's.
+  const filtered = view !== "all" || query.trim() !== "";
+  const rows = list
+    .map((occasion, index) => ({ occasion, index }))
+    .filter(({ occasion }) => view === "all" || (view === "shown" ? occasion.active : !occasion.active))
+    .filter(({ occasion }) => !query.trim() || occasion.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  const views: { value: View; label: string; count: number }[] = [
+    { value: "all", label: "All", count: list.length },
+    { value: "shown", label: "Shown", count: shownCount },
+    { value: "hidden", label: "Hidden", count: hiddenCount },
+  ];
+
   return (
     <Dialog
       open
       onClose={onClose}
       title="Bundle occasions"
-      description="The storefront's bundle filters, in the order it shows them."
+      description="The filters shoppers see on the storefront's bundles page, in this order."
       className="max-w-lg"
       footer={
         <Button variant="outline" onClick={onClose}>
@@ -125,55 +145,121 @@ export function BundleOccasionsDialog({
       }
     >
       <div className="space-y-3">
+        {canWrite ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={newName}
+              onChange={(event) => {
+                setNewName(event.target.value);
+                setError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitNew();
+              }}
+              aria-label="New occasion"
+              placeholder="Add an occasion, e.g. Haldi"
+              className="min-w-0 flex-1"
+              disabled={busy}
+            />
+            <Button onClick={submitNew} disabled={busy}>
+              {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+              Add
+            </Button>
+          </div>
+        ) : null}
+
         {error ? <Alert tone="error" title={error} /> : null}
         {occasions.isError ? (
           <Alert
             tone="error"
-            title={
-              occasions.error instanceof Error
-                ? occasions.error.message
-                : "Could not load the occasions."
-            }
+            title={occasions.error instanceof Error ? occasions.error.message : "Could not load the occasions."}
           />
         ) : null}
 
         {occasions.isPending ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }, (_, index) => (
-              <Skeleton key={index} className="h-9 w-full" />
+              <Skeleton key={index} className="h-11 w-full" />
             ))}
           </div>
         ) : null}
 
-        {list.length ? (
-          <ul className="divide-y divide-border rounded-md border border-border">
-            {list.map((occasion, index) => {
+        {list.length > 0 ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-0 flex-1 basis-40">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search occasions"
+                  aria-label="Search occasions"
+                  className="h-9 w-full rounded-md border border-border bg-background pr-3 pl-8 text-sm outline-none transition-colors hover:border-primary/40 focus:border-primary focus-visible:ring-2 focus-visible:ring-ring/50"
+                />
+              </div>
+              <div role="group" aria-label="Show" className="inline-flex rounded-md border border-border bg-card p-0.5">
+                {views.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setView(option.value)}
+                    aria-pressed={view === option.value}
+                    className={cn(
+                      "h-8 rounded px-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                      view === option.value
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {option.label} <span className="text-[0.7rem] tabular opacity-70">{option.count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              <strong className="font-medium text-foreground tabular">{shownCount}</strong> shown on the storefront
+              {hiddenCount > 0 ? (
+                <>
+                  {" · "}
+                  <span className="tabular">{hiddenCount}</span> hidden (kept on their bundles, just not offered as a
+                  filter)
+                </>
+              ) : null}
+              .
+            </p>
+          </>
+        ) : null}
+
+        {rows.length > 0 ? (
+          <ul className="max-h-[48vh] divide-y divide-border overflow-y-auto rounded-md border border-border">
+            {rows.map(({ occasion, index }) => {
               const editing = renaming?.id === occasion.id;
               return (
-                <li key={occasion.id} className="flex items-center gap-2 px-2 py-1.5">
-                  {canWrite ? (
-                    <div className="flex">
+                <li key={occasion.id} className="flex items-center gap-2 px-2 py-2">
+                  {canWrite && !filtered ? (
+                    <div className="flex shrink-0 flex-col">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-7"
+                        className="size-6"
                         onClick={() => move(index, -1)}
                         disabled={busy || index === 0}
                         aria-label={`Move ${occasion.name} up`}
                         title="Move up"
                       >
-                        <ArrowUp />
+                        <ArrowUp className="size-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-7"
+                        className="size-6"
                         onClick={() => move(index, 1)}
                         disabled={busy || index === list.length - 1}
                         aria-label={`Move ${occasion.name} down`}
                         title="Move down"
                       >
-                        <ArrowDown />
+                        <ArrowDown className="size-3.5" />
                       </Button>
                     </div>
                   ) : null}
@@ -196,18 +282,19 @@ export function BundleOccasionsDialog({
                     />
                   ) : (
                     <div className="min-w-0 flex-1">
-                      <span className={occasion.active ? "text-sm" : "text-sm text-muted-foreground"}>
+                      <p className={cn("truncate text-sm font-medium", !occasion.active && "text-muted-foreground")}>
                         {occasion.name}
-                      </span>
-                      <span className="tabular ml-2 text-xs text-muted-foreground">
-                        {occasion.bundleCount} {occasion.bundleCount === 1 ? "bundle" : "bundles"}
-                      </span>
-                      {occasion.active ? null : <Badge className="ml-2 align-middle">Hidden</Badge>}
+                      </p>
+                      <p className="text-xs text-muted-foreground tabular">
+                        {occasion.bundleCount === 0
+                          ? "Not used by any bundle"
+                          : `${occasion.bundleCount} ${occasion.bundleCount === 1 ? "bundle" : "bundles"}`}
+                      </p>
                     </div>
                   )}
 
                   {canWrite && editing ? (
-                    <div className="flex">
+                    <div className="flex shrink-0">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -233,34 +320,43 @@ export function BundleOccasionsDialog({
                     </div>
                   ) : null}
 
-                  {canWrite && !editing ? (
-                    <div className="flex">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => {
-                          setError(null);
-                          setRenaming({ id: occasion.id, name: occasion.name });
-                        }}
-                        disabled={busy}
-                        aria-label={`Rename ${occasion.name}`}
-                        title="Rename"
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => toggle.mutate(occasion)}
-                        disabled={busy}
-                        aria-label={`${occasion.active ? "Hide" : "Show"} ${occasion.name} on the storefront`}
-                        title={occasion.active ? "Hide on storefront" : "Show on storefront"}
-                      >
-                        {occasion.active ? <EyeOff /> : <Eye />}
-                      </Button>
-                    </div>
+                  {!editing ? (
+                    canWrite ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => toggle.mutate(occasion)}
+                          disabled={busy}
+                          aria-label={`${occasion.name} is ${occasion.active ? "shown" : "hidden"} on the storefront. ${occasion.active ? "Hide" : "Show"} it`}
+                          title={occasion.active ? "Click to hide on the storefront" : "Click to show on the storefront"}
+                          className={cn(
+                            "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                            occasion.active
+                              ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                              : "border-border bg-muted text-muted-foreground hover:bg-muted/70",
+                          )}
+                        >
+                          {occasion.active ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+                          {occasion.active ? "Shown" : "Hidden"}
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={() => {
+                            setError(null);
+                            setRenaming({ id: occasion.id, name: occasion.name });
+                          }}
+                          disabled={busy}
+                          aria-label={`Rename ${occasion.name}`}
+                          title="Rename"
+                        >
+                          <Pencil />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge className="shrink-0">{occasion.active ? "Shown" : "Hidden"}</Badge>
+                    )
                   ) : null}
                 </li>
               );
@@ -268,31 +364,14 @@ export function BundleOccasionsDialog({
           </ul>
         ) : null}
 
-        {!occasions.isPending && !occasions.isError && !list.length ? (
-          <p className="text-sm text-muted-foreground">No occasions yet.</p>
+        {!occasions.isPending && !occasions.isError && list.length > 0 && rows.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border px-3 py-5 text-center text-sm text-muted-foreground">
+            No occasions match.
+          </p>
         ) : null}
 
-        {canWrite ? (
-          <div className="flex items-center gap-2">
-            <Input
-              value={newName}
-              onChange={(event) => {
-                setNewName(event.target.value);
-                setError(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") submitNew();
-              }}
-              aria-label="New occasion"
-              placeholder="New occasion"
-              className="min-w-0 flex-1"
-              disabled={busy}
-            />
-            <Button variant="outline" onClick={submitNew} disabled={busy}>
-              {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
-              Add occasion
-            </Button>
-          </div>
+        {!occasions.isPending && !occasions.isError && !list.length ? (
+          <p className="text-sm text-muted-foreground">No occasions yet.</p>
         ) : null}
       </div>
     </Dialog>

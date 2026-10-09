@@ -24,6 +24,7 @@ import {
   ProductFilterPanel,
   type ProductFilters,
 } from "@/features/master-data/components/ProductFilterPanel";
+import { DEFAULT_SORT, SortSelect, sortItems, type SortKey } from "@/features/master-data/sorting";
 import { ProductImageCarousel } from "@/features/master-data/components/ProductImageCarousel";
 import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
@@ -38,10 +39,23 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function ProductsPage() {
+export function ProductsPage({
+  initialCategoryId = "",
+  initialSubCategoryId = "",
+}: {
+  /** Opens the list already filtered to a category, as linked from the Categories page. */
+  initialCategoryId?: string;
+  /** Or to one sub-category, which wins over its category. */
+  initialSubCategoryId?: string;
+} = {}) {
   const canWrite = useCan("MASTER_DATA_WRITE");
-  const [filters, setFilters] = useState<ProductFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<ProductFilters>(() => ({
+    ...EMPTY_FILTERS,
+    categoryIds: initialCategoryId && !initialSubCategoryId ? [initialCategoryId] : [],
+    subCategoryIds: initialSubCategoryId ? [initialSubCategoryId] : [],
+  }));
   const [showFilters, setShowFilters] = useState(true);
+  const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
   const [showInactive, setShowInactive] = useState(false);
@@ -61,8 +75,13 @@ export function ProductsPage() {
   });
 
   const visible = useMemo(
-    () => applyFilters(data ?? [], deferredFilters),
-    [data, deferredFilters],
+    () =>
+      sortItems(applyFilters(data ?? [], deferredFilters), sort, {
+        id: (product) => product.id,
+        name: (product) => product.name,
+        price: (product) => product.retailRate,
+      }),
+    [data, deferredFilters, sort],
   );
   const activeFilters = activeFilterCount(filters);
   // Four to a row when the panel is hidden or the screen is very wide; three beside the panel on a normal desktop.
@@ -100,6 +119,7 @@ export function ProductsPage() {
             </span>
           ) : null}
         </Button>
+        <SortSelect value={sort} onChange={setSort} />
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

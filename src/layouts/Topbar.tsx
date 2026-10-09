@@ -31,8 +31,8 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
       <div className="flex items-center gap-2">
         {/* Only the tent: the file is the tent above the TENTVAALE lettering, so the box shows its top ~68% and the
             name is set as real text in the middle of the bar instead. */}
-        <div className="h-10 w-[76px] shrink-0 overflow-hidden">
-          <Image src="/logo-full.png" alt="Tentvaale" width={207} height={160} priority className="h-auto w-[76px] max-w-none" />
+        <div className="h-8 w-[61px] shrink-0 overflow-hidden">
+          <Image src="/logo-full.png" alt="Tentvaale" width={207} height={160} priority className="h-auto w-[61px] max-w-none" />
         </div>
         {IS_MOCK ? (
           // Stated plainly and permanently. Anyone reviewing this should never

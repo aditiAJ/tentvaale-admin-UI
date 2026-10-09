@@ -2,17 +2,19 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, SearchX, Tags, X } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, SearchX, Tags, X } from "lucide-react";
 import {
   activateCategory,
   deactivateCategory,
   listCategories,
+  listProducts,
   masterDataKeys,
 } from "@/features/master-data/api";
 import type { CategoryView } from "@/features/master-data/types";
-import { CategoryCard } from "@/features/master-data/components/CategoryCard";
+import { CategoryCard, NO_COUNTS, type CategoryCounts } from "@/features/master-data/components/CategoryCard";
 import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
 import { useCan } from "@/features/auth";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,11 +23,16 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type StatusFilter = "all" | "active" | "inactive";
+
 const GRID = "grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
 export function CategoriesPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
+  const canRead = useCan("MASTER_DATA_READ");
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [layout, setLayout] = useState<"grid" | "list">("grid");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CategoryView | null>(null);
   const [deactivating, setDeactivating] = useState<CategoryView | null>(null);
@@ -40,16 +47,47 @@ export function CategoriesPage() {
     queryFn: ({ signal }) => listCategories(signal),
   });
 
+  // How many products sit in each category and sub-category. Shares the products cache entry the other
+  // screens use; a role that cannot read products simply sees no counts.
+  const products = useQuery({
+    queryKey: masterDataKeys.products,
+    queryFn: ({ signal }) => listProducts(signal),
+    enabled: canRead,
+  });
+  const counts = useMemo(() => {
+    if (!products.data) return null;
+    const byCategory = new Map<string, CategoryCounts>();
+    for (const product of products.data) {
+      if (!product.categoryId) continue;
+      const entry: CategoryCounts = byCategory.get(product.categoryId) ?? { total: 0, bySub: new Map(), subMedia: new Map() };
+      entry.total += 1;
+      entry.media ??= product.media?.some((item) => item.kind === "IMAGE") ? product.media : undefined;
+      if (product.subCategoryId) {
+        entry.bySub.set(product.subCategoryId, (entry.bySub.get(product.subCategoryId) ?? 0) + 1);
+        if (!entry.subMedia.get(product.subCategoryId)?.length && product.media?.some((item) => item.kind === "IMAGE")) {
+          entry.subMedia.set(product.subCategoryId, product.media);
+        }
+      }
+      byCategory.set(product.categoryId, entry);
+    }
+    return byCategory;
+  }, [products.data]);
+
+  const activeCount = (data ?? []).filter((category: CategoryView) => category.active).length;
+  const inactiveCount = (data?.length ?? 0) - activeCount;
+  const subCount = (data ?? []).reduce((sum, category: CategoryView) => sum + category.subCategories.length, 0);
+
   const visible = useMemo(() => {
-    if (!term) return data ?? [];
     // A match on a sub-category keeps its parent in view, so a search for
     // "chandeliers" shows where they are filed.
     return (data ?? []).filter(
       (category: CategoryView) =>
-        category.name.toLowerCase().includes(term) ||
-        category.subCategories.some((sub) => sub.name.toLowerCase().includes(term)),
+        (status === "all" || (status === "active" ? category.active : !category.active)) &&
+        (!term ||
+          category.name.toLowerCase().includes(term) ||
+          category.subCategories.some((sub) => sub.name.toLowerCase().includes(term))),
     );
-  }, [data, term]);
+  }, [data, term, status]);
 
   const newButton = canWrite ? (
     <Button onClick={() => setCreating(true)}>
@@ -87,10 +125,61 @@ export function CategoriesPage() {
             </button>
           ) : null}
         </div>
+        <div role="group" aria-label="Status" className="inline-flex rounded-md border border-border bg-card p-0.5">
+          {(
+            [
+              { value: "all", label: "All", count: data?.length ?? 0 },
+              { value: "active", label: "Active", count: activeCount },
+              { value: "inactive", label: "Inactive", count: inactiveCount },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setStatus(option.value)}
+              aria-pressed={status === option.value}
+              className={cn(
+                "h-8 rounded px-2.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                status === option.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {option.label} <span className="text-[0.7rem] tabular opacity-70">{option.count}</span>
+            </button>
+          ))}
+        </div>
         <p className="text-xs text-muted-foreground tabular" aria-live="polite">
-          {isPending ? "Loading…" : `${visible.length} of ${data?.length ?? 0} categories`}
+          {isPending
+            ? "Loading…"
+            : `${visible.length} of ${data?.length ?? 0} categories · ${subCount} sub-categories`}
           {isFetching && !isPending ? " · refreshing" : ""}
         </p>
+        <div role="group" aria-label="Layout" className="ml-auto inline-flex rounded-md border border-border bg-card p-0.5">
+          {(
+            [
+              { value: "grid", label: "Card view", icon: LayoutGrid },
+              { value: "list", label: "List view", icon: List },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setLayout(option.value)}
+              aria-pressed={layout === option.value}
+              aria-label={option.label}
+              title={option.label}
+              className={cn(
+                "flex size-8 items-center justify-center rounded outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                layout === option.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <option.icon className="size-4" />
+            </button>
+          ))}
+        </div>
       </div>
 
       {isPending ? (
@@ -120,11 +209,17 @@ export function CategoriesPage() {
           {data.length ? (
             <EmptyState
               icon={<SearchX />}
-              title={`No categories match “${deferredSearch.trim()}”`}
-              description="Neither a category nor any of its sub-categories has that in its name."
+              title={deferredSearch.trim() ? `No categories match “${deferredSearch.trim()}”` : `No ${status} categories`}
+              description="Nothing matches this search and status. Try a different word or status."
               action={
-                <Button variant="outline" onClick={() => setSearch("")}>
-                  Clear search
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch("");
+                    setStatus("all");
+                  }}
+                >
+                  Clear filters
                 </Button>
               }
             />
@@ -135,12 +230,15 @@ export function CategoriesPage() {
       ) : null}
 
       {visible.length > 0 ? (
-        <div className={GRID}>
+        <div className={layout === "grid" ? GRID : "space-y-3"}>
           {visible.map((category: CategoryView) => (
             <CategoryCard
               key={category.id}
               category={category}
               term={term}
+              layout={layout}
+              canViewProducts={canRead}
+              counts={counts?.get(category.id) ?? (counts ? NO_COUNTS : null)}
               onEdit={canWrite ? () => setEditing(category) : undefined}
               onDeactivate={
                 canWrite && category.active ? () => setDeactivating(category) : undefined
