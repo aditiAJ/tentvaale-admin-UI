@@ -1078,6 +1078,7 @@ interface WireBundleItem {
 
 interface WireBundle {
   id: number;
+  sku?: string | null;
   name: string;
   tagline?: string | null;
   description?: string | null;
@@ -1096,6 +1097,7 @@ interface WireBundle {
 
 interface WireCollection {
   id: number;
+  sku?: string | null;
   name: string;
   description?: string | null;
   palette?: string | null;
@@ -1192,6 +1194,7 @@ function bundleFromWire(bundle: WireBundle, occasions: Map<number, WireOccasion>
   return {
     id: String(bundle.id),
     companyId: companyId(),
+    sku: bundle.sku ?? null,
     name: bundle.name,
     active: bundle.active,
     tagline: bundle.tagline ?? null,
@@ -1301,6 +1304,7 @@ function collectionFromWire(
   return {
     id: String(collection.id),
     companyId: companyId(),
+    sku: collection.sku ?? null,
     name: collection.name,
     description: collection.description ?? null,
     active: collection.active,

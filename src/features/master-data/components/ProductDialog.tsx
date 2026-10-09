@@ -35,6 +35,7 @@ import {
   type ProductView,
   type StockGrid,
 } from "@/features/master-data/types";
+import { getCompany, settingsKeys } from "@/features/settings/api";
 import { MediaField } from "@/features/master-data/components/MediaField";
 import {
   ProductVariantsStep,
@@ -216,14 +217,14 @@ function parseLegacySize(text: string | null | undefined) {
   return { length: convert(match[1]), width: convert(match[2]), height: convert(match[3]), unit };
 }
 
-/** The next system SKU as a preview ("FUR-021"): the category's code and one past the highest number in use. */
-function previewSku(category: CategoryView | undefined, skus: string[]) {
-  if (!category) return null;
-  const letters = category.name.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-  const prefix = category.skuPrefix?.trim().toUpperCase() || (letters.length >= 2 ? letters.slice(0, 3) : "PRD");
-  const pattern = new RegExp(`^${prefix}-(\\d{1,9})$`, "i");
+/** The next system SKU as a preview ("TENT-PRO-021"): the company's code and one past the highest number in use. */
+function previewSku(companyCode: string | null | undefined, skus: string[]) {
+  const code = companyCode?.trim().toUpperCase();
+  if (!code) return null;
+  const stem = `${code}-PRO`;
+  const pattern = new RegExp(`^${stem}-(\\d{1,9})$`, "i");
   const highest = skus.reduce((max, sku) => Math.max(max, Number(pattern.exec(sku)?.[1] ?? 0)), 0);
-  return `${prefix}-${String(highest + 1).padStart(3, "0")}`;
+  return `${stem}-${String(highest + 1).padStart(3, "0")}`;
 }
 
 /** Retail against wholesale: how far below retail the planner rate sits. */
@@ -295,6 +296,8 @@ function ProductForm({
     queryKey: masterDataKeys.categories,
     queryFn: ({ signal }) => listCategories(signal),
   });
+  // The company code the next SKU starts with (TENT-PRO-001).
+  const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal) });
   // Only for suggesting specification names other products already use.
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -554,7 +557,7 @@ function ProductForm({
   const skuPreview = existing
     ? existing.sku
     : previewSku(
-        categoryOptions.find((category) => category.id === selectedCategoryId),
+        company.data?.skuPrefix,
         (products.data ?? []).map((product) => product.sku),
       );
 
@@ -824,7 +827,7 @@ function ProductForm({
                   readOnly
                   tabIndex={-1}
                   value={skuPreview ?? ""}
-                  placeholder="Pick a category first"
+                  placeholder="Numbered when you save"
                   className="bg-muted font-mono text-muted-foreground"
                 />
               )}

@@ -25,12 +25,6 @@ const FORM_ID = "category-form";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(150, "Maximum 150 characters"),
-  // Optional: left empty on a new category, the backend takes it from the name (Furniture gives FUR).
-  skuPrefix: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .refine((value) => value === "" || /^[A-Z0-9]{2,6}$/.test(value), "2 to 6 letters or digits, such as FUR"),
   subCategories: z
     .array(
       z.object({
@@ -98,7 +92,6 @@ export function CategoryDialog({
     resolver: zodResolver(schema),
     defaultValues: {
       name: existing?.name ?? "",
-      skuPrefix: existing?.skuPrefix ?? "",
       subCategories: (existing?.subCategories ?? []).map((sub) => ({
         subCategoryId: sub.id,
         name: sub.name,
@@ -118,13 +111,11 @@ export function CategoryDialog({
               name: row.name,
             })),
             media,
-            skuPrefix: values.skuPrefix || undefined,
           })
         : createCategory({
             name: values.name,
             subCategories: values.subCategories.map((row) => row.name),
             media,
-            skuPrefix: values.skuPrefix || undefined,
           }),
     onSuccess: (category) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.categories });
@@ -174,27 +165,6 @@ export function CategoryDialog({
 
         <Field label="Category name" required error={errors.name?.message}>
           {(props) => <Input {...props} {...register("name")} placeholder="Lighting" autoFocus />}
-        </Field>
-
-        <Field
-          label="SKU code"
-          error={errors.skuPrefix?.message}
-          hint={
-            existing
-              ? "New products in this category get SKUs like FUR-001. Changing it only affects products added from now on."
-              : "New products in this category get SKUs like FUR-001. Leave empty to use the first letters of the name."
-          }
-        >
-          {(props) => (
-            <Input
-              {...props}
-              {...register("skuPrefix")}
-              placeholder="FUR"
-              maxLength={6}
-              autoCapitalize="characters"
-              className="w-32 font-mono uppercase"
-            />
-          )}
         </Field>
 
         <div className="space-y-2">

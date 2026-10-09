@@ -61,6 +61,7 @@ interface Draft {
   longitude: string;
   logoUrl: string;
   signatureUrl: string;
+  skuPrefix: string;
 }
 
 const draftOf = (c: CompanyProfile): Draft => ({
@@ -84,10 +85,11 @@ const draftOf = (c: CompanyProfile): Draft => ({
   longitude: c.longitude == null ? "" : String(c.longitude),
   logoUrl: c.logoUrl ?? "",
   signatureUrl: c.signatureUrl ?? "",
+  skuPrefix: c.skuPrefix ?? "",
 });
 
 const FIELDS_OF: Record<"profile" | "tax" | "bank", (keyof Draft)[]> = {
-  profile: ["name", "addressLine", "city", "postalCode", "primaryPhone", "secondaryPhone", "publicEmail", "websiteUrl", "latitude", "longitude", "logoUrl", "signatureUrl"],
+  profile: ["name", "addressLine", "city", "postalCode", "primaryPhone", "secondaryPhone", "publicEmail", "websiteUrl", "latitude", "longitude", "logoUrl", "signatureUrl", "skuPrefix"],
   tax: ["gstin", "pan", "state", "gstRate"],
   bank: ["bankName", "bankAccount", "bankIfsc", "upiId"],
 };
@@ -226,7 +228,8 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
   const gstinOdd = draft.gstin.trim() !== "" && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i.test(draft.gstin.trim());
   const ifscOdd = draft.bankIfsc.trim() !== "" && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(draft.bankIfsc.trim());
   const upiOdd = draft.upiId.trim() !== "" && !/^[\w.-]+@[\w.-]+$/.test(draft.upiId.trim());
-  const blocked = rateInvalid || coordsInvalid || emailInvalid || draft.name.trim() === "";
+  const skuInvalid = draft.skuPrefix.trim() !== "" && !/^[A-Za-z0-9]{2,6}$/.test(draft.skuPrefix.trim());
+  const blocked = rateInvalid || coordsInvalid || emailInvalid || skuInvalid || draft.name.trim() === "";
 
   const save = useMutation({
     mutationFn: () => {
@@ -251,6 +254,7 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
         upiId: t(draft.upiId),
         logoUrl: t(draft.logoUrl),
         signatureUrl: t(draft.signatureUrl),
+        skuPrefix: t(draft.skuPrefix),
         latitude: lat,
         longitude: lng,
       });
@@ -308,6 +312,16 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
               <ImageUploadField label="Logo" hint="PNG or JPEG. A wide logo on a transparent background looks best." value={draft.logoUrl} onChange={set("logoUrl")} disabled={!canWrite} />
               <ImageUploadField label="Authorised signature" hint="PNG or JPEG of the signature on a plain background." value={draft.signatureUrl} onChange={set("signatureUrl")} disabled={!canWrite} />
             </div>
+          </Section>
+
+          <Section title="Product codes (SKU)" shownOn="every product, variant, bundle and collection code">
+            <Field
+              label="SKU code"
+              error={skuInvalid ? "2 to 6 letters or digits, such as TENT" : undefined}
+              hint="New items get codes like TENT-PRO-001 (product), TENT-PRO-001-V01 (its variant), TENT-BUN-001 (bundle) and TENT-FC-001 (collection). Changing it never renames codes already given."
+            >
+              {text("skuPrefix", { placeholder: "TENT" })}
+            </Field>
           </Section>
 
           <Section title="Location" shownOn="not printed yet; kept for the map location of your business">

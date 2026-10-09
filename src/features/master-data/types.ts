@@ -359,6 +359,8 @@ export interface CustomerView {
 export interface BundleView extends BundleStorefrontDetails {
   id: string;
   companyId: string;
+  /** TENT-BUN-001: given when the bundle is created, never changed. */
+  sku?: string | null;
   name: string;
   /**
    * The existing products the bundle packages, each with how many of it, in
@@ -485,6 +487,8 @@ export interface BundleSwapView {
 export interface FeaturedCollectionView {
   id: string;
   companyId: string;
+  /** TENT-FC-001: given when the collection is created, never changed. */
+  sku?: string | null;
   name: string;
   description: string | null;
   /** Inactive collections stay listed here, so they can be switched back on. */

@@ -29,6 +29,8 @@ export interface CompanyProfile {
   signatureUrl: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** The code every new SKU starts with, e.g. TENT (TENT-PRO-001). */
+  skuPrefix?: string | null;
 }
 
 export const getCompany = (signal?: AbortSignal) =>

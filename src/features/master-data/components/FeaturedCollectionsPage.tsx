@@ -127,6 +127,7 @@ export function FeaturedCollectionsPage() {
                     {collection.active ? "Active" : "Inactive"}
                   </Badge>
                 </div>
+                {collection.sku ? <p className="font-mono text-xs text-muted-foreground">{collection.sku}</p> : null}
                 {collection.description ? (
                   <p className="text-xs text-muted-foreground">{collection.description}</p>
                 ) : null}
