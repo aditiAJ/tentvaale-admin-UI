@@ -87,9 +87,13 @@ export interface QuotationDoc {
   total: number;
   deposit: { label: string; amount: number };
   policies: string[];
+  /** The full text of each policy the quotation was sent with, printed on the last pages. */
+  policyTexts: { title: string; version: number; body: string }[];
   company: DocCompany;
   /** Pictures as data URLs, by the key a line names. */
   images: Record<string, string>;
+  /** How many pictures on record could not be loaded (they show as plain tiles). */
+  picturesMissing: number;
   /** QR codes as data URLs. */
   qr: { upi: string | null; whatsapp: string | null };
 }
@@ -309,10 +313,13 @@ function make(theme: DocTheme) {
       fnTotalLabel: { flex: 1, backgroundColor: c.soft, paddingVertical: 9, paddingHorizontal: 12, fontFamily: "Playfair Display", fontWeight: 700, color: c.gold, fontSize: 12 },
       fnTotalValue: { width: 190, backgroundColor: c.gold, paddingVertical: 9, textAlign: "center", color: "#ffffff", fontWeight: 700, fontSize: 14 },
       // collection
+      catRule: { flexDirection: "row", alignItems: "center", marginTop: 8, marginBottom: 8 },
+      catRuleLine: { flex: 1, height: 1, backgroundColor: c.gold, opacity: 0.5 },
+      catRuleText: { color: c.gold, fontSize: 8.5, fontWeight: 600, letterSpacing: 1, marginHorizontal: 10 },
       grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
       tile: { width: 169, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, borderRadius: 3, overflow: "hidden" },
-      tileImg: { width: "100%", height: 104, objectFit: "cover" },
-      tileBlank: { width: "100%", height: 104, backgroundColor: c.soft, alignItems: "center", justifyContent: "center" },
+      tileImg: { width: "100%", height: 112, objectFit: "cover" },
+      tileBlank: { width: "100%", height: 112, backgroundColor: c.soft, alignItems: "center", justifyContent: "center" },
       tileCode: { position: "absolute", top: 5, left: 5, backgroundColor: "#ffffff", color: "#1c1812", fontSize: 7, fontWeight: 700, paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 2 },
       tileFoot: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, paddingHorizontal: 8 },
       note: { marginTop: 12, borderWidth: 1, borderColor: c.border, paddingVertical: 6, paddingHorizontal: 10, color: c.muted, fontSize: 8 },
@@ -492,8 +499,17 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
   const functionTotal = (f: DocFunction) => f.lines.reduce((sum, l) => sum + l.amount, 0);
   const colWidth = 60;
 
-  const imageLines = functions.some((f) => f.lines.some((l) => l.image && doc.images[l.image]));
+  // The collection pages are part of the document whenever any item has a picture on record, loaded or not.
+  const imageLines = functions.some((f) => f.lines.some((l) => l.image));
   const codeOf = (f: DocFunction, index: number) => `${(f.name.trim()[0] ?? "S").toUpperCase()}-${String(index + 1).padStart(2, "0")}`;
+  /** Item codes follow the order of the detail page (by category), so a picture and its row carry the same code. */
+  const codes = new Map<DocLine, string>();
+  for (const f of functions) {
+    let index = 0;
+    const groups = new Map<string, DocLine[]>();
+    for (const l of f.lines) groups.set(l.category, [...(groups.get(l.category) ?? []), l]);
+    for (const lines of groups.values()) for (const l of lines) codes.set(l, codeOf(f, index++));
+  }
   const byCategory = (f: DocFunction) => {
     const groups = new Map<string, DocLine[]>();
     for (const l of f.lines) groups.set(l.category, [...(groups.get(l.category) ?? []), l]);
@@ -694,7 +710,7 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                       n += 1;
                       return (
                         <View style={s.tr} key={`${l.name}-${n}`} wrap={false}>
-                          <Text style={[s.cellCenter, s.gold, { width: 36, fontSize: 8 }]}>{codeOf(f, n - 1)}</Text>
+                          <Text style={[s.cellCenter, s.gold, { width: 36, fontSize: 8 }]}>{codes.get(l)}</Text>
                           <View style={{ flex: 1, paddingHorizontal: 6 }}>
                             <Text style={{ fontWeight: 600 }}>{l.name}</Text>
                             {l.variant ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{l.variant}</Text> : null}
@@ -734,7 +750,7 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
           <Header s={s} doc={doc} title="SELECTED COLLECTION" subtitle="A VISUAL REFERENCE OF YOUR SELECTIONS" meta={metaEvent} />
           <View style={s.body}>
             {functions.map((f, fi) => (
-              <View key={`col-${f.name}-${fi}`} wrap={f.lines.length > 9}>
+              <View key={`col-${f.name}-${fi}`} wrap>
                 <View style={[s.fnHead, { marginTop: fi ? 14 : 0 }]}>
                   <View style={s.fnBadge}>
                     <Text style={{ color: c.gold, fontWeight: 700, fontSize: 12 }}>{String(fi + 1).padStart(2, "0")}</Text>
@@ -746,32 +762,44 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                     </Text>
                   </View>
                 </View>
-                <View style={s.grid}>
-                  {f.lines.map((l, li) => {
-                    const src = l.image ? doc.images[l.image] : null;
-                    return (
-                      <View style={s.tile} key={`${l.name}-${li}`} wrap={false}>
-                        <View>
-                          {src ? (
-                            // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
-                            <Image src={src} style={s.tileImg} />
-                          ) : (
-                            <View style={s.tileBlank}>
-                              <Text style={{ color: c.gold, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 26 }}>
-                                {l.name.trim()[0]?.toUpperCase()}
-                              </Text>
+                {byCategory(f).map(([category, lines]) => (
+                  <View key={category} wrap={lines.length > 6}>
+                    <View style={s.catRule}>
+                      <View style={s.catRuleLine} />
+                      <Text style={s.catRuleText}>{category.toUpperCase()}</Text>
+                      <View style={s.catRuleLine} />
+                    </View>
+                    <View style={s.grid}>
+                      {lines.map((l, li) => {
+                        const src = l.image ? doc.images[l.image] : null;
+                        return (
+                          <View style={s.tile} key={`${l.name}-${li}`} wrap={false}>
+                            <View>
+                              {src ? (
+                                // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
+                                <Image src={src} style={s.tileImg} />
+                              ) : (
+                                <View style={s.tileBlank}>
+                                  <Text style={{ color: c.gold, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 26 }}>
+                                    {l.name.trim()[0]?.toUpperCase()}
+                                  </Text>
+                                </View>
+                              )}
+                              <Text style={s.tileCode}>{codes.get(l)}</Text>
                             </View>
-                          )}
-                          <Text style={s.tileCode}>{codeOf(f, li)}</Text>
-                        </View>
-                        <View style={s.tileFoot}>
-                          <Text style={{ fontSize: 8, fontWeight: 600, flex: 1, paddingRight: 4 }}>{l.name}</Text>
-                          <Text style={{ fontSize: 8, color: c.gold }}>{l.quantity} Nos.</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
+                            <View style={s.tileFoot}>
+                              <Text style={{ fontSize: 8, fontWeight: 600, flex: 1, paddingRight: 4 }}>
+                                {l.name}
+                                {l.variant ? ` · ${l.variant}` : ""}
+                              </Text>
+                              <Text style={{ fontSize: 8, color: c.gold }}>{l.quantity} Nos.</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
                 <View style={{ alignSelf: "flex-end", marginTop: 8, flexDirection: "row", borderWidth: 1, borderColor: c.border }} wrap={false}>
                   <Text style={{ paddingVertical: 6, paddingHorizontal: 12, fontSize: 8.5, fontWeight: 600 }}>{f.name.toUpperCase()} TOTAL</Text>
                   <Text style={{ backgroundColor: c.gold, color: "#ffffff", fontWeight: 700, paddingVertical: 6, paddingHorizontal: 14, fontSize: 10.5 }}>
@@ -919,6 +947,33 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
         </View>
         <Footer s={s} company={co} />
       </Page>
+
+      {/* ---------------- the policies, in full ---------------- */}
+      {doc.policyTexts.length > 0 ? (
+        <Page size="A4" style={s.page}>
+          <Header s={s} doc={doc} title="POLICIES" subtitle={`Quotation No. : ${doc.number}`} meta={metaEvent} />
+          <View style={s.body}>
+            {doc.policyTexts.map((policy) => (
+              <View key={`${policy.title}-${policy.version}`} style={{ marginBottom: 14 }}>
+                <View minPresenceAhead={60}>
+                  <Text style={{ fontFamily: "Playfair Display", fontWeight: 700, color: c.gold, fontSize: 13 }}>{policy.title}</Text>
+                  <Text style={[s.muted, { fontSize: 7.5, marginTop: 2, marginBottom: 6 }]}>Version {policy.version}</Text>
+                </View>
+                {policy.body
+                  .split(/\n{2,}/)
+                  .map((paragraph) => paragraph.trim())
+                  .filter(Boolean)
+                  .map((paragraph, index) => (
+                    <Text key={index} style={{ fontSize: 8.5, lineHeight: 1.45, marginBottom: 5 }}>
+                      {paragraph}
+                    </Text>
+                  ))}
+              </View>
+            ))}
+          </View>
+          <Footer s={s} company={co} />
+        </Page>
+      ) : null}
     </Document>
   );
 }

@@ -3,119 +3,82 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  ChevronRight,
-  FileText,
-  Plus,
-  SearchX,
-} from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, FileText, Inbox, MapPin, Plus, SearchX } from "lucide-react";
 import { getQuotation, listQuotations, quotationKeys } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { bucketOf, isFromStorefront, type QuotationBucket } from "@/features/quotations/source";
-import { QuotationBreakdown, QuotationVersions, ReceivedPanel } from "@/features/quotations/components/QuotationPanels";
+import { QuotationVersions } from "@/features/quotations/components/QuotationPanels";
 import { QuotationPlanPanel } from "@/features/quotations/components/QuotationPlanPanel";
+import { ReceivedCards, ReceivedDetail } from "@/features/quotations/components/ReceivedView";
+import {
+  LinesByFunction,
+  PriceGrid,
+  StatusBadge,
+  StatusStepper,
+  VenueRow,
+  formatEventDate,
+} from "@/features/quotations/components/QuotationParts";
+import { QuotationActions } from "@/features/quotations/components/QuotationActions";
 import { useCan } from "@/features/auth";
 import { ConvertToOrderDialog } from "@/features/orders";
-import { QuotationActions } from "@/features/quotations/components/QuotationActions";
 import { OrderBillingPanel } from "@/features/billing";
 import { IS_MOCK } from "@/services/data-source";
-import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import {
-  WorkspaceLayout,
-  WorkspaceListSkeleton,
-  WorkspaceSearch,
-  workspaceHref as sharedWorkspaceHref,
-} from "@/components/workspace";
+import { WorkspaceListSkeleton, WorkspaceSearch } from "@/components/workspace";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-
-const STATUS_VARIANT: Record<
-  QuotationBucket,
-  "default" | "success" | "warning" | "destructive" | "outline"
-> = {
-  RECEIVED: "warning",
-  NEW: "outline",
-  REVIEWED: "warning",
-  DISCARDED: "destructive",
-  DRAFT: "default",
-  SENT: "warning",
-  ACCEPTED: "success",
-  CONVERTED: "success",
-  REJECTED: "destructive",
-  EXPIRED: "destructive",
-};
 
 /**
- * The workspace's filters, in the order the inner sidebar lists them. "" is all.
- *
- * Against the real backend the statuses are the lifecycle's own: Draft, Sent, Accepted,
- * Converted, Rejected, Expired. The seeded mock data also uses New, Reviewed and Discarded, which
- * the backend does not have, so those only show in mock mode.
+ * The status chips of the "Quotations" side, in the order a quotation moves through them. Requests from the storefront that
+ * nobody has priced yet are not here: they have their own tab, "Received".
  */
-const MOCK_ONLY_FILTERS: { key: string; label: string; status?: QuotationBucket }[] = [
-  { key: "new", label: "New", status: "NEW" },
-  { key: "reviewed", label: "Reviewed", status: "REVIEWED" },
-  { key: "discarded", label: "Discarded", status: "DISCARDED" },
-];
-
 const FILTERS: { key: string; label: string; status?: QuotationBucket }[] = [
-  { key: "", label: "All quotations" },
-  // Requests from the storefront waiting on the team, ahead of everything else.
-  { key: "received", label: "Received", status: "RECEIVED" },
-  ...(IS_MOCK ? MOCK_ONLY_FILTERS.slice(0, 2) : []),
+  { key: "all", label: "All" },
+  ...(IS_MOCK
+    ? [
+        { key: "new", label: "New", status: "NEW" as const },
+        { key: "reviewed", label: "Reviewed", status: "REVIEWED" as const },
+      ]
+    : []),
   { key: "draft", label: "Draft", status: "DRAFT" },
   { key: "sent", label: "Sent", status: "SENT" },
   { key: "accepted", label: "Accepted", status: "ACCEPTED" },
-  { key: "converted", label: "Converted", status: "CONVERTED" },
+  { key: "converted", label: "Order placed", status: "CONVERTED" },
   { key: "rejected", label: "Rejected", status: "REJECTED" },
   { key: "expired", label: "Expired", status: "EXPIRED" },
-  ...(IS_MOCK ? MOCK_ONLY_FILTERS.slice(2) : []),
+  ...(IS_MOCK ? [{ key: "discarded", label: "Discarded", status: "DISCARDED" as const }] : []),
 ];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const eventDateFormat = new Intl.DateTimeFormat("en-IN", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-/** An event date is a calendar date, so it is read and shown in UTC to stay on its day. */
-const formatEventDate = (value: string | null) => {
-  if (!value) return "Not set";
-  const date = new Date(`${value}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? value : eventDateFormat.format(date);
-};
-
-/** The workspace URL for a filter, optionally with a quotation open in it. */
-const workspaceHref = (filterKey: string, id?: string) =>
-  sharedWorkspaceHref("/quotations", filterKey, id);
+/** The page URL for a tab or chip, optionally with a quotation open in it. */
+function hrefFor(status: string, id?: string) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (id) params.set("id", id);
+  const query = params.toString();
+  return query ? `/quotations?${query}` : "/quotations";
+}
 
 /**
- * The quotation workspace: a filter sidebar of its own beside a list, or the
- * quotation opened from it. Both come from the URL (`?status=`, `?id=`), so
- * every view can be linked to, reloaded and stepped back out of, and links
- * made before the workspace existed (`/quotations?id=…`) still land on their
- * quotation.
+ * Quotations in two places. "Received" holds what customers sent in from the storefront and nobody has priced yet, as cards
+ * you open to price and send back. "Quotations" holds everything that is in the flow (draft, sent, accepted, order placed,
+ * rejected, expired), whoever started it. `?status=` picks the tab or chip and `?id=` opens one, so every view can be
+ * linked to and reloaded.
  */
 export function QuotationsPage({ quotationId, status }: { quotationId: string; status: string }) {
   const canWrite = useCan("QUOTATION_WRITE");
-  const filter = FILTERS.find((candidate) => candidate.key === status.toLowerCase()) ?? FILTERS[0];
   const [search, setSearch] = useState("");
 
-  // Fresh on every visit: a quotation raised, edited or converted a moment
-  // ago changes what the list and its counts show.
+  // Fresh on every visit: a quotation raised, edited or converted a moment ago changes what the list shows.
   const list = useQuery({
     queryKey: quotationKeys.list,
     queryFn: ({ signal }) => listQuotations(signal),
@@ -123,25 +86,26 @@ export function QuotationsPage({ quotationId, status }: { quotationId: string; s
     retry: false,
   });
 
+  const received = useMemo(() => (list.data ?? []).filter((q) => bucketOf(q) === "RECEIVED"), [list.data]);
+  const inFlow = useMemo(() => (list.data ?? []).filter((q) => bucketOf(q) !== "RECEIVED"), [list.data]);
   const counts = useMemo(() => {
-    const byStatus = new Map<string, number>();
-    for (const quotation of list.data ?? []) {
-      const bucket = bucketOf(quotation);
-      byStatus.set(bucket, (byStatus.get(bucket) ?? 0) + 1);
-    }
-    return byStatus;
-  }, [list.data]);
+    const byBucket = new Map<string, number>();
+    for (const q of inFlow) byBucket.set(bucketOf(q), (byBucket.get(bucketOf(q)) ?? 0) + 1);
+    return byBucket;
+  }, [inFlow]);
+
+  // With nothing asked for, a visit starts on Received when something is waiting there.
+  const tab: "received" | "flow" = status.toLowerCase() === "received" ? "received" : status === "" && received.length > 0 && list.data ? "received" : "flow";
+  const chip = FILTERS.find((f) => f.key === status.toLowerCase()) ?? FILTERS[0];
+  const tabKey = tab === "received" ? "received" : chip.key;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Quotations"
-        description="What was quoted, to whom, and what became of it."
+        description="Requests from customers on the storefront, and the quotations you send."
         actions={
           canWrite ? (
-            // A link rather than a button with a router push: raising a
-            // quotation is a navigation, and it should middle-click and open in
-            // a new tab like one.
             <Link href="/quotations/new" className={buttonVariants()}>
               <Plus />
               New quotation
@@ -150,101 +114,169 @@ export function QuotationsPage({ quotationId, status }: { quotationId: string; s
         }
       />
 
-      <WorkspaceLayout
-        navLabel="Quotation filters"
-        heading="Quotations"
-        filters={FILTERS}
-        activeKey={filter.key}
-        counts={list.data ? counts : undefined}
-        total={list.data?.length}
-        hrefFor={(key) => workspaceHref(key)}
-      >
+      <div className="grid items-start gap-5 lg:grid-cols-[240px_1fr]">
+        <SideTabs
+          active={tabKey}
+          received={received.length}
+          counts={counts}
+          total={inFlow.length}
+          loaded={Boolean(list.data)}
+        />
+
+        <div className="min-w-0 space-y-4">
           {quotationId ? (
             <QuotationDetail
               key={quotationId}
               quotationId={quotationId}
-              backHref={workspaceHref(filter.key)}
-              backLabel={filter.status ? `${filter.label} quotations` : "All quotations"}
+              backHref={hrefFor(tabKey)}
+              backLabel={tab === "received" ? "Received requests" : `${chip.label} quotations`}
             />
+          ) : list.error ? (
+            <Card>
+              <EmptyState
+                title="Could not load quotations"
+                description={list.error.message}
+                action={
+                  <Button variant="outline" onClick={() => list.refetch()}>
+                    Try again
+                  </Button>
+                }
+              />
+            </Card>
+          ) : list.isPending ? (
+            <WorkspaceListSkeleton />
+          ) : tab === "received" ? (
+            <ReceivedCards quotations={received} hrefFor={(id) => hrefFor("received", id)} />
           ) : (
-            <QuotationList
-              quotations={list.data}
-              isPending={list.isPending}
-              error={list.error}
-              onRetry={() => list.refetch()}
-              filter={filter}
-              search={search}
-              onSearch={setSearch}
-            />
+            <QuotationList quotations={inFlow} chip={chip} search={search} onSearch={setSearch} />
           )}
-      </WorkspaceLayout>
+        </div>
+      </div>
     </div>
   );
 }
 
+/** The sections down the left, like Settings and Warehouses: what customers sent in, then each stage of the flow. */
+function SideTabs({
+  active,
+  received,
+  counts,
+  total,
+  loaded,
+}: {
+  active: string;
+  received: number;
+  counts: Map<string, number>;
+  total: number;
+  loaded: boolean;
+}) {
+  const item = (key: string, label: string, hint: string, icon: React.ReactNode, count: number | undefined, highlight = false) => {
+    const on = active === key;
+    return (
+      <Link
+        key={key}
+        href={hrefFor(key)}
+        aria-current={on ? "page" : undefined}
+        className={cn(
+          "flex shrink-0 items-center gap-3 rounded-lg border px-3.5 py-2.5 transition-colors lg:w-full",
+          on ? "border-primary bg-primary/10" : "border-border bg-card hover:border-primary/40",
+        )}
+      >
+        <span className={cn("shrink-0", on ? "text-primary" : "text-muted-foreground")}>{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium">{label}</span>
+          <span className="hidden text-xs text-muted-foreground lg:block">{hint}</span>
+        </span>
+        {loaded && count !== undefined ? (
+          <span
+            className={cn(
+              "tabular rounded-full px-2 py-0.5 text-xs",
+              highlight && count > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {count}
+          </span>
+        ) : null}
+      </Link>
+    );
+  };
+
+  return (
+    <nav aria-label="Quotation sections" className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+      {item("received", "Received", "Requests from the storefront", <Inbox className="size-4" />, received, true)}
+      <p className="hidden px-1 pt-2 text-[0.65rem] font-semibold tracking-wider text-muted-foreground uppercase lg:block">Quotations</p>
+      {FILTERS.map((f) =>
+        item(
+          f.key,
+          f.label,
+          f.key === "all" ? "Everything in the flow" : STAGE_HINT[f.key] ?? "",
+          <FileText className="size-4" />,
+          f.status ? (counts.get(f.status) ?? 0) : total,
+        ),
+      )}
+    </nav>
+  );
+}
+
+const STAGE_HINT: Record<string, string> = {
+  draft: "Being prepared, not sent",
+  sent: "With the customer",
+  accepted: "Approved, ready for an order",
+  converted: "Became an order",
+  rejected: "Turned down",
+  expired: "Past its validity date",
+  new: "Newly raised",
+  reviewed: "Looked at",
+  discarded: "Set aside",
+};
+
 function QuotationList({
   quotations,
-  isPending,
-  error,
-  onRetry,
-  filter,
+  chip,
   search,
   onSearch,
 }: {
-  quotations: QuotationView[] | undefined;
-  isPending: boolean;
-  error: Error | null;
-  onRetry: () => void;
-  filter: (typeof FILTERS)[number];
+  quotations: QuotationView[];
+  chip: (typeof FILTERS)[number];
   search: string;
   onSearch: (value: string) => void;
 }) {
-  const deferredSearch = useDeferredValue(search);
-  const term = deferredSearch.trim().toLowerCase();
-
-  const inFilter = useMemo(
+  const deferred = useDeferredValue(search);
+  const term = deferred.trim().toLowerCase();
+  const inChip = useMemo(() => quotations.filter((q) => !chip.status || bucketOf(q) === chip.status), [quotations, chip.status]);
+  const visible = useMemo(
     () =>
-      (quotations ?? []).filter(
-        (quotation) => !filter.status || bucketOf(quotation) === filter.status,
-      ),
-    [quotations, filter.status],
+      !term
+        ? inChip
+        : inChip.filter(
+            (q) =>
+              q.customerName.toLowerCase().includes(term) ||
+              q.quotationNumber.toLowerCase().includes(term) ||
+              (q.customerEmail ?? "").toLowerCase().includes(term) ||
+              q.id.toLowerCase() === term,
+          ),
+    [inChip, term],
   );
-
-  const visible = useMemo(() => {
-    if (!term) return inFilter;
-    return inFilter.filter(
-      (quotation) =>
-        quotation.customerName.toLowerCase().includes(term) ||
-        quotation.quotationNumber.toLowerCase().includes(term) ||
-        (quotation.customerEmail ?? "").toLowerCase().includes(term) ||
-        quotation.id.toLowerCase() === term,
-    );
-  }, [inFilter, term]);
-
-  // A pasted id is still openable directly, including one the list does not
-  // hold, which is the only way to reach a quotation when there is no list.
-  const pastedId = UUID.test(deferredSearch.trim()) ? deferredSearch.trim() : "";
+  // A pasted id still opens directly, including one the list does not hold.
+  const pastedId = UUID.test(deferred.trim()) ? deferred.trim() : "";
 
   return (
-    <>
+    <div className="space-y-4">
       <WorkspaceSearch
         value={search}
         onChange={onSearch}
-        placeholder="Search quotations…"
+        placeholder="Search by customer, email or number…"
         label="Search quotations by customer, email or quotation number"
         summary={
-          quotations ? (
-            <>
-              {visible.length} of {inFilter.length}{" "}
-              {filter.status ? filter.label.toLowerCase() : ""} quotations
-            </>
-          ) : undefined
+          <>
+            {visible.length} of {inChip.length}
+          </>
         }
       />
 
-      {pastedId && !visible.some((quotation) => quotation.id === pastedId) ? (
+      {pastedId && !visible.some((q) => q.id === pastedId) ? (
         <Link
-          href={workspaceHref(filter.key, pastedId)}
+          href={hrefFor(chip.key, pastedId)}
           className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm hover:border-primary/40 hover:bg-muted/50"
         >
           <span>
@@ -254,28 +286,12 @@ function QuotationList({
         </Link>
       ) : null}
 
-      {isPending ? <WorkspaceListSkeleton /> : null}
-
-      {error ? (
-        <Card>
-          <EmptyState
-            title="Could not load quotations"
-            description={error.message}
-            action={
-              <Button variant="outline" onClick={onRetry}>
-                Try again
-              </Button>
-            }
-          />
-        </Card>
-      ) : null}
-
-      {quotations && visible.length === 0 ? (
+      {visible.length === 0 ? (
         <Card>
           {term ? (
             <EmptyState
               icon={<SearchX />}
-              title={`No quotations match “${deferredSearch.trim()}”`}
+              title={`No quotations match “${deferred.trim()}”`}
               action={
                 <Button variant="outline" onClick={() => onSearch("")}>
                   Clear search
@@ -285,97 +301,58 @@ function QuotationList({
           ) : (
             <EmptyState
               icon={<FileText />}
-              title={
-                filter.status
-                  ? `No ${filter.label.toLowerCase()} quotations`
-                  : "No quotations yet"
-              }
+              title={chip.status ? `No ${chip.label.toLowerCase()} quotations` : "No quotations yet"}
+              description={chip.status ? undefined : "Use New quotation to raise one."}
             />
           )}
         </Card>
-      ) : null}
-
-      {visible.length > 0 ? (
+      ) : (
         <Card>
           <ul className="divide-y divide-border">
-            {visible.map((quotation) => (
-              <li key={quotation.id}>
+            {visible.map((q) => (
+              <li key={q.id}>
                 <Link
-                  href={workspaceHref(filter.key, quotation.id)}
+                  href={hrefFor(chip.key, q.id)}
                   className="group flex items-center gap-4 px-4 py-3.5 transition-colors outline-none first:rounded-t-lg last:rounded-b-lg hover:bg-muted/50 focus-visible:bg-muted/50"
-                  aria-label={`Open ${quotation.quotationNumber} for ${quotation.customerName}`}
+                  aria-label={`Open ${q.quotationNumber} for ${q.customerName}`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="truncate text-sm font-semibold">
-                        {quotation.customerName}
-                      </span>
-                      <Badge variant={STATUS_VARIANT[bucketOf(quotation)]}>{bucketOf(quotation)}</Badge>
-                      {isFromStorefront(quotation) ? (
-                        <Badge variant="outline">Storefront</Badge>
-                      ) : null}
+                      <span className="truncate text-sm font-semibold">{q.customerName}</span>
+                      <StatusBadge bucket={bucketOf(q)} />
+                      {isFromStorefront(q) ? <Badge variant="outline">From storefront</Badge> : null}
                     </div>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                      <span className="font-mono">{quotation.quotationNumber}</span>
-                      {quotation.customerEmail ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="truncate">{quotation.customerEmail}</span>
-                        </>
-                      ) : null}
-                    </p>
-                    {/* On a narrow screen the figures sit under the name. */}
-                    <p className="mt-1 text-xs text-muted-foreground tabular sm:hidden">
-                      {formatEventDate(quotation.eventDate)} ·{" "}
-                      <span className="font-medium text-foreground">
-                        {formatMoney(quotation.totalAmount)}
+                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      <span className="font-mono">{q.quotationNumber}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarDays className="size-3" /> {formatEventDate(q.eventDate)}
                       </span>
+                      {q.venue?.text ? (
+                        <span className="inline-flex max-w-56 items-center gap-1 truncate">
+                          <MapPin className="size-3 shrink-0" /> <span className="truncate">{q.venue.text}</span>
+                        </span>
+                      ) : null}
                     </p>
                   </div>
-
-                  <dl className="hidden shrink-0 items-center gap-6 text-right sm:flex">
-                    <div className="w-24">
-                      <dt className="text-[0.7rem] text-muted-foreground">Event date</dt>
-                      <dd className="tabular text-sm">{formatEventDate(quotation.eventDate)}</dd>
-                    </div>
-                    <div className="hidden w-24 lg:block">
-                      <dt className="text-[0.7rem] text-muted-foreground">Deposit</dt>
-                      <dd className="tabular text-sm">
-                        {formatMoney(quotation.totalSecurityDeposit)}
-                      </dd>
-                    </div>
-                    <div className="w-28">
-                      <dt className="text-[0.7rem] text-muted-foreground">Total</dt>
-                      <dd className="tabular text-sm font-semibold">
-                        {formatMoney(quotation.totalAmount)}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <ChevronRight
-                    className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-                    aria-hidden="true"
-                  />
+                  <div className="shrink-0 text-right">
+                    <p className="tabular text-sm font-semibold">{formatMoney(q.totalAmount)}</p>
+                    <p className="text-[0.7rem] text-muted-foreground">
+                      {q.lines.length} line{q.lines.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                 </Link>
               </li>
             ))}
           </ul>
         </Card>
-      ) : null}
-    </>
+      )}
+    </div>
   );
 }
 
-/** One quotation, opened in the workspace. The same detail, edit and convert as before. */
-function QuotationDetail({
-  quotationId,
-  backHref,
-  backLabel,
-}: {
-  quotationId: string;
-  backHref: string;
-  backLabel: string;
-}) {
+/** One quotation, opened. A request nobody has priced yet gets the request view; everything else the quotation view. */
+function QuotationDetail({ quotationId, backHref, backLabel }: { quotationId: string; backHref: string; backLabel: string }) {
   const [converting, setConverting] = useState(false);
   const canReadPayments = useCan("PAYMENT_READ");
 
@@ -384,16 +361,11 @@ function QuotationDetail({
     queryFn: ({ signal }) => getQuotation(quotationId, signal),
     retry: false,
   });
-  const productMedia = useProductMedia();
-
   const notFound = isError && error instanceof ApiError && error.status === 404;
 
   return (
-    <>
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
+    <div className="space-y-4">
+      <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />
         {backLabel}
       </Link>
@@ -402,151 +374,94 @@ function QuotationDetail({
 
       {notFound ? (
         <Card>
-          <EmptyState
-            icon={<FileText />}
-            title="No quotation with that id"
-            description="Either the id is wrong, or the quotation belongs to another company."
-          />
+          <EmptyState icon={<FileText />} title="No quotation with that id" description="Either the id is wrong, or the quotation belongs to another company." />
         </Card>
       ) : null}
+      {isError && !notFound ? <Alert tone="error" title={error instanceof Error ? error.message : "Lookup failed"} /> : null}
 
-      {isError && !notFound ? (
-        <Alert tone="error" title={error instanceof Error ? error.message : "Lookup failed"} />
+      {data && bucketOf(data) === "RECEIVED" ? (
+        <ReceivedDetail quotation={data} actions={<QuotationActions quotation={data} received onConvert={() => setConverting(true)} />} />
       ) : null}
 
-      {data ? (
-        <>
-          {bucketOf(data) === "RECEIVED" ? (
-            <ReceivedPanel
-              quotation={data}
-              actions={<QuotationActions quotation={data} received onConvert={() => setConverting(true)} />}
-            />
-          ) : null}
-
-          <Card>
-            <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CardTitle className="text-lg wrap-break-word">{data.customerName}</CardTitle>
-                  <Badge variant={STATUS_VARIANT[bucketOf(data)]}>{bucketOf(data)}</Badge>
-                  {isFromStorefront(data) ? <Badge variant="outline">From storefront</Badge> : null}
-                </div>
-                <p className="font-mono text-sm text-foreground">{data.quotationNumber}</p>
-                {data.customerEmail ? (
-                  <p className="text-xs text-muted-foreground">{data.customerEmail}</p>
-                ) : null}
-                {data.customerId ? (
-                  <p className="font-mono text-xs text-muted-foreground">{data.customerId}</p>
-                ) : null}
-              </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {bucketOf(data) === "RECEIVED" ? null : (
-                  <QuotationActions quotation={data} onConvert={() => setConverting(true)} />
-                )}
-              </div>
-            </CardHeader>
-
-            <CardContent>
-              <QuotationBreakdown quotation={data} />
-
-              <dl className="mt-5 grid gap-x-8 gap-y-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Event date</dt>
-                  <dd className="tabular mt-0.5 text-sm font-medium">{formatEventDate(data.eventDate)}</dd>
-                </div>
-                {data.sentAt ? (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Sent to customer</dt>
-                    <dd className="tabular mt-0.5 text-sm font-medium">{formatDateTime(data.sentAt)}</dd>
-                  </div>
-                ) : null}
-                {data.acceptedAt ? (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Accepted</dt>
-                    <dd className="tabular mt-0.5 text-sm font-medium">{formatDateTime(data.acceptedAt)}</dd>
-                  </div>
-                ) : null}
-                {isFromStorefront(data) ? (
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Came from</dt>
-                    <dd
-                      className="mt-0.5 text-sm font-medium"
-                      title={data.sourceReference ?? undefined}
-                    >
-                      The customer&apos;s storefront plan
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-
-              <QuotationPlanPanel quotation={data} />
-
-              {data.changeRequestNote && bucketOf(data) !== "RECEIVED" ? (
-                <Alert tone="warning" title={`Customer asked for changes: ${data.changeRequestNote}`} className="mt-4" />
-              ) : null}
-
-              {data.status === "REJECTED" && data.rejectionReason ? (
-                <Alert tone="error" title={`Rejected: ${data.rejectionReason}`} className="mt-4" />
-              ) : null}
-
-              {data.sourceReference && !isFromStorefront(data) ? (
-                <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-                  Raised via <span className="font-mono">{data.sourceReference}</span>
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Lines</CardTitle>
-            </CardHeader>
-            <TableWrapper>
-              <Table>
-                <THead>
-                  <tr>
-                    <TH>Product</TH>
-                    <TH className="text-right">Qty</TH>
-                    <TH className="text-right">Days</TH>
-                    <TH className="text-right">Rate/day</TH>
-                    <TH className="text-right">Line total</TH>
-                  </tr>
-                </THead>
-                <TBody>
-                  {data.lines.map((line) => (
-                    <TR key={line.id}>
-                      <TD>
-                        <div className="flex items-center gap-2.5">
-                          <MediaThumb media={productMedia.get(line.productId)} />
-                          <span className="font-medium">{line.productName}</span>
-                        </div>
-                      </TD>
-                      <TD className="text-right tabular">{line.quantity}</TD>
-                      <TD className="text-right tabular">{line.rentalDays}</TD>
-                      <TD className="text-right tabular">{formatMoney(line.unitRatePerDay)}</TD>
-                      <TD className="text-right tabular">{formatMoney(line.lineTotal)}</TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            </TableWrapper>
-            <CardContent className="border-t border-border text-xs text-muted-foreground">
-              Totals were calculated when the quotation was raised and stored, so a later change to
-              a product&apos;s rate does not alter a quote that has already gone out.
-            </CardContent>
-          </Card>
-
-          {canReadPayments && (data.status === "SENT" || data.status === "ACCEPTED") ? (
-            <OrderBillingPanel quotationId={data.id} acceptsOnPayment={data.status === "SENT"} />
-          ) : null}
-
-          <QuotationVersions quotationId={data.id} />
-
-          {converting ? (
-            <ConvertToOrderDialog quotation={data} onClose={() => setConverting(false)} />
-          ) : null}
-        </>
+      {data && bucketOf(data) !== "RECEIVED" ? (
+        <FlowDetail quotation={data} onConvert={() => setConverting(true)} showBilling={canReadPayments} />
       ) : null}
+
+      {data && converting ? <ConvertToOrderDialog quotation={data} onClose={() => setConverting(false)} /> : null}
+    </div>
+  );
+}
+
+function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: QuotationView; onConvert: () => void; showBilling: boolean }) {
+  const bucket = bucketOf(q);
+  return (
+    <>
+      <Card className="space-y-4 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold wrap-break-word">{q.customerName}</h2>
+              <StatusBadge bucket={bucket} />
+              {isFromStorefront(q) ? <Badge variant="outline">From storefront</Badge> : null}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-mono text-foreground">{q.quotationNumber}</span>
+              {q.customerEmail ? ` · ${q.customerEmail}` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <QuotationActions quotation={q} onConvert={onConvert} />
+          </div>
+        </div>
+        <StatusStepper status={q.status} />
+        {q.changeRequestNote ? <Alert tone="warning" title={`Customer asked for changes: ${q.changeRequestNote}`} /> : null}
+        {q.status === "REJECTED" && q.rejectionReason ? <Alert tone="error" title={`Rejected: ${q.rejectionReason}`} /> : null}
+      </Card>
+
+      <Card className="space-y-5 p-5">
+        <PriceGrid quotation={q} />
+        <dl className="grid gap-x-8 gap-y-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <dt className="text-xs text-muted-foreground">Event date</dt>
+            <dd className="tabular mt-0.5 text-sm font-medium">{formatEventDate(q.eventDate, true)}</dd>
+          </div>
+          {q.sentAt ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Sent to customer</dt>
+              <dd className="tabular mt-0.5 text-sm font-medium">{formatDateTime(q.sentAt)}</dd>
+            </div>
+          ) : null}
+          {q.acceptedAt ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Accepted</dt>
+              <dd className="tabular mt-0.5 text-sm font-medium">{formatDateTime(q.acceptedAt)}</dd>
+            </div>
+          ) : null}
+          {(q.policies ?? []).length > 0 ? (
+            <div>
+              <dt className="text-xs text-muted-foreground">Policies sent with it</dt>
+              <dd className="mt-0.5 text-sm font-medium">{(q.policies ?? []).map((p) => `${p.kind.toLowerCase()} v${p.version}`).join(", ")}</dd>
+            </div>
+          ) : null}
+        </dl>
+        <VenueRow venue={q.venue} />
+      </Card>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Items</h3>
+        <LinesByFunction quotation={q} />
+        {isFromStorefront(q) && !q.lines.some((l) => l.functionName) ? <QuotationPlanPanel quotation={q} /> : null}
+      </section>
+
+      {showBilling && (q.status === "SENT" || q.status === "ACCEPTED") ? (
+        <OrderBillingPanel quotationId={q.id} acceptsOnPayment={q.status === "SENT"} />
+      ) : null}
+
+      <QuotationVersions quotationId={q.id} />
+
+      <p className="px-1 text-xs text-muted-foreground">
+        Totals are worked out when the quotation is raised and stored, so a later change to a product&apos;s rate does not alter one that has already gone out.
+      </p>
     </>
   );
 }

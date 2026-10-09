@@ -24,7 +24,7 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
     enabled: quotationId !== "",
   });
   const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal) });
-  const [pdf, setPdf] = useState<{ key: string; url: string } | null>(null);
+  const [pdf, setPdf] = useState<{ key: string; url: string; missing: number } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   const q = quotation.data;
@@ -48,7 +48,7 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
         const blob = await render(<QuotationDocument doc={doc} theme={theme} />).toBlob();
         if (cancelled) return;
         made = URL.createObjectURL(blob);
-        setPdf({ key, url: made });
+        setPdf({ key, url: made, missing: doc.picturesMissing });
         setFailed(null);
       } catch (error) {
         if (!cancelled) setFailed(error instanceof Error ? error.message : "The PDF could not be made.");
@@ -107,6 +107,12 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
       </p>
 
       {failed ? <Alert tone="error" title={`The PDF could not be made: ${failed}`} /> : null}
+      {current && pdf && pdf.missing > 0 ? (
+        <Alert
+          tone="info"
+          title={`${pdf.missing} product picture${pdf.missing === 1 ? "" : "s"} could not be loaded and show as plain tiles. Check the image address in the product, and that its host is allowed (PDF_IMAGE_HOSTS).`}
+        />
+      ) : null}
 
       {current ? (
         <iframe title={fileName} src={current} className="h-[80vh] w-full rounded-lg border border-border bg-card" />

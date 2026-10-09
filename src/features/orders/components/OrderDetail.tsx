@@ -8,14 +8,17 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Check,
+  CalendarDays,
   CircleCheck,
+  Clock,
   ClipboardList,
+  MapPin,
   PiggyBank,
   Truck,
   X,
 } from "lucide-react";
 import { getOrder, orderKeys } from "@/features/orders/api";
-import { ORDER_STATUS_MEANING, type OrderStatus, type OrderView } from "@/features/orders/types";
+import { ORDER_STATUS_MEANING, type OrderLineView, type OrderStatus, type OrderView } from "@/features/orders/types";
 import {
   OrderActionDialog,
   type OrderAction,
@@ -34,6 +37,7 @@ import {
 } from "@/features/deposits/components/SettleDepositDialog";
 import { useCan } from "@/features/auth";
 import { OrderBillingPanel } from "@/features/billing";
+import { VenueRow, formatTime } from "@/features/quotations/components/QuotationParts";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
@@ -248,7 +252,13 @@ function OrderWorkspace({ order }: { order: OrderView }) {
                   <>
                     <span className="text-lg font-semibold">{dispatched}</span>
                     <span className="text-muted-foreground"> / {ordered} dispatched</span>
-                    <span className="block text-xs text-muted-foreground">
+                    <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${dispatched} of ${ordered} dispatched`}>
+                      <span
+                        className="block h-full rounded-full bg-primary"
+                        style={{ width: `${ordered > 0 ? Math.min(100, Math.round(((dispatched ?? 0) / ordered) * 100)) : 0}%` }}
+                      />
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
                       {fulfilment.stillOut} out on rent · {returned} returned
                     </span>
                   </>
@@ -260,6 +270,13 @@ function OrderWorkspace({ order }: { order: OrderView }) {
           </dl>
         </CardContent>
       </Card>
+
+      {quotation.data?.venue ? (
+        <Card className="space-y-3 p-5">
+          <h3 className="text-sm font-semibold">Event</h3>
+          <VenueRow venue={quotation.data.venue} />
+        </Card>
+      ) : null}
 
       {canReadDeposit ? (
         <Card>
@@ -317,67 +334,17 @@ function OrderWorkspace({ order }: { order: OrderView }) {
 
       {canReadPayments ? <OrderBillingPanel orderId={order.id} completed={order.status === "COMPLETED"} /> : null}
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3">
-          <CardTitle>Lines</CardTitle>
+      <section className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Items</h3>
           {canReadStock ? (
-            <Link
-              href={`/inventory/stock-movements?orderId=${order.id}`}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              {movements.data?.length === 1
-                ? "1 movement"
-                : `${movements.data?.length ?? 0} movements`}
+            <Link href={`/inventory/stock-movements?orderId=${order.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+              {movements.data?.length === 1 ? "1 movement" : `${movements.data?.length ?? 0} movements`}
             </Link>
           ) : null}
-        </CardHeader>
-        <TableWrapper>
-          <Table>
-            <THead>
-              <tr>
-                <TH>Product</TH>
-                <TH className="text-right">Qty</TH>
-                <TH className="text-right">Days</TH>
-                {fulfilment ? (
-                  <>
-                    <TH className="text-right">Dispatched</TH>
-                    <TH className="text-right">Returned</TH>
-                  </>
-                ) : null}
-                <TH className="text-right">Line total</TH>
-              </tr>
-            </THead>
-            <TBody>
-              {order.lines.map((line, index) => {
-                // Movements are counted per product, so a product on two lines
-                // shows its totals once, on the first.
-                const first =
-                  order.lines.findIndex((other) => other.productId === line.productId) === index;
-                const progress = first ? fulfilment?.byProduct.get(line.productId) : undefined;
-                return (
-                  <TR key={line.id}>
-                    <TD>
-                      <div className="flex items-center gap-2.5">
-                        <MediaThumb media={productMedia.get(line.productId)} />
-                        <span className="font-medium">{line.productName}</span>
-                      </div>
-                    </TD>
-                    <TD className="text-right tabular">{line.quantity}</TD>
-                    <TD className="text-right tabular">{line.rentalDays}</TD>
-                    {fulfilment ? (
-                      <>
-                        <TD className="text-right tabular">{progress?.dispatched ?? ""}</TD>
-                        <TD className="text-right tabular">{progress?.returned ?? ""}</TD>
-                      </>
-                    ) : null}
-                    <TD className="text-right tabular">{formatMoney(line.lineTotal)}</TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-        </TableWrapper>
-      </Card>
+        </div>
+        <OrderLines order={order} fulfilment={fulfilment} functions={functionsOf(order, quotation.data?.lines)} media={productMedia} />
+      </section>
 
       {moving ? (
         <RecordMovementDialog
@@ -666,5 +633,170 @@ function OrderProgress({ status }: { status: OrderStatus }) {
         );
       })}
     </ol>
+  );
+}
+
+interface LineFunction {
+  name: string;
+  date: string | null;
+  startTime: string | null;
+  venue: string | null;
+}
+
+/**
+ * Which function each order line serves. The order copies its lines from the quotation, so a line is matched to the first
+ * quotation line with the same product, variant and quantity that is not matched yet. A line with no match (or a quotation
+ * written before functions were kept) is on no function.
+ */
+function functionsOf(
+  order: OrderView,
+  quoted:
+    | {
+        productId: string;
+        variantId?: string | null;
+        quantity: number;
+        functionName?: string | null;
+        functionDate?: string | null;
+        functionStartTime?: string | null;
+        functionVenue?: string | null;
+      }[]
+    | undefined,
+): Map<string, LineFunction> {
+  const found = new Map<string, LineFunction>();
+  if (!quoted) return found;
+  const used = new Set<number>();
+  for (const line of order.lines) {
+    const at = quoted.findIndex(
+      (q, index) =>
+        !used.has(index) && q.productId === line.productId && (q.variantId ?? null) === (line.variantId ?? null) && q.quantity === line.quantity,
+    );
+    if (at < 0) continue;
+    used.add(at);
+    const q = quoted[at];
+    if (q.functionName) {
+      found.set(line.id, { name: q.functionName, date: q.functionDate ?? null, startTime: q.functionStartTime ?? null, venue: q.functionVenue ?? null });
+    }
+  }
+  return found;
+}
+
+const splitVariant = (name: string): { name: string; variant: string | null } => {
+  const match = /^(.*?)\s*\(([^()]+)\)$/.exec(name);
+  return match ? { name: match[1], variant: match[2] } : { name, variant: null };
+};
+
+/** The order's lines, one card per function when the quotation says which, with what has gone out and come back. */
+function OrderLines({
+  order,
+  fulfilment,
+  functions,
+  media,
+}: {
+  order: OrderView;
+  fulfilment: OrderFulfilment | null;
+  functions: Map<string, LineFunction>;
+  media: ReturnType<typeof useProductMedia>;
+}) {
+  // Movements are counted per product, so a product on two lines shows its totals once, on the first.
+  const firstOf = new Set(
+    order.lines.filter((line, index) => order.lines.findIndex((o) => o.productId === line.productId) === index).map((l) => l.id),
+  );
+
+  const groups = new Map<string, { fn: LineFunction | null; lines: OrderLineView[] }>();
+  for (const line of order.lines) {
+    const fn = functions.get(line.id) ?? null;
+    const key = fn ? `${fn.name}|${fn.date ?? ""}` : "";
+    const group = groups.get(key) ?? { fn, lines: [] };
+    group.lines.push(line);
+    groups.set(key, group);
+  }
+  const list = [...groups.values()];
+
+  const table = (lines: OrderLineView[]) => (
+    <TableWrapper>
+      <Table>
+        <THead>
+          <tr>
+            <TH>Item</TH>
+            <TH className="text-right">Qty</TH>
+            <TH className="text-right">Days</TH>
+            {fulfilment ? (
+              <>
+                <TH className="text-right">Dispatched</TH>
+                <TH className="text-right">Returned</TH>
+              </>
+            ) : null}
+            <TH className="text-right">Amount</TH>
+          </tr>
+        </THead>
+        <TBody>
+          {lines.map((line) => {
+            const progress = firstOf.has(line.id) ? fulfilment?.byProduct.get(line.productId) : undefined;
+            const { name, variant } = splitVariant(line.productName);
+            return (
+              <TR key={line.id}>
+                <TD>
+                  <div className="flex items-center gap-2.5">
+                    <MediaThumb media={media.get(line.productId)} />
+                    <div className="min-w-0">
+                      <span className="font-medium">{name}</span>
+                      {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}
+                    </div>
+                  </div>
+                </TD>
+                <TD className="text-right tabular">{line.quantity}</TD>
+                <TD className="text-right tabular">{line.rentalDays}</TD>
+                {fulfilment ? (
+                  <>
+                    <TD className="text-right tabular">{progress?.dispatched ?? ""}</TD>
+                    <TD className="text-right tabular">{progress?.returned ?? ""}</TD>
+                  </>
+                ) : null}
+                <TD className="text-right tabular font-medium">{formatMoney(line.lineTotal)}</TD>
+              </TR>
+            );
+          })}
+        </TBody>
+      </Table>
+    </TableWrapper>
+  );
+
+  if (!list.some((g) => g.fn)) {
+    return <Card className="overflow-hidden">{table(order.lines)}</Card>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {list.map((group) => {
+        const total = group.lines.reduce((sum, l) => sum + Number(l.lineTotal.amount), 0);
+        const time = formatTime(group.fn?.startTime);
+        return (
+          <Card key={group.fn ? `${group.fn.name}|${group.fn.date}` : "whole"} className="overflow-hidden">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border bg-muted/40 px-4 py-3">
+              <h4 className="text-sm font-semibold">{group.fn?.name ?? "Whole event"}</h4>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {group.fn?.date ? (
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarDays className="size-3.5" /> {formatEventDate(group.fn.date)}
+                  </span>
+                ) : null}
+                {time ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="size-3.5" /> {time}
+                  </span>
+                ) : null}
+                {group.fn?.venue ? (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="size-3.5" /> {group.fn.venue}
+                  </span>
+                ) : null}
+              </span>
+              <span className="tabular ml-auto text-sm font-semibold">{formatMoney({ amount: total, currency: "INR" })}</span>
+            </div>
+            {table(group.lines)}
+          </Card>
+        );
+      })}
+    </div>
   );
 }

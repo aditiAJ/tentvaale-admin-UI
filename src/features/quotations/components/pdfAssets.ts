@@ -1,6 +1,25 @@
 import QRCode from "qrcode";
 
 /**
+ * A picture from image storage. Asked of this app's own server first (which has no CORS rules to meet), then
+ * straight from the storage as a fallback; null when neither works.
+ */
+async function fetchPicture(url: string): Promise<Response | null> {
+  try {
+    const viaServer = await fetch(`/pdf-image?url=${encodeURIComponent(url)}`);
+    if (viaServer.ok) return viaServer;
+  } catch {
+    // Fall through to the direct request.
+  }
+  try {
+    const direct = await fetch(url);
+    return direct.ok ? direct : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A picture as a data URL for the PDF, shrunk to at most `maxSide` pixels and saved as JPEG so a document with many
  * pictures stays small. Null when it cannot be fetched (a storage bucket that does not allow this site to read it,
  * a deleted file) or is not a picture: the document then leaves the picture out rather than fail.
@@ -8,8 +27,8 @@ import QRCode from "qrcode";
 export async function loadImageData(url: string | null | undefined, maxSide = 480): Promise<string | null> {
   if (!url) return null;
   try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
+    const response = await fetchPicture(url);
+    if (!response) return null;
     const blob = await response.blob();
     const bitmap = await createImageBitmap(blob);
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
@@ -32,8 +51,8 @@ export async function loadImageData(url: string | null | undefined, maxSide = 48
 export async function loadMarkData(url: string | null | undefined): Promise<string | null> {
   if (!url) return null;
   try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
+    const response = await fetchPicture(url);
+    if (!response) return null;
     const blob = await response.blob();
     if (!/^image\/(png|jpe?g)$/.test(blob.type)) return loadImageData(url, 400);
     return await new Promise<string | null>((resolve) => {
