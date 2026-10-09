@@ -55,6 +55,8 @@ export interface OrderBalance {
   depositReceived: Money;
   payments: Payment[];
   schedule: ScheduleLine[];
+  /** Goods are released once any payment is recorded: AWAITED until then, NOT_REQUIRED when the company does not hold them back. */
+  paymentStage?: "NOT_REQUIRED" | "AWAITED" | "CONFIRMED";
 }
 
 /** The snapshot printed on a document. Every part is optional: receipts and invoices carry different parts. */
@@ -126,6 +128,8 @@ export interface RecordPaymentInput {
   reference?: string;
   paidOn?: string;
   proofUrl?: string;
+  /** Record and verify in one step (needs the verify permission). */
+  verifyNow?: boolean;
 }
 
 export interface ScheduleInput {

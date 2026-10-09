@@ -31,6 +31,8 @@ export interface CompanyProfile {
   longitude: number | null;
   /** The code every new SKU starts with, e.g. TENT (TENT-PRO-001). */
   skuPrefix?: string | null;
+  /** Goods are not dispatched until a payment is recorded against the order. */
+  requirePaymentBeforeDispatch?: boolean;
 }
 
 export const getCompany = (signal?: AbortSignal) =>

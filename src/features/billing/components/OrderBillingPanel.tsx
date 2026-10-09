@@ -23,6 +23,7 @@ import {
   rejectPayment,
   saveSchedule,
   verifyPayment,
+  type OrderBalance,
   type Payment,
   type PaymentMode,
   type PaymentPurpose,
@@ -140,6 +141,14 @@ export function OrderBillingPanel({
           <Figure label="Waiting to be verified" value={formatMoney(b.pendingVerification)} />
           <Figure label="Balance" value={formatMoney(b.balance)} strong />
         </dl>
+        {!forQuotation && b.paymentStage === "AWAITED" ? (
+          <Alert tone="warning" title="Payment awaited">
+            This order cannot be dispatched until a payment is recorded against it. The customer sees &quot;Payment awaited&quot;.
+          </Alert>
+        ) : null}
+        {!forQuotation && b.paymentStage === "CONFIRMED" ? (
+          <p className="text-sm text-muted-foreground">Payment confirmed: the order can be dispatched.</p>
+        ) : null}
         {forQuotation && acceptsOnPayment ? (
           <p className="text-sm text-muted-foreground">
             Once Accounts verify a payment recorded here, this quotation is accepted. The payment then moves onto the order when it is created.
@@ -147,7 +156,8 @@ export function OrderBillingPanel({
         ) : null}
         {Number(b.depositRequired.amount) > 0 ? (
           <p className="text-sm text-muted-foreground">
-            Security deposit {formatMoney(b.depositRequired)}; received and verified {formatMoney(b.depositReceived)}.
+            Security deposit {formatMoney(b.depositRequired)}; received {formatMoney(b.depositReceived)}; still to receive{" "}
+            {formatMoney({ ...b.depositRequired, amount: remainingFor(b, "DEPOSIT") })}.
           </p>
         ) : null}
 
@@ -204,7 +214,7 @@ export function OrderBillingPanel({
 
         {canWrite ? (
           <>
-            <RecordPaymentForm targetId={targetId} forQuotation={forQuotation} onDone={refresh} />
+            <RecordPaymentForm targetId={targetId} forQuotation={forQuotation} balance={b} canVerify={canVerify} onDone={refresh} />
             {forQuotation ? null : <ScheduleForm orderId={targetId} onDone={refresh} />}
           </>
         ) : null}
@@ -298,7 +308,30 @@ function PaymentRow({
   );
 }
 
-function RecordPaymentForm({ targetId, forQuotation, onDone }: { targetId: string; forQuotation: boolean; onDone: () => void }) {
+/** What can still be recorded for one purpose: what is due less what is already verified or waiting to be (rejected money frees the room). */
+function remainingFor(b: OrderBalance, purpose: PaymentPurpose): number {
+  const counted = (p: Payment) => p.purpose === purpose && p.status !== "REJECTED";
+  const committed = b.payments.filter(counted).reduce((sum, p) => sum + Number(p.amount.amount), 0);
+  const due =
+    purpose === "DEPOSIT"
+      ? Number(b.depositRequired.amount)
+      : Number(b.total.amount) - Number(b.creditApplied.amount);
+  return Math.max(0, Math.round((due - committed) * 100) / 100);
+}
+
+function RecordPaymentForm({
+  targetId,
+  forQuotation,
+  balance,
+  canVerify,
+  onDone,
+}: {
+  targetId: string;
+  forQuotation: boolean;
+  balance: OrderBalance;
+  canVerify: boolean;
+  onDone: () => void;
+}) {
   const [purpose, setPurpose] = useState<PaymentPurpose>("RENTAL");
   const [mode, setMode] = useState<PaymentMode>("UPI");
   const [amount, setAmount] = useState("");
@@ -322,6 +355,7 @@ function RecordPaymentForm({ targetId, forQuotation, onDone }: { targetId: strin
         reference: reference.trim() || undefined,
         paidOn: paidOn || undefined,
         proofUrl,
+        verifyNow: canVerify || undefined,
       });
     },
     onSuccess: () => {
@@ -330,13 +364,15 @@ function RecordPaymentForm({ targetId, forQuotation, onDone }: { targetId: strin
       setReference("");
       setProof(null);
       onDone();
-      toast.success("Payment recorded. It counts once Accounts verify it.");
+      toast.success(canVerify ? "Payment recorded and confirmed. The receipt is issued." : "Payment recorded. It counts once Accounts verify it.");
     },
     onError: (e) => setError(e instanceof Error ? e.message : "Could not record the payment."),
   });
 
   const amountNumber = Number(amount);
-  const invalid = !(amountNumber > 0);
+  const remaining = remainingFor(balance, purpose);
+  const tooMuch = amountNumber > remaining;
+  const invalid = !(amountNumber > 0) || tooMuch;
 
   return (
     <div className="space-y-3 rounded-lg border border-border p-3">
@@ -364,6 +400,12 @@ function RecordPaymentForm({ targetId, forQuotation, onDone }: { targetId: strin
         </Field>
         <Field label="Amount (₹)" required>
           {(props) => <Input {...props} value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} />}
+        </Field>
+        <Field
+          label="Still to receive (₹)"
+          error={tooMuch ? `At most ${remaining} can be recorded for ${purpose === "DEPOSIT" ? "the deposit" : "the rental"}` : undefined}
+        >
+          {(props) => <Input {...props} value={String(remaining)} readOnly />}
         </Field>
         <Field label="Reference (UTR, cheque no.)">
           {(props) => <Input {...props} value={reference} onChange={(e) => setReference(e.target.value)} />}

@@ -62,7 +62,11 @@ interface Draft {
   logoUrl: string;
   signatureUrl: string;
   skuPrefix: string;
+  requirePaymentBeforeDispatch: boolean;
 }
+
+/** The draft fields that are typed text (the rest are switches). */
+type TextKey = Exclude<keyof Draft, "requirePaymentBeforeDispatch">;
 
 const draftOf = (c: CompanyProfile): Draft => ({
   name: c.name,
@@ -86,10 +90,11 @@ const draftOf = (c: CompanyProfile): Draft => ({
   logoUrl: c.logoUrl ?? "",
   signatureUrl: c.signatureUrl ?? "",
   skuPrefix: c.skuPrefix ?? "",
+  requirePaymentBeforeDispatch: c.requirePaymentBeforeDispatch ?? false,
 });
 
 const FIELDS_OF: Record<"profile" | "tax" | "bank", (keyof Draft)[]> = {
-  profile: ["name", "addressLine", "city", "postalCode", "primaryPhone", "secondaryPhone", "publicEmail", "websiteUrl", "latitude", "longitude", "logoUrl", "signatureUrl", "skuPrefix"],
+  profile: ["name", "addressLine", "city", "postalCode", "primaryPhone", "secondaryPhone", "publicEmail", "websiteUrl", "latitude", "longitude", "logoUrl", "signatureUrl", "skuPrefix", "requirePaymentBeforeDispatch"],
   tax: ["gstin", "pan", "state", "gstRate"],
   bank: ["bankName", "bankAccount", "bankIfsc", "upiId"],
 };
@@ -212,7 +217,7 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
   const base = useMemo(() => draftOf(initial), [initial]);
   const [draft, setDraft] = useState<Draft>(base);
   const [error, setError] = useState<string | null>(null);
-  const set = (key: keyof Draft) => (value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const set = (key: TextKey) => (value: string) => setDraft((d) => ({ ...d, [key]: value }));
   const changed = (keys: (keyof Draft)[]) => keys.some((k) => draft[k] !== base[k]);
   const dirty = changed([...FIELDS_OF.profile, ...FIELDS_OF.tax, ...FIELDS_OF.bank]);
 
@@ -255,6 +260,7 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
         logoUrl: t(draft.logoUrl),
         signatureUrl: t(draft.signatureUrl),
         skuPrefix: t(draft.skuPrefix),
+        requirePaymentBeforeDispatch: draft.requirePaymentBeforeDispatch,
         latitude: lat,
         longitude: lng,
       });
@@ -269,7 +275,7 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
   });
 
   // A Field child: called by the Field to draw the input, never mounted as a component of its own.
-  const text = (key: keyof Draft, props: { placeholder?: string; type?: string; inputMode?: "decimal" | "numeric" } = {}) =>
+  const text = (key: TextKey, props: { placeholder?: string; type?: string; inputMode?: "decimal" | "numeric" } = {}) =>
     // eslint-disable-next-line react/display-name
     (p: { id: string; "aria-invalid": boolean; "aria-describedby": string | undefined }) => (
       <Input {...p} {...props} value={draft[key]} onChange={(e) => set(key)(e.target.value)} disabled={!canWrite} />
@@ -322,6 +328,25 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
             >
               {text("skuPrefix", { placeholder: "TENT" })}
             </Field>
+          </Section>
+
+          <Section title="Orders and payment" shownOn="the order screens and what customers see on their order">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-[var(--primary)]"
+                checked={draft.requirePaymentBeforeDispatch}
+                disabled={!canWrite}
+                onChange={(e) => setDraft((d) => ({ ...d, requirePaymentBeforeDispatch: e.target.checked }))}
+              />
+              <span>
+                <span className="font-medium">Hold the goods until a payment is recorded</span>
+                <span className="block text-xs text-muted-foreground">
+                  An order is placed as soon as a quotation is accepted, but nothing can be dispatched until any payment is recorded
+                  against it. The customer sees &quot;Payment awaited&quot;, then &quot;Payment confirmed&quot;.
+                </span>
+              </span>
+            </label>
           </Section>
 
           <Section title="Location" shownOn="not printed yet; kept for the map location of your business">

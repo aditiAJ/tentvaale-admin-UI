@@ -126,64 +126,6 @@ export function BundlesPage() {
         }
       />
 
-      <Card>
-        <TableWrapper>
-          <Table>
-            <THead>
-              <tr>
-                <TH>Name</TH>
-                <TH>Products</TH>
-                <TH className="text-right">Price (from, per event)</TH>
-                {canWrite ? <TH className="text-right">Actions</TH> : null}
-              </tr>
-            </THead>
-            <TBody>
-              {isPending ? <TableSkeleton columns={columns} /> : null}
-
-              {!isPending && data
-                ? data.map((bundle) => (
-                    <TR key={bundle.id}>
-                      <TD>
-                        <div className="flex items-center gap-2.5">
-                          <MediaThumb media={bundle.media} />
-                          <div className="min-w-0">
-                            <span className="font-medium">{bundle.name}</span>
-                            {bundle.sku ? <span className="ml-2 font-mono text-xs text-muted-foreground">{bundle.sku}</span> : null}
-                            {bundle.active === false ? (
-                              <Badge className="ml-2 align-middle">Inactive</Badge>
-                            ) : null}
-                            {bundleFacts(bundle) ? (
-                              <p className="text-xs text-muted-foreground">{bundleFacts(bundle)}</p>
-                            ) : null}
-                            {bundle.occasions.length ? (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {bundle.occasions.map((occasion) => (
-                                  <Badge
-                                    key={occasion.id}
-                                    className={occasion.active ? undefined : "opacity-60"}
-                                    title={occasion.active ? undefined : "Hidden on the storefront"}
-                                  >
-                                    {occasion.name}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </TD>
-                      <TD>
-                        <div className="flex flex-wrap gap-1">
-                          {bundle.components.map((component) => (
-                            <Badge
-                              key={`${component.productId}:${component.variantId ?? ""}`}
-                              variant="outline"
-                              className={component.active ? undefined : "opacity-60"}
-                              title={component.active ? undefined : "Inactive product"}
-                            >
-                              <MediaThumb
-                                media={productMedia.get(component.productId)}
-                                className="size-4 rounded-full border-0"
-                              />
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 basis-56 sm:max-w-sm">
@@ -305,6 +247,7 @@ export function BundlesPage() {
                 <div className="flex flex-1 flex-col gap-3 p-4">
                   <div>
                     <h3 className="text-base leading-snug font-semibold">{bundle.name}</h3>
+                    {bundle.sku ? <p className="font-mono text-xs text-muted-foreground">{bundle.sku}</p> : null}
                     {bundle.tagline ? (
                       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{bundle.tagline}</p>
                     ) : null}
