@@ -611,8 +611,20 @@ export interface UpdateCategoryRequest {
   skuPrefix?: string;
 }
 
+/** What Google resolved for a picked address. Stored by the backend; the admin screens do not show it. */
+export interface WarehouseLocationRequest {
+  placeId?: string;
+  latitude?: number;
+  longitude?: number;
+  postalCode?: string;
+  state?: string;
+  country?: string;
+}
+
 export interface CreateWarehouseRequest {
   name: string;
+  /** Sent only when an address was picked from the search; leaving it out keeps what is stored. */
+  location?: WarehouseLocationRequest;
   /** Sent on edit; leaving it out on the real backend means active. */
   active?: boolean;
   /** Required, like every other field a warehouse carries — see WarehouseView. */

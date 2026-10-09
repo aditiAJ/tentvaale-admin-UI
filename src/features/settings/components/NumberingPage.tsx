@@ -31,9 +31,9 @@ export function NumberingPage() {
   if (list.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (list.isError) return <Alert tone="error" title="Could not load the numbering." />;
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-4">
       <header>
-        <h1 className="text-xl font-semibold">Document numbering</h1>
+        <h2 className="text-base font-semibold">Document numbering</h2>
         <p className="text-sm text-muted-foreground">
           With the financial-year option the number carries the year (for example INV-2026-27-000001) and starts again
           from 1 each 1 April. Changing the next number never touches documents already issued.

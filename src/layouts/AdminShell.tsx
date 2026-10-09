@@ -7,6 +7,10 @@ import { Sidebar } from "@/layouts/Sidebar";
 import { Topbar } from "@/layouts/Topbar";
 import { useSession } from "@/features/auth";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+/** Pages that fill the screen instead of sitting in the centred column: the product card grid with its filter panel. */
+const FULL_WIDTH_PAGES = ["/master-data/products"];
 
 /**
  * The guarded shell every back-office page renders inside.
@@ -21,6 +25,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const fullWidth = FULL_WIDTH_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`));
 
   useEffect(() => {
     if (loading || session) return;
@@ -72,8 +77,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         ) : null}
 
-        <main className="min-w-0 flex-1 p-4 sm:p-6">
-          <div className="mx-auto max-w-7xl">{children}</div>
+        {/* Most pages sit in a centred, padded column that reads well. Pages that are mostly a wide grid use the
+            whole width instead (listed in FULL_WIDTH_PAGES). */}
+        <main className={cn("min-w-0 flex-1", fullWidth ? "px-2 py-4 sm:px-3 sm:py-5" : "p-4 sm:p-6")}>
+          <div className={fullWidth ? "w-full" : "mx-auto max-w-7xl"}>{children}</div>
         </main>
       </div>
     </div>

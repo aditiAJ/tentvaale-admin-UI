@@ -206,13 +206,35 @@ export interface QuotationVenue {
 }
 
 /** The customer's plan as staff read it (read-only). */
+export interface QuotationPlanItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  rentalDays: number;
+  subEventIds: string[];
+}
+
+/** The customer's plan behind a storefront quotation (the backend's PlanView, as far as staff read it). */
 export interface QuotationPlan {
+  name?: string;
+  eventDate?: string | null;
+  eventEndDate?: string | null;
+  venue?: string | null;
+  guestCount?: number | null;
+  coverImageUrl?: string | null;
   subEvents: {
     id: string;
     name: string;
     scheduledOn?: string | null;
+    /** "HH:mm:ss" */
+    startTime?: string | null;
+    endTime?: string | null;
+    venue?: string | null;
+    guestCount?: number | null;
+    setupOn?: string | null;
+    teardownOn?: string | null;
     venueDetail?: { label: string; addressText: string } | null;
-    items: { id: string; productName: string; quantity: number; rentalDays: number; subEventIds: string[] }[];
+    items: QuotationPlanItem[];
   }[];
-  generalItems: { id: string; productName: string; quantity: number; rentalDays: number; subEventIds: string[] }[];
+  generalItems: QuotationPlanItem[];
 }

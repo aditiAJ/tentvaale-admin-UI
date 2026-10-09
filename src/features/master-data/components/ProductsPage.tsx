@@ -1,188 +1,74 @@
 "use client";
 
-import { Fragment, useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Package, Pencil, Plus, Search } from "lucide-react";
-import { listProducts, masterDataKeys, setProductActive } from "@/features/master-data/api";
+import {
+  Eye,
+  EyeOff,
+  Layers,
+  Package,
+  Pencil,
+  Plus,
+  SlidersHorizontal,
+} from "lucide-react";
+import {
+  listProducts,
+  masterDataKeys,
+  setProductActive,
+} from "@/features/master-data/api";
 import type { ProductView } from "@/features/master-data/types";
-import { MediaThumb } from "@/features/master-data/components/MediaThumb";
+import {
+  activeFilterCount,
+  applyFilters,
+  EMPTY_FILTERS,
+  ProductFilterPanel,
+  type ProductFilters,
+} from "@/features/master-data/components/ProductFilterPanel";
+import { ProductImageCarousel } from "@/features/master-data/components/ProductImageCarousel";
+import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TableSkeleton } from "@/components/ui/skeleton";
-import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-
-/** The variants a customer can choose between: a lone untouched default is just the product itself. */
-function realVariants(product: ProductView) {
-  return product.variants.filter((variant) => !(variant.isDefault && !variant.hasAttributes));
-}
-
-/** What a variant differs by (Colour, Size ...), from the product's axes. */
-function variantType(product: ProductView, attributeFacetIds: string[] | undefined) {
-  return (attributeFacetIds ?? [])
-    .map((id) => product.axes?.find((axis) => axis.facetId === id)?.label)
-    .filter(Boolean)
-    .join(" / ");
-}
-
-/**
- * A product's variants as rows of the product table itself, so their rates sit under the product's own columns and
- * the full width is used. Same type together, in the order types first appear.
- */
-function VariantRows({ product }: { product: ProductView }) {
-  const list = realVariants(product);
-  if (list.length === 0) {
-    return (
-      <tr className="bg-muted/30">
-        <td colSpan={6} className="border-l-2 border-primary/40 px-4 py-2 text-xs text-muted-foreground">
-          No variants yet. Add them from Edit.
-        </td>
-      </tr>
-    );
-  }
-  const typeOf = (variant: (typeof list)[number]) => variantType(product, variant.attributeFacetIds) || "Other";
-  const types = [...new Set(list.map(typeOf))];
-  const rows = types.flatMap((type) => list.filter((variant) => typeOf(variant) === type));
-  // The product's own pieces (its default variant) sit beside the variants, counted in the product's total.
-  const base = product.variants.find((variant) => variant.isDefault && !variant.hasAttributes);
-  return (
-    <>
-      {base && base.stock > 0 ? (
-        <tr className="bg-muted/30 text-xs">
-          <td className="border-l-2 border-primary/40 px-4 py-1.5">
-            <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.65rem] font-semibold tracking-wide text-primary uppercase">
-              Main
-            </span>
-          </td>
-          <td className="py-1.5 pr-3">
-            <span className="flex items-center gap-2 pl-[3.1rem] font-medium">
-              <span aria-hidden="true" className="size-1.5 rounded-full bg-primary/50" />
-              {product.name} (the product itself)
-            </span>
-          </td>
-          <td className="py-1.5 pr-3">
-            <span className="inline-flex items-center gap-1.5 tabular text-success">
-              <span className="size-1.5 rounded-full bg-success" />
-              {base.stock} in stock
-            </span>
-          </td>
-          <td className="px-4 py-1.5 text-right tabular">{formatMoney(product.wholesaleRate)}</td>
-          <td className="px-4 py-1.5 text-right tabular">{formatMoney(product.retailRate)}</td>
-          <td />
-        </tr>
-      ) : null}
-      {rows.map((variant, index) => {
-        const type = typeOf(variant);
-        const firstOfType = index === 0 || typeOf(rows[index - 1]) !== type;
-        const off = variant.active === false;
-        return (
-          <tr key={variant.id} className={`bg-muted/30 text-xs ${off ? "opacity-60" : ""}`}>
-            <td className="border-l-2 border-primary/40 px-4 py-1.5">
-              {firstOfType ? (
-                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.65rem] font-semibold tracking-wide text-primary uppercase">
-                  {type}
-                </span>
-              ) : null}
-            </td>
-            <td className="py-1.5 pr-3">
-              <span className="flex items-center gap-2 pl-[3.1rem] font-medium">
-                <span aria-hidden="true" className="size-1.5 rounded-full bg-primary/50" />
-                {variant.name}
-                {off ? <Badge>Off</Badge> : null}
-              </span>
-            </td>
-            <td className="py-1.5 pr-3">
-              <span
-                className={`inline-flex items-center gap-1.5 tabular ${variant.stock > 0 ? "text-success" : "text-muted-foreground"}`}
-              >
-                <span className={`size-1.5 rounded-full ${variant.stock > 0 ? "bg-success" : "bg-muted-foreground/50"}`} />
-                {variant.stock > 0 ? `${variant.stock} in stock` : "No stock"}
-              </span>
-            </td>
-            <td className="px-4 py-1.5 text-right tabular">{formatMoney(variant.wholesaleRate)}</td>
-            <td className="px-4 py-1.5 text-right tabular">{formatMoney(variant.retailRate)}</td>
-            <td />
-          </tr>
-        );
-      })}
-    </>
-  );
-}
-
-function matches(product: ProductView, term: string): boolean {
-  const haystack = [
-    product.sku,
-    product.skuOwner,
-    product.name,
-    product.genericName,
-    product.categoryName ?? "",
-    product.subCategoryName ?? "",
-    // The storefront facets, so "velvet" or "royal heritage" finds its products.
-    ...(product.colours ?? []),
-    ...(product.materials ?? []),
-    ...(product.fabrics ?? []),
-    ...(product.moods ?? []),
-    ...(product.themes ?? []),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(term);
-}
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProductsPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
-  const [search, setSearch] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [filters, setFilters] = useState<ProductFilters>(EMPTY_FILTERS);
+  const [showFilters, setShowFilters] = useState(true);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [switching, setSwitching] = useState<ProductView | null>(null);
-  const [openVariants, setOpenVariants] = useState<Set<string>>(new Set());
+  const [viewing, setViewing] = useState<ProductView | null>(null);
   const queryClient = useQueryClient();
-
-  // Actions is always shown: anyone who can see a product can see its variants.
-  const columns = 6;
 
   // The list is unpaged and filtered in the browser, so typing re-renders every
   // row. Deferring the term keeps the input responsive on a large catalogue;
   // when the backend grows a search parameter this moves server-side.
-  const deferredSearch = useDeferredValue(search);
+  const deferredFilters = useDeferredValue(filters);
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery({
     queryKey: [...masterDataKeys.products, showInactive ? "all" : "active"],
-    queryFn: ({ signal }) => listProducts(signal, { includeInactive: showInactive }),
+    queryFn: ({ signal }) =>
+      listProducts(signal, { includeInactive: showInactive }),
   });
 
-  // The filter offers the categories the catalogue actually uses, each with how many products it holds.
-  const categories = useMemo(() => {
-    const byId = new Map<string, { name: string; count: number }>();
-    for (const product of data ?? []) {
-      if (!product.categoryId) continue;
-      const entry = byId.get(product.categoryId) ?? { name: product.categoryName ?? product.categoryId, count: 0 };
-      entry.count += 1;
-      byId.set(product.categoryId, entry);
-    }
-    return [...byId.entries()]
-      .map(([id, entry]) => ({ id, ...entry }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [data]);
-
-  const visible = useMemo(() => {
-    const term = deferredSearch.trim().toLowerCase();
-    return (data ?? []).filter(
-      (product) =>
-        (!categoryId || product.categoryId === categoryId) &&
-        (!term || matches(product, term)),
-    );
-  }, [data, deferredSearch, categoryId]);
+  const visible = useMemo(
+    () => applyFilters(data ?? [], deferredFilters),
+    [data, deferredFilters],
+  );
+  const activeFilters = activeFilterCount(filters);
+  // Four to a row when the panel is hidden or the screen is very wide; three beside the panel on a normal desktop.
+  const gridCols = showFilters
+    ? "sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+    : "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
   return (
     <div className="space-y-4">
@@ -200,29 +86,20 @@ export function ProductsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-56 flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search SKU, name, category or colour"
-            className="pl-8"
-            aria-label="Search products"
-          />
-        </div>
-        <Select
-          value={categoryId}
-          onChange={(event) => setCategoryId(event.target.value)}
-          aria-label="Category"
-          className="w-52"
+        <Button
+          variant="outline"
+          onClick={() => setShowFilters((value) => !value)}
+          aria-expanded={showFilters}
+          aria-controls="product-filters"
         >
-          <option value="">All categories</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name} ({category.count})
-            </option>
-          ))}
-        </Select>
+          <SlidersHorizontal />
+          {showFilters ? "Hide filters" : "Show filters"}
+          {activeFilters > 0 ? (
+            <span className="rounded-full bg-primary px-1.5 py-px text-[0.65rem] text-primary-foreground tabular">
+              {activeFilters}
+            </span>
+          ) : null}
+        </Button>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -233,163 +110,204 @@ export function ProductsPage() {
           Show inactive
         </label>
         <p className="text-xs text-muted-foreground tabular" aria-live="polite">
-          {isPending ? "Loading…" : `${visible.length} of ${data?.length ?? 0} products`}
+          {isPending
+            ? "Loading…"
+            : `${visible.length} of ${data?.length ?? 0} products`}
           {isFetching && !isPending ? " · refreshing" : ""}
         </p>
       </div>
 
-      <Card>
-        <TableWrapper>
-          <Table>
-            <THead>
-              <tr>
-                <TH>SKU</TH>
-                <TH>Name</TH>
-                <TH>Category</TH>
-                <TH className="text-right">Wholesale</TH>
-                <TH className="text-right">Retail</TH>
-                <TH className="text-right">Actions</TH>
-              </tr>
-            </THead>
-            <TBody>
-              {isPending ? <TableSkeleton columns={columns} /> : null}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        {showFilters ? (
+          <aside
+            id="product-filters"
+            aria-label="Product filters"
+            className="w-full shrink-0 lg:sticky lg:top-4 lg:w-64"
+          >
+            <ProductFilterPanel
+              products={data ?? []}
+              filters={filters}
+              onChange={setFilters}
+            />
+          </aside>
+        ) : null}
 
-              {!isPending && visible.length > 0
-                ? visible.map((product) => (
-                    <Fragment key={product.id}>
-                    <TR>
-                      <TD>
-                        <span className="font-mono text-xs whitespace-nowrap">{product.sku}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {product.skuOwner}
-                        </span>
-                      </TD>
-                      <TD>
-                        <div className="flex items-center gap-2.5">
-                          <MediaThumb media={product.media} />
-                          <div className="min-w-0">
-                            <span className="font-medium">{product.name}</span>
-                            {product.active === false ? (
-                              <Badge className="ml-1.5 align-middle">Inactive</Badge>
-                            ) : null}
-                            {product.genericName || product.description ? (
-                              <span className="block max-w-[15rem] truncate text-xs text-muted-foreground xl:max-w-xs">
-                                {[product.genericName, product.description].filter(Boolean).join(" · ")}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </TD>
-                      <TD>
-                        {product.categoryName ? (
-                          <>
-                            <Badge variant="outline">{product.categoryName}</Badge>
-                            {product.subCategoryName ? (
-                              <span className="mt-0.5 block text-xs text-muted-foreground">
-                                {product.subCategoryName}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Uncategorised</span>
-                        )}
-                      </TD>
-                      <TD className="text-right tabular">{formatMoney(product.wholesaleRate)}</TD>
-                      <TD className="text-right tabular">
-                        {formatMoney(product.retailRate)}
-                        {/* Per unit is the norm and goes unsaid; the others change what a quantity means. */}
-                        {product.rateType && product.rateType !== "Qty" ? (
-                          <span className="block text-xs text-muted-foreground">
-                            {RATE_TYPE_LABEL[product.rateType]}
+        <div className="min-w-0 flex-1 space-y-4">
+          {isPending ? (
+            <div className={`grid gap-4 ${gridCols}`} aria-busy="true">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="h-80" />
+              ))}
+            </div>
+          ) : null}
+
+          {!isPending && visible.length > 0 ? (
+            <div className={`grid items-start gap-4 ${gridCols}`}>
+              {visible.map((product) => {
+                const inactive = product.active === false;
+                return (
+                  <article
+                    key={product.id}
+                    className="flex flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-colors hover:border-primary/50"
+                  >
+                    <ProductImageCarousel
+                      media={product.media}
+                      alt={product.name}
+                      className={`border-b border-border ${inactive ? "opacity-50 grayscale" : ""}`}
+                    />
+
+                    <div className="flex flex-1 flex-col gap-1.5 p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant={inactive ? "default" : "outline"}>
+                          {inactive ? "Inactive" : "Active"}
+                        </Badge>
+                        <span className="min-w-0 text-right">
+                          <span className="block truncate font-mono text-xs">
+                            {product.sku}
                           </span>
-                        ) : null}
-                      </TD>
-                      <TD>
-                        <div className="flex justify-end gap-1">
+                          <span className="block truncate text-[0.7rem] text-muted-foreground">
+                            {product.skuOwner}
+                          </span>
+                        </span>
+                      </div>
+
+                      <h3 className="mt-1 text-base leading-snug font-semibold">
+                        {product.name}
+                      </h3>
+
+                      <p className="text-xs text-muted-foreground">
+                        {product.categoryName
+                          ? [product.categoryName, product.subCategoryName]
+                              .filter(Boolean)
+                              .join(" · ")
+                          : "Uncategorised"}
+                      </p>
+
+                      {product.genericName || product.description ? (
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                          {[product.genericName, product.description]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-auto pt-2">
+                        <p className="text-xs text-muted-foreground">
+                          Retail rate
+                          {/* Per unit is the norm and goes unsaid; the others change what a quantity means. */}
+                          {product.rateType && product.rateType !== "Qty"
+                            ? ` · ${RATE_TYPE_LABEL[product.rateType]}`
+                            : ""}
+                        </p>
+                        <p className="text-lg font-semibold text-primary tabular">
+                          {formatMoney(product.retailRate)}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular">
+                          Wholesale {formatMoney(product.wholesaleRate)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-1 border-t border-border px-2 py-1.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewing(product)}
+                        aria-haspopup="dialog"
+                        aria-label={`View variants of ${product.name}`}
+                      >
+                        <Layers />
+                        View variants
+                      </Button>
+                      <div className="flex gap-1">
+                        {canWrite ? (
                           <Button
                             variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setOpenVariants((current) => {
-                                const next = new Set(current);
-                                if (!next.delete(product.id)) next.add(product.id);
-                                return next;
-                              })
-                            }
-                            aria-expanded={openVariants.has(product.id)}
-                            aria-label={`View variants of ${product.name}`}
+                            size="icon"
+                            onClick={() => setEditing(product)}
+                            aria-label={`Edit ${product.name}`}
+                            title="Edit"
                           >
-                            {openVariants.has(product.id) ? <ChevronDown /> : <ChevronRight />}
-                            View variants
+                            <Pencil />
                           </Button>
-                          {canWrite ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setEditing(product)}
-                              aria-label={`Edit ${product.name}`}
-                              title="Edit"
-                            >
-                              <Pencil />
-                            </Button>
-                          ) : null}
-                          {canWrite ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setSwitching(product)}
-                              aria-label={`${product.active === false ? "Activate" : "Deactivate"} ${product.name}`}
-                              title={product.active === false ? "Activate" : "Deactivate"}
-                            >
-                              {product.active === false ? <Eye /> : <EyeOff />}
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TD>
-                    </TR>
-                    {openVariants.has(product.id) ? <VariantRows product={product} /> : null}
-                    </Fragment>
-                  ))
-                : null}
-            </TBody>
-          </Table>
-        </TableWrapper>
+                        ) : null}
+                        {canWrite ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSwitching(product)}
+                            aria-label={`${inactive ? "Activate" : "Deactivate"} ${product.name}`}
+                            title={inactive ? "Activate" : "Deactivate"}
+                          >
+                            {inactive ? <Eye /> : <EyeOff />}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
 
-        {isError ? (
-          <EmptyState
-            title="Could not load products"
-            description={error instanceof Error ? error.message : undefined}
-            action={
-              <Button variant="outline" onClick={() => refetch()}>
-                Try again
-              </Button>
-            }
-          />
-        ) : null}
+          <Card>
+            {isError ? (
+              <EmptyState
+                title="Could not load products"
+                description={error instanceof Error ? error.message : undefined}
+                action={
+                  <Button variant="outline" onClick={() => refetch()}>
+                    Try again
+                  </Button>
+                }
+              />
+            ) : null}
 
-        {!isPending && !isError && visible.length === 0 ? (
-          <EmptyState
-            icon={<Package />}
-            title={data?.length ? "No products match those filters" : "No products yet"}
-            description={
-              data?.length
-                ? "Try a different search or category."
-                : "Add the first item in this company's rental catalogue."
-            }
-            action={
-              !data?.length && canWrite ? (
-                <Button onClick={() => setCreating(true)}>
-                  <Plus />
-                  New product
-                </Button>
-              ) : null
-            }
-          />
-        ) : null}
-      </Card>
+            {!isPending && !isError && visible.length === 0 ? (
+              <EmptyState
+                icon={<Package />}
+                title={
+                  data?.length
+                    ? "No products match those filters"
+                    : "No products yet"
+                }
+                description={
+                  data?.length
+                    ? "Try a different search or category."
+                    : "Add the first item in this company's rental catalogue."
+                }
+                action={
+                  !data?.length && canWrite ? (
+                    <Button onClick={() => setCreating(true)}>
+                      <Plus />
+                      New product
+                    </Button>
+                  ) : null
+                }
+              />
+            ) : null}
+          </Card>
+        </div>
+      </div>
 
+      {viewing ? (
+        <ProductVariantsDialog
+          product={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={
+            canWrite
+              ? () => {
+                  setEditing(viewing);
+                  setViewing(null);
+                }
+              : undefined
+          }
+        />
+      ) : null}
       {creating ? <ProductDialog onClose={() => setCreating(false)} /> : null}
-      {editing ? <ProductDialog existing={editing} onClose={() => setEditing(null)} /> : null}
+      {editing ? (
+        <ProductDialog existing={editing} onClose={() => setEditing(null)} />
+      ) : null}
       {switching ? (
         <ConfirmDialog
           title={`${switching.active === false ? "Activate" : "Deactivate"} ${switching.name}?`}
@@ -398,12 +316,20 @@ export function ProductsPage() {
               ? "It returns to the product pickers and the storefront."
               : "It stays on record, with its variants and stock, but leaves the product pickers and the storefront. Existing quotations and orders keep it."
           }
-          confirmLabel={switching.active === false ? "Activate product" : "Deactivate product"}
+          confirmLabel={
+            switching.active === false
+              ? "Activate product"
+              : "Deactivate product"
+          }
           destructive={switching.active !== false}
           fallbackError="Could not change the product."
-          action={() => setProductActive(switching.id, switching.active === false)}
+          action={() =>
+            setProductActive(switching.id, switching.active === false)
+          }
           onDone={() => {
-            queryClient.invalidateQueries({ queryKey: masterDataKeys.products });
+            queryClient.invalidateQueries({
+              queryKey: masterDataKeys.products,
+            });
             setSwitching(null);
           }}
           onClose={() => setSwitching(null)}

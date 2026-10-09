@@ -909,7 +909,7 @@ export async function listWarehouses(signal?: AbortSignal): Promise<WarehouseVie
 export async function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {
   const created = await apiFetch<WireWarehouse>(`${BASE}/warehouses`, {
     method: "POST",
-    body: { name: request.name, addressLine: request.address, city: request.city },
+    body: { name: request.name, addressLine: request.address, city: request.city, location: request.location },
   });
   return warehouseFromWire(created);
 }
@@ -925,6 +925,7 @@ export async function updateWarehouse(
       addressLine: request.address,
       city: request.city,
       active: request.active,
+      location: request.location,
     },
   });
   return warehouseFromWire(updated);
