@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { KeyRound, LogOut, Menu, Moon, RotateCcw, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSession } from "@/features/auth";
 import { IS_MOCK } from "@/services/data-source";
 import { resetMockData } from "@/mock-data/store";
-import { formatRelative } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChangePasswordDialog } from "@/features/users/components/ChangePasswordDialog";
@@ -28,9 +28,8 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         <Menu />
       </Button>
 
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm font-semibold tracking-tight">Tentvaale</span>
-        <span className="text-xs text-muted-foreground">Back office</span>
+      <div className="flex items-center gap-2">
+        <Image src="/logo-full.png" alt="Tentvaale" width={207} height={160} priority className="h-12 w-auto" />
         {IS_MOCK ? (
           // Stated plainly and permanently. Anyone reviewing this should never
           // have to wonder whether a number on screen is real.
@@ -60,15 +59,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         ) : null}
 
         {session ? (
-          <div className="hidden text-right sm:block">
-            <p className="text-xs font-medium">{session.username}</p>
-            <p
-              className="text-[0.65rem] text-muted-foreground"
-              title={`Session expires ${session.expiresAt.toLocaleString()}`}
-            >
-              Session ends {formatRelative(session.expiresAt)}
-            </p>
-          </div>
+          <p className="hidden text-xs font-medium sm:block">{session.username}</p>
         ) : null}
 
         {session ? <Badge variant="outline">{session.role}</Badge> : null}
