@@ -36,7 +36,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(makeQueryClient);
 
   return (
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+    // enableSystem is off so a first visit is always light, whatever the OS prefers; the Topbar toggle still
+    // switches to dark and next-themes remembers the choice.
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
           {children}

@@ -119,6 +119,7 @@ interface WireProduct {
   wholesaleRate: number | null;
   skuOwner: string | null;
   genericName: string | null;
+  hsnCode?: string | null;
   tag: string | null;
   hasVariants: boolean;
   active: boolean;
@@ -345,6 +346,7 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
     skuOwner: product.skuOwner ?? "",
     name: product.name,
     genericName: product.genericName ?? "",
+    hsnCode: product.hsnCode ?? "",
     description: product.description ?? null,
     categoryId: String(product.categoryId),
     categoryName: product.categoryName,
@@ -414,6 +416,8 @@ function productBody(request: CreateProductRequest) {
     wholesaleRate: request.wholesaleRate,
     skuOwner: request.skuOwner,
     genericName: request.genericName,
+    // Sent on every save: the backend replaces it, so leaving it out would erase it.
+    hsnCode: request.hsnCode?.trim() || null,
     hasVariants: request.hasVariants,
     // Sent on every save: the backend replaces these, so leaving them out would erase them.
     length: request.dimensions?.length ?? null,

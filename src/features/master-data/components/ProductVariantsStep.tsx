@@ -116,7 +116,7 @@ export function checkVariantStep(value: VariantStepValues, ctx: z.RefinementCtx)
 }
 
 /**
- * The variants of a product, one row each: its type (Colour, Size ...), name, wholesale and retail rate, and where
+ * The variants of a product, one row each: its type (Colour, Size ...), name, retail and wholesale rate, and where
  * it is stocked. One empty row is always there: fill it to add a variant, leave it and it is skipped. Every variant
  * has its own type, so two colours and two sizes can sit side by side. Saved with the product, all or nothing.
  */
@@ -198,11 +198,11 @@ export function ProductVariantsStep() {
                     />
                   )}
                 </Field>
-                <Field label="Wholesale rate" error={rowErrors?.wholesaleRate?.message}>
-                  {(props) => <Input {...props} {...register(`variants.${index}.wholesaleRate`)} inputMode="decimal" placeholder="Product's rate" />}
-                </Field>
                 <Field label="Retail rate" error={rowErrors?.retailRate?.message}>
                   {(props) => <Input {...props} {...register(`variants.${index}.retailRate`)} inputMode="decimal" placeholder="Product's rate" />}
+                </Field>
+                <Field label="Wholesale rate" error={rowErrors?.wholesaleRate?.message}>
+                  {(props) => <Input {...props} {...register(`variants.${index}.wholesaleRate`)} inputMode="decimal" placeholder="Product's rate" />}
                 </Field>
               </div>
 

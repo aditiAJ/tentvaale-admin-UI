@@ -83,6 +83,8 @@ const schema = z.object({
     .min(1, "Generic name is required")
     .max(100, "Maximum 100 characters"),
   description: z.string().trim().max(2000, "Maximum 2000 characters").optional(),
+  // Optional. The backend checks the same rule; this shows the refusal beside the field instead of after a save.
+  hsnCode: z.string().trim().regex(/^(\d{4}|\d{6}|\d{8})?$/, "HSN code must be 4, 6 or 8 digits"),
   wholesaleRate: amountField("Wholesale rate"),
   retailRate: amountField("Retail rate"),
   // The message is given for a missing value too: a disabled select can
@@ -148,6 +150,7 @@ const STEPS: {
       "categoryId",
       "subCategoryId",
       "description",
+      "hsnCode",
       "retailRate",
       "wholesaleRate",
       "rateType",
@@ -333,6 +336,7 @@ function ProductForm({
       skuOwner: existing?.skuOwner || DEFAULT_SKU_OWNER,
       name: existing?.name ?? "",
       genericName: existing?.genericName ?? "",
+      hsnCode: existing?.hsnCode ?? "",
       description: existing?.description ?? "",
       wholesaleRate: existing ? amountText(existing.wholesaleRate.amount) : "",
       retailRate: existing ? amountText(existing.retailRate.amount) : "",
@@ -801,6 +805,12 @@ function ProductForm({
               <p className={cn("text-xs", rateNote.warn ? "text-warning" : "text-muted-foreground")}>{rateNote.text}</p>
             ) : null}
           </fieldset>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="HSN code" error={errors.hsnCode?.message} hint="Optional. 4, 6 or 8 digits, for GST invoices.">
+              {(props) => <Input {...props} {...register("hsnCode")} placeholder="940360" inputMode="numeric" maxLength={8} autoComplete="off" />}
+            </Field>
+          </div>
 
           <Field label="Description" error={errors.description?.message}>
             {(props) => (

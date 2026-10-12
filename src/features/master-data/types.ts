@@ -113,6 +113,8 @@ export interface ProductView extends Partial<ProductStorefrontDetails> {
   name: string;
   /** What the product is, without its size or finish: "Canopy" for "10x10 Canopy". */
   genericName: string;
+  /** For GST invoicing: 4, 6 or 8 digits. Empty when none has been entered. */
+  hsnCode?: string;
   description: string | null;
   categoryId: string | null;
   categoryName: string | null;
@@ -248,6 +250,8 @@ export interface CreateProductRequest extends ProductStorefrontDetails {
   skuOwner: string;
   name: string;
   genericName: string;
+  /** Optional. Sent on every save: the backend replaces it, so leaving it out would erase it. */
+  hsnCode?: string;
   description?: string;
   wholesaleRate: number;
   retailRate: number;
