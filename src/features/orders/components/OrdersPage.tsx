@@ -13,6 +13,7 @@ import {
   PiggyBank,
   SearchX,
   Truck,
+  Wrench,
   Undo2,
   XCircle,
   type LucideIcon,
@@ -39,6 +40,7 @@ const TABS: { key: string; label: string; hint: string; icon: LucideIcon; status
   { key: "", label: "All orders", hint: "Every order", icon: ClipboardList },
   { key: "confirmed", label: "Confirmed", hint: "Ready to dispatch", icon: PackageCheck, status: "CONFIRMED", urgent: true },
   { key: "dispatched", label: "Dispatched", hint: "Out on rent", icon: Truck, status: "DISPATCHED", urgent: true },
+  { key: "installation", label: "Installation", hint: "Being set up at the venue", icon: Wrench, status: "INSTALLATION", urgent: true },
   { key: "returned", label: "Returned", hint: "Settle the deposit", icon: Undo2, status: "RETURNED", urgent: true },
   { key: "completed", label: "Completed", hint: "Returned and settled", icon: CheckCircle2, status: "COMPLETED" },
   { key: "cancelled", label: "Cancelled", hint: "Stopped before dispatch", icon: XCircle, status: "CANCELLED" },
@@ -272,7 +274,7 @@ function OrderCard({ order, href }: { order: OrderView; href: string }) {
     if (order.status === "CANCELLED") return "Nothing dispatched";
     if (!fulfilment) return null;
     if (order.status === "CONFIRMED") return "Ready for dispatch";
-    if (order.status === "DISPATCHED") {
+    if (order.status === "DISPATCHED" || order.status === "INSTALLATION") {
       return [`${fulfilment.stillOut} out on rent`, fulfilment.leftToDispatch > 0 ? `${fulfilment.leftToDispatch} to dispatch` : null]
         .filter(Boolean)
         .join(" · ");

@@ -7,6 +7,7 @@ type Tone = "default" | "success" | "warning" | "destructive";
 export const ORDER_STATUS_VARIANT: Record<OrderStatus, Tone> = {
   CONFIRMED: "default",
   DISPATCHED: "warning",
+  INSTALLATION: "warning",
   RETURNED: "warning",
   COMPLETED: "success",
   CANCELLED: "destructive",

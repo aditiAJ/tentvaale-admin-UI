@@ -134,6 +134,8 @@ export function PriceGrid({ quotation: q }: { quotation: QuotationView }) {
     { label: "Items", value: formatMoney(q.subtotalAmount ?? q.totalAmount) },
     ...(q.bundleDiscounts ?? []).map((b) => ({ label: `${b.name} (${b.percent}% off)`, value: `− ${formatMoney(b.amount)}` })),
     { label: "Delivery", value: isPositive(q.deliveryCharge) ? formatMoney(q.deliveryCharge) : "None", muted: !isPositive(q.deliveryCharge) },
+    { label: "Transportation", value: isPositive(q.transportationCharge) ? formatMoney(q.transportationCharge) : "None", muted: !isPositive(q.transportationCharge) },
+    { label: "Installation", value: isPositive(q.installationCharge) ? formatMoney(q.installationCharge) : "None", muted: !isPositive(q.installationCharge) },
     { label: discountLabel(q.discountType, q.discountPercent), value: isPositive(q.discountAmount) ? `− ${formatMoney(q.discountAmount)}` : "None", muted: !isPositive(q.discountAmount) },
     ...(tax
       ? [

@@ -107,6 +107,12 @@ export async function cancelOrder(orderId: string, reason?: string): Promise<Ord
   );
 }
 
+export async function startInstallation(orderId: string): Promise<OrderView> {
+  return fromWire(
+    await apiFetch<WireOrder>(`${BASE}/${id(orderId)}/start-installation`, { method: "POST" }),
+  );
+}
+
 export async function completeOrder(orderId: string): Promise<OrderView> {
   return fromWire(await apiFetch<WireOrder>(`${BASE}/${id(orderId)}/complete`, { method: "POST" }));
 }

@@ -78,5 +78,6 @@ export function allowedDirections(
   if (order.status === "DISPATCHED") {
     return fulfilment.leftToDispatch > 0 ? ["INWARD", "OUTWARD"] : ["INWARD"];
   }
+  if (order.status === "INSTALLATION") return ["INWARD"];
   return [];
 }

@@ -86,6 +86,8 @@ export interface QuotationDoc {
   taxable: number | null;
   taxes: { label: string; amount: number }[];
   delivery: number;
+  transportation: number;
+  installation: number;
   total: number;
   deposit: { label: string; amount: number };
   policies: string[];
@@ -279,7 +281,7 @@ function make(theme: DocTheme) {
       // body
       body: { paddingHorizontal: 28, paddingTop: 16 },
       strip: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
-      stripCell: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, flexDirection: "row", alignItems: "center", paddingHorizontal: 8, borderRightWidth: 1, borderRightColor: c.border },
+      stripCell: { flexGrow: 1, flexShrink: 1, flexBasis: "auto", minWidth: 0, flexDirection: "row", alignItems: "center", paddingLeft: 10, borderRightWidth: 1, borderRightColor: c.border },
       stripLast: { borderRightWidth: 0 },
       stripIcon: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: c.gold, alignItems: "center", justifyContent: "center", marginRight: 7 },
       stripLabel: { fontSize: 6.5, color: c.gold, letterSpacing: 0.8 },
@@ -342,9 +344,11 @@ function make(theme: DocTheme) {
       sigRule: { flex: 1, borderBottomWidth: 1, borderBottomColor: c.muted, marginLeft: 6 },
       // footer
       foot: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: HEAD, borderTopWidth: 2, borderTopColor: HEAD_GOLD, flexDirection: "row", alignItems: "center", paddingHorizontal: 28, paddingVertical: 10 },
-      footBrand: { width: 150 },
-      footCol: { flex: 1, flexDirection: "row", alignItems: "center", gap: 5, minWidth: 0, paddingRight: 8 },
-      footText: { color: HEAD_TEXT, fontSize: 7.5, flex: 1 },
+      // Each item takes the width its text needs (an email is never cut short); the contacts share what the brand leaves.
+      footBrand: { flexShrink: 0, marginRight: 16 },
+      footContacts: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+      footCol: { flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 0 },
+      footText: { color: HEAD_TEXT, fontSize: 7.5 },
     }),
   };
 }
@@ -354,6 +358,16 @@ type Styles = ReturnType<typeof make>["s"];
 // ---- pieces --------------------------------------------------------------------------------
 
 function Brand({ s, company, small }: { s: Styles; company: DocCompany; small?: boolean }) {
+  // In the footer the mark sits beside the name, in the header it sits above it (see Header).
+  if (small && company.logo) {
+    return (
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {/* eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text */}
+        <Image src={company.logo} style={{ width: 32, height: 26, objectFit: "contain" }} />
+        <Text style={[s.wordmark, { fontSize: 11, textAlign: "left" }]}>{company.name.toUpperCase()}</Text>
+      </View>
+    );
+  }
   return company.logo ? (
     // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
     <Image src={company.logo} style={small ? { width: 52, height: 30, objectFit: "contain" } : s.headLogo} />
@@ -419,6 +433,7 @@ function Footer({ s, company }: { s: Styles; company: DocCompany }) {
       <View style={s.footBrand}>
         <Brand s={s} company={company} small />
       </View>
+      <View style={s.footContacts}>
       {company.phone ? (
         <View style={s.footCol}>
           <Icon name="phone" color={HEAD_GOLD} size={11} />
@@ -437,6 +452,7 @@ function Footer({ s, company }: { s: Styles; company: DocCompany }) {
           <Text style={s.footText}>{hostOf(company.website)}</Text>
         </View>
       ) : null}
+      </View>
     </View>
   );
 }
@@ -533,19 +549,21 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
         <View style={s.body}>
           <View style={s.strip}>
             {[
-              { icon: "user" as const, label: "CURATED FOR", value: doc.customerName },
-              { icon: "mail" as const, label: "CONTACT", value: doc.customerEmail ?? "—", grow: 1.5 },
-              { icon: "calendar" as const, label: "EVENT DATES", value: eventDates },
-              { icon: "pin" as const, label: "VENUE", value: venue },
+              // Each cell is as wide as its text needs, so a name, an email or a date is never broken across lines;
+              // only the venue, which has spaces to wrap at, gives way when the row is full.
+              { icon: "user" as const, label: "CURATED FOR", value: doc.customerName, fit: true },
+              { icon: "mail" as const, label: "CONTACT", value: doc.customerEmail ?? "—", fit: true },
+              { icon: "calendar" as const, label: "EVENT DATES", value: eventDates, fit: true },
+              { icon: "pin" as const, label: "VENUE", value: venue, fit: false },
             ].map((cell, index, all) => (
               <View
                 key={cell.label}
-                style={[s.stripCell, index === all.length - 1 ? s.stripLast : {}, "grow" in cell ? { flexGrow: cell.grow } : {}]}
+                style={[s.stripCell, index === all.length - 1 ? s.stripLast : {}, cell.fit ? { flexGrow: 0, flexShrink: 0 } : { flexGrow: 1, flexBasis: 0 }]}
               >
                 <View style={s.stripIcon}>
                   <Icon name={cell.icon} color={c.gold} size={12} />
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={cell.fit ? { paddingRight: 14 } : { flex: 1, paddingRight: 4 }}>
                   <Text style={s.stripLabel}>{cell.label}</Text>
                   <Text style={s.stripValue}>{cell.value}</Text>
                 </View>
@@ -607,7 +625,9 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
               {doc.taxes.map((t) => (
                 <Row key={t.label} s={s} label={t.label} value={number(t.amount)} />
               ))}
-              {doc.delivery > 0 ? <Row s={s} label="Delivery / Transportation" value={number(doc.delivery)} /> : null}
+              {doc.delivery > 0 ? <Row s={s} label="Delivery" value={number(doc.delivery)} /> : null}
+              {doc.transportation > 0 ? <Row s={s} label="Transportation" value={number(doc.transportation)} /> : null}
+              {doc.installation > 0 ? <Row s={s} label="Installation" value={number(doc.installation)} /> : null}
               <View style={{ borderTopWidth: 1, borderTopColor: c.border, marginTop: 4, paddingTop: 4 }}>
                 <Row s={s} label={doc.deposit.label} value={number(doc.deposit.amount)} />
               </View>
@@ -879,6 +899,8 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                     <Row key={t.label} s={s} label={t.label} value={rupees(t.amount)} />
                   ))}
                   {doc.delivery > 0 ? <Row s={s} label="Delivery" value={rupees(doc.delivery)} /> : null}
+                  {doc.transportation > 0 ? <Row s={s} label="Transportation" value={rupees(doc.transportation)} /> : null}
+                  {doc.installation > 0 ? <Row s={s} label="Installation" value={rupees(doc.installation)} /> : null}
                 </View>
                 <View style={{ flexDirection: "row", marginTop: 6, borderWidth: 1, borderColor: c.gold }}>
                   <Text style={{ flex: 1, backgroundColor: c.soft, color: c.gold, fontWeight: 700, paddingVertical: 6, paddingHorizontal: 8 }}>GRAND TOTAL</Text>

@@ -75,6 +75,8 @@ export interface QuotationView {
   validUntil?: string | null;
   subtotalAmount?: Money;
   deliveryCharge?: Money;
+  transportationCharge?: Money;
+  installationCharge?: Money;
   discountAmount?: Money;
   /** How the discount was given: a flat amount, or a percentage of the items after bundle discounts. */
   discountType?: DiscountType;
@@ -143,6 +145,10 @@ export interface CreateQuotationRequest {
   securityDeposit: number;
   /** Actual delivery cost in INR, entered by staff; part of the total. Omitted: none. */
   deliveryCharge?: number;
+  /** Transportation cost in INR, entered by staff; part of the total. Omitted: none. */
+  transportationCharge?: number;
+  /** Installation cost in INR, entered by staff; part of the total. Omitted: none. */
+  installationCharge?: number;
   /** A flat amount off in INR, used when `discountType` is FLAT or left out. Omitted: none. */
   discountAmount?: number;
   /** FLAT (default) or PERCENT. With PERCENT the backend works out the amount from `discountPercent`. */
@@ -179,6 +185,8 @@ export interface UpdateQuotationRequest {
   eventDate?: string;
   securityDeposit: number;
   deliveryCharge?: number;
+  transportationCharge?: number;
+  installationCharge?: number;
   discountAmount?: number;
   discountType?: DiscountType;
   discountPercent?: number;
@@ -195,6 +203,8 @@ export interface QuotationVersionView {
   validUntil?: string | null;
   subtotalAmount: Money;
   deliveryCharge: Money;
+  transportationCharge?: Money;
+  installationCharge?: Money;
   discountAmount: Money;
   discountType?: DiscountType;
   discountPercent?: number | null;

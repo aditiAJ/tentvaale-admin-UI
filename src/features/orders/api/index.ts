@@ -6,6 +6,7 @@ import {
   mockGetOrder,
   mockListOrders,
   mockListOrdersByCustomer,
+  mockStartInstallation,
 } from "@/mock-data/store";
 import * as backend from "@/features/orders/api/backend";
 import type { OrderView } from "@/features/orders/types";
@@ -42,6 +43,12 @@ export function createOrderFromQuotation(quotationId: string): Promise<OrderView
 export function cancelOrder(orderId: string, reason?: string): Promise<OrderView> {
   if (IS_MOCK) return mockCancelOrder(orderId);
   return backend.cancelOrder(orderId, reason);
+}
+
+/** DISPATCHED to INSTALLATION; 422 from any other status. No stock moves. */
+export function startInstallation(orderId: string): Promise<OrderView> {
+  if (IS_MOCK) return mockStartInstallation(orderId);
+  return backend.startInstallation(orderId);
 }
 
 /** 422 unless the order is RETURNED and its deposit is settled (or it has none). */

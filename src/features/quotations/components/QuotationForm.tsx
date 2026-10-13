@@ -36,13 +36,23 @@ const schema = z.object({
   // One amount for the whole booking: products no longer carry a deposit of
   // their own, so nothing on the lines can add up to one.
   securityDeposit: amountField("Security deposit"),
-  // Entered by staff; blank means none. The total the customer sees is items + delivery - discount.
+  // Entered by staff; blank means none. The total the customer sees is items + delivery + transportation + installation - discount.
   deliveryCharge: z
     .string()
     .trim()
     .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), "Enter an amount like 500 or 500.50")
     .transform((v) => (v === "" ? 0 : Number(v))),
   // The discount box holds either a rupee amount or a percentage, whichever `discountType` says (MOM-14).
+  transportationCharge: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), "Enter an amount like 500 or 500.50")
+    .transform((v) => (v === "" ? 0 : Number(v))),
+  installationCharge: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), "Enter an amount like 500 or 500.50")
+    .transform((v) => (v === "" ? 0 : Number(v))),
   discountType: z.enum(["FLAT", "PERCENT"]),
   discountAmount: z
     .string()
@@ -153,6 +163,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           validUntil: existing.validUntil ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
           deliveryCharge: existing.deliveryCharge ? String(Number(existing.deliveryCharge.amount)) : "",
+          transportationCharge: existing.transportationCharge ? String(Number(existing.transportationCharge.amount)) : "",
+          installationCharge: existing.installationCharge ? String(Number(existing.installationCharge.amount)) : "",
           discountType: existing.discountType ?? "FLAT",
           // A percentage discount shows the percentage that was typed, not the rupees it came to.
           discountAmount:
@@ -176,6 +188,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           validUntil: defaultValidUntil(),
           securityDeposit: "",
           deliveryCharge: "",
+          transportationCharge: "",
+          installationCharge: "",
           discountType: "FLAT",
           discountAmount: "",
           lines: [emptyLine()],
@@ -217,6 +231,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   };
 
   const watchedDelivery = Number(useWatch({ control, name: "deliveryCharge" })) || 0;
+  const watchedTransportation = Number(useWatch({ control, name: "transportationCharge" })) || 0;
+  const watchedInstallation = Number(useWatch({ control, name: "installationCharge" })) || 0;
   const watchedDiscount = Number(useWatch({ control, name: "discountAmount" })) || 0;
   const watchedDiscountType = useWatch({ control, name: "discountType" });
   const itemsEstimate = watchedLines.reduce((running, line) => running + (priceLine(line) ?? 0), 0);
@@ -227,7 +243,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     watchedDiscountType === "PERCENT"
       ? Math.round(Math.max(itemsEstimate - bundleDiscounts, 0) * Math.min(watchedDiscount, 100)) / 100
       : watchedDiscount;
-  const estimate = Math.max(itemsEstimate - bundleDiscounts + watchedDelivery - discountEstimate, 0);
+  const estimate = Math.max(itemsEstimate - bundleDiscounts + watchedDelivery + watchedTransportation + watchedInstallation - discountEstimate, 0);
 
   // The name is typed, but a quotation still belongs to a customer record by
   // id — its order, deposit and credit notes all hang off that id — so the
@@ -256,6 +272,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           eventDate: existing.eventDate ?? values.eventDate,
           securityDeposit: values.securityDeposit,
           deliveryCharge: values.deliveryCharge,
+          transportationCharge: values.transportationCharge,
+          installationCharge: values.installationCharge,
           ...discountRequest(values),
           lines: values.lines.map((line) => ({
             lineId: line.lineId || undefined,
@@ -276,6 +294,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         eventDate: values.eventDate,
         securityDeposit: values.securityDeposit,
         deliveryCharge: values.deliveryCharge,
+        transportationCharge: values.transportationCharge,
+        installationCharge: values.installationCharge,
         ...discountRequest(values),
         validUntil: values.validUntil,
         lines: values.lines.map(({ productId, variantId, quantity, rentalDays }) => ({
@@ -665,13 +685,13 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           </CardContent>
         ) : null}
 
-        <CardContent className="flex flex-wrap items-start justify-end gap-6 border-t border-border">
+        <CardContent className="flex flex-wrap items-start gap-4 border-t border-border">
           <Field
             label="Security deposit"
             required
             error={errors.securityDeposit?.message}
-            hint="In INR. Enter 0 if none."
-            className="w-56"
+            hint="INR. 0 if none."
+            className="min-w-40 flex-1"
           >
             {(props) => (
               <Input
@@ -687,8 +707,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           <Field
             label="Delivery charge"
             error={errors.deliveryCharge?.message}
-            hint="Actual cost, in INR. Blank if none."
-            className="w-56"
+            hint="INR. Blank if none."
+            className="min-w-40 flex-1"
           >
             {(props) => (
               <Input
@@ -702,14 +722,48 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             )}
           </Field>
           <Field
+            label="Transportation charge"
+            error={errors.transportationCharge?.message}
+            hint="INR. Blank if none."
+            className="min-w-40 flex-1"
+          >
+            {(props) => (
+              <Input
+                {...props}
+                {...register("transportationCharge")}
+                inputMode="decimal"
+                placeholder="0.00"
+                disabled={mutation.isPending}
+                className="tabular text-right"
+              />
+            )}
+          </Field>
+          <Field
+            label="Installation charge"
+            error={errors.installationCharge?.message}
+            hint="INR. Blank if none."
+            className="min-w-40 flex-1"
+          >
+            {(props) => (
+              <Input
+                {...props}
+                {...register("installationCharge")}
+                inputMode="decimal"
+                placeholder="0.00"
+                disabled={mutation.isPending}
+                className="tabular text-right"
+              />
+            )}
+          </Field>
+          <Field
             label="Discount"
             error={errors.discountAmount?.message}
             hint={
               watchedDiscountType === "PERCENT"
-                ? "A percentage off the items after bundle discounts, 0 to 100. Blank if none."
-                : "A flat amount off, in INR. Blank if none."
+                ? "% off items after bundle discounts. Blank if none."
+                : "Flat amount off, INR. Blank if none."
             }
-            className="w-64"
+            className="min-w-56 flex-[1.4]"
           >
             {(props) => (
               <div className="flex gap-2">
@@ -745,9 +799,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
               </div>
             )}
           </Field>
-          <div className="text-right">
+          <div className="mt-6 shrink-0 rounded-lg border border-border bg-muted/40 px-4 py-1.5 text-right">
             <p className="text-xs text-muted-foreground">Estimated total</p>
-            <p className="tabular mt-0.5 text-lg font-semibold">
+            <p className="tabular text-lg font-semibold">
               {formatMoney({ amount: estimate, currency: "INR" })}
             </p>
           </div>

@@ -65,11 +65,13 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
   }
 
   const urls = [...new Set(q.lines.map((l) => l.imageUrl).filter((u): u is string => Boolean(u)))];
-  const [logo, signature, pictures] = await Promise.all([
+  const [uploadedLogo, signature, pictures] = await Promise.all([
     loadMarkData(company?.logoUrl),
     loadMarkData(company?.signatureUrl),
     Promise.all(urls.map(async (url) => [url, await loadImageData(url)] as const)),
   ]);
+  // The company's own logo when it has uploaded one, otherwise the Tentvaale mark (a 480px copy of logo-mark.png).
+  const logo = uploadedLogo ?? (await loadMarkData("/logo-mark-pdf.png"));
   const images: Record<string, string> = {};
   for (const [url, data] of pictures) if (data) images[url] = data;
 
@@ -118,6 +120,8 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
           ]
         : [{ label: `IGST (${tax.rate ?? 0}%)`, amount: amount(tax.igst) }],
     delivery: amount(q.deliveryCharge),
+    transportation: amount(q.transportationCharge),
+    installation: amount(q.installationCharge),
     total: amount(q.totalAmount),
     deposit: {
       label: waived ? "Security deposit (waived)" : "Refundable security deposit (not taxed)",

@@ -39,7 +39,7 @@ export function ChooseOrderDialog({
   const movable = useMemo(() => {
     const text = search.trim().toLowerCase();
     return (orders.data ?? [])
-      .filter((order) => order.status === "CONFIRMED" || order.status === "DISPATCHED")
+      .filter((order) => order.status === "CONFIRMED" || order.status === "DISPATCHED" || order.status === "INSTALLATION")
       .filter(
         (order) =>
           text === "" ||

@@ -2264,6 +2264,29 @@ export async function mockCancelOrder(orderId: string): Promise<OrderView> {
   return cancelled;
 }
 
+/** DISPATCHED → INSTALLATION. Staff mark it by hand; nothing moves in stock. */
+export async function mockStartInstallation(orderId: string): Promise<OrderView> {
+  await delay();
+  const current = state();
+  const index = requireOrderIndex(current, orderId);
+  const order = current.orders[index];
+
+  if (order.status !== "DISPATCHED") {
+    throw businessRule(
+      `${order.orderNumber} is ${order.status}; only a dispatched order can move to installation`,
+    );
+  }
+
+  const installing: OrderView = {
+    ...order,
+    status: "INSTALLATION",
+    installationStartedAt: new Date().toISOString(),
+  };
+  current.orders[index] = installing;
+  persist();
+  return installing;
+}
+
 /** RETURNED → COMPLETED, once the deposit is REFUNDED or FORFEITED. */
 export async function mockCompleteOrder(orderId: string): Promise<OrderView> {
   await delay();
@@ -2395,7 +2418,7 @@ export async function mockRecordStockMovement(
   if (outward && order.status !== "CONFIRMED" && order.status !== "DISPATCHED") {
     throw businessRule(`${order.orderNumber} is ${order.status} and cannot be dispatched`);
   }
-  if (!outward && order.status !== "DISPATCHED") {
+  if (!outward && order.status !== "DISPATCHED" && order.status !== "INSTALLATION") {
     throw businessRule(
       `${order.orderNumber} is ${order.status}; only a dispatched order can take a return`,
     );

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { cancelOrder, completeOrder, orderKeys } from "@/features/orders/api";
+import { cancelOrder, completeOrder, orderKeys, startInstallation } from "@/features/orders/api";
 import type { OrderView } from "@/features/orders/types";
 import { depositKeys } from "@/features/deposits/api";
 import type { DepositLedgerView } from "@/features/deposits/types";
@@ -16,11 +16,11 @@ import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
-export type OrderAction = "cancel" | "complete";
+export type OrderAction = "cancel" | "complete" | "start-installation";
 
 /**
- * Confirms one of the two order transitions that are not a stock movement.
- * Both are terminal, which is why they ask first.
+ * Confirms one of the order transitions that are not a stock movement. Cancel and
+ * complete are terminal, which is why they ask first; installation only marks the stage.
  */
 export function OrderActionDialog({
   action,
@@ -37,15 +37,23 @@ export function OrderActionDialog({
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const cancelling = action === "cancel";
+  const installing = action === "start-installation";
 
   const mutation = useMutation({
-    mutationFn: () => (cancelling ? cancelOrder(order.id, reason.trim()) : completeOrder(order.id)),
+    mutationFn: () =>
+      cancelling
+        ? cancelOrder(order.id, reason.trim())
+        : installing
+          ? startInstallation(order.id)
+          : completeOrder(order.id),
     onSuccess: (updated) => {
       queryClient.setQueryData(orderKeys.byId(order.id), updated);
       queryClient.invalidateQueries({ queryKey: orderKeys.list });
       // Cancelling moves a held deposit to refund pending.
       queryClient.invalidateQueries({ queryKey: depositKeys.byOrder(order.id) });
-      toast.success(`${updated.orderNumber} ${cancelling ? "cancelled" : "completed"}`);
+      toast.success(
+        `${updated.orderNumber} ${cancelling ? "cancelled" : installing ? "moved to installation" : "completed"}`,
+      );
       onClose();
     },
     onError: (mutationError) =>
@@ -58,11 +66,19 @@ export function OrderActionDialog({
     <Dialog
       open
       onClose={onClose}
-      title={cancelling ? `Cancel ${order.orderNumber}` : `Complete ${order.orderNumber}`}
+      title={
+        cancelling
+          ? `Cancel ${order.orderNumber}`
+          : installing
+            ? `Start installation for ${order.orderNumber}`
+            : `Complete ${order.orderNumber}`
+      }
       description={
         cancelling
           ? "Nothing has been dispatched, so no stock moves. This cannot be undone."
-          : "Closes the order. This cannot be undone."
+          : installing
+            ? "Marks the goods as being installed at the venue. No stock moves; record the return when they are back."
+            : "Closes the order. This cannot be undone."
       }
       footer={
         <>
@@ -78,7 +94,7 @@ export function OrderActionDialog({
             }}
           >
             {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
-            {cancelling ? "Cancel order" : "Complete order"}
+            {cancelling ? "Cancel order" : installing ? "Start installation" : "Complete order"}
           </Button>
         </>
       }

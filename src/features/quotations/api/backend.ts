@@ -55,6 +55,8 @@ interface WireQuotation {
   validUntil?: string | null;
   subtotalAmount?: Money;
   deliveryCharge?: Money;
+  transportationCharge?: Money;
+  installationCharge?: Money;
   discountAmount?: Money;
   discountType?: QuotationView["discountType"];
   discountPercent?: number | null;
@@ -109,6 +111,8 @@ function fromWire(q: WireQuotation): QuotationView {
     validUntil: q.validUntil ?? null,
     subtotalAmount: q.subtotalAmount,
     deliveryCharge: q.deliveryCharge,
+    transportationCharge: q.transportationCharge,
+    installationCharge: q.installationCharge,
     discountAmount: q.discountAmount,
     discountType: q.discountType ?? "FLAT",
     discountPercent: q.discountPercent ?? null,
@@ -158,6 +162,8 @@ export async function createQuotation(request: CreateQuotationRequest): Promise<
       eventDate: request.eventDate || undefined,
       securityDeposit: request.securityDeposit,
       deliveryCharge: request.deliveryCharge || undefined,
+      transportationCharge: request.transportationCharge || undefined,
+      installationCharge: request.installationCharge || undefined,
       ...discountBody(request),
       validUntil: request.validUntil || undefined,
       lines: request.lines.map((line) => ({
@@ -186,6 +192,8 @@ export async function updateQuotation(
       eventDate: request.eventDate || undefined,
       securityDeposit: request.securityDeposit,
       deliveryCharge: request.deliveryCharge || undefined,
+      transportationCharge: request.transportationCharge || undefined,
+      installationCharge: request.installationCharge || undefined,
       ...discountBody(request),
       lines: request.lines.map((line) => ({
         id: line.lineId,

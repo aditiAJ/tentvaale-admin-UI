@@ -42,7 +42,8 @@ export function QuotationVersions({ quotationId }: { quotationId: string }) {
                 </p>
               ))}
               <p className="pt-1">
-                Delivery {formatMoney(version.deliveryCharge)} · Discount {formatMoney(version.discountAmount)}
+                Delivery {formatMoney(version.deliveryCharge)} · Transportation {formatMoney(version.transportationCharge)} ·
+                Installation {formatMoney(version.installationCharge)} · Discount {formatMoney(version.discountAmount)}
                 {discountSuffix(version.discountType, version.discountPercent)} ·
                 Deposit {formatMoney(version.securityDeposit)}
               </p>

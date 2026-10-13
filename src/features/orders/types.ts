@@ -4,13 +4,15 @@ import type { Money } from "@/lib/money";
  * Mirrors com.tentvaale.ordermgmt.api.OrderStatus.
  *
  * Nothing sets a status directly. Conversion creates CONFIRMED; recording an
- * outward movement makes it DISPATCHED, and the inward movement that brings
- * the last of its goods back makes it RETURNED; completing needs RETURNED and a
+ * outward movement makes it DISPATCHED, staff may then mark it INSTALLATION (the
+ * one stage with no stock movement, and optional), and the inward movement that
+ * brings the last of its goods back makes it RETURNED; completing needs RETURNED and a
  * refunded or forfeited deposit. Only a CONFIRMED order can be cancelled.
  */
 export const ORDER_STATUSES = [
   "CONFIRMED",
   "DISPATCHED",
+  "INSTALLATION",
   "RETURNED",
   "COMPLETED",
   "CANCELLED",
@@ -21,6 +23,7 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 export const ORDER_STATUS_MEANING: Record<OrderStatus, string> = {
   CONFIRMED: "Converted from a quotation. Nothing has been dispatched yet.",
   DISPATCHED: "Goods are out with the customer.",
+  INSTALLATION: "Goods are being installed at the venue. Record the return once they are back.",
   RETURNED: "Everything dispatched has come back. Settle the deposit to complete it.",
   COMPLETED: "Returned and the deposit settled. Terminal.",
   CANCELLED: "Cancelled before dispatch. Terminal.",
@@ -56,6 +59,7 @@ export interface OrderView {
   sourceReference: string | null;
   createdAt?: string | null;
   dispatchedAt?: string | null;
+  installationStartedAt?: string | null;
   returnedAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;

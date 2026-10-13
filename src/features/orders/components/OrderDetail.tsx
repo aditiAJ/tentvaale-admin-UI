@@ -15,6 +15,7 @@ import {
   MapPin,
   PiggyBank,
   Truck,
+  Wrench,
   X,
 } from "lucide-react";
 import { getOrder, orderKeys } from "@/features/orders/api";
@@ -50,7 +51,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
-const FLOW: OrderStatus[] = ["CONFIRMED", "DISPATCHED", "RETURNED", "COMPLETED"];
+const FLOW: OrderStatus[] = ["CONFIRMED", "DISPATCHED", "INSTALLATION", "RETURNED", "COMPLETED"];
 
 const title = (status: string) =>
   status.charAt(0) + status.slice(1).replace("_", " ").toLowerCase();
@@ -434,6 +435,17 @@ function NextStep({
         </Button>
       ) : null;
       break;
+    case "INSTALLATION":
+      icon = <Wrench />;
+      heading = "Being installed";
+      detail = fulfilment ? `${fulfilment.stillOut} out at the venue` : null;
+      actions = can.writeStock ? (
+        <Button size="sm" onClick={() => onMove("INWARD")}>
+          <ArrowDownLeft />
+          Record return
+        </Button>
+      ) : null;
+      break;
     case "DISPATCHED":
       heading = "Out on rent";
       detail = fulfilment
@@ -444,13 +456,21 @@ function NextStep({
             .filter(Boolean)
             .join(" · ")
         : null;
-      actions = can.writeStock ? (
+      actions = can.writeStock || can.writeOrder ? (
         <>
-          <Button size="sm" onClick={() => onMove("INWARD")}>
-            <ArrowDownLeft />
-            Record return
-          </Button>
-          {(fulfilment?.leftToDispatch ?? 0) > 0 ? (
+          {can.writeOrder ? (
+            <Button size="sm" onClick={() => onAct("start-installation")}>
+              <Wrench />
+              Start installation
+            </Button>
+          ) : null}
+          {can.writeStock ? (
+            <Button size="sm" variant={can.writeOrder ? "outline" : "default"} onClick={() => onMove("INWARD")}>
+              <ArrowDownLeft />
+              Record return
+            </Button>
+          ) : null}
+          {can.writeStock && (fulfilment?.leftToDispatch ?? 0) > 0 ? (
             <Button size="sm" variant="outline" onClick={() => onMove("OUTWARD")}>
               <ArrowUpRight />
               Dispatch the rest
