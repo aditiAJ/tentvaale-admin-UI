@@ -17,7 +17,9 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [changingPassword, setChangingPassword] = useState(false);
 
   return (
-    <header className="relative flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
+    // Pinned to the top (3.5rem tall), so the menu button and the account menu are always in reach on a long page.
+    // Dialogs (z-50) and the account dropdown sit above it.
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
       <Button
         variant="ghost"
         size="icon"

@@ -61,7 +61,7 @@ export function WorkspaceLayout({
 }) {
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
-      <nav aria-label={navLabel} className="md:sticky md:top-4 md:w-52 md:shrink-0">
+      <nav aria-label={navLabel} className="md:sticky md:top-18 md:w-52 md:shrink-0">
         <p className="mb-1 hidden px-2 text-[0.65rem] font-semibold tracking-wider text-muted-foreground uppercase md:block">
           {heading}
         </p>

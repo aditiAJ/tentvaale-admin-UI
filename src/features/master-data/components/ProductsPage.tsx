@@ -142,7 +142,9 @@ export function ProductsPage({
           <aside
             id="product-filters"
             aria-label="Product filters"
-            className="w-full shrink-0 lg:sticky lg:top-4 lg:w-64"
+            // Stays in view below the top bar, and scrolls inside itself: the list of filters is longer than a screen,
+            // and a sticky box taller than the screen would leave its lower filters out of reach.
+            className="w-full shrink-0 lg:sticky lg:top-18 lg:max-h-[calc(100dvh-5.5rem)] lg:w-64 lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden"
           >
             <ProductFilterPanel
               products={data ?? []}
