@@ -2,6 +2,7 @@
 
 import { Check, Pencil } from "lucide-react";
 import type { BundleView, MediaAsset } from "@/features/master-data/types";
+import { quantityLabel } from "@/features/master-data/storefront";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { formatMoney } from "@/lib/money";
 import { Badge } from "@/components/ui/badge";
@@ -138,7 +139,7 @@ export function BundleDetailsDialog({
                     ) : null}
                   </div>
                   <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs font-semibold tabular">
-                    × {component.quantity}
+                    {quantityLabel(component.quantity, component.rateType)}
                   </span>
                 </li>
               ))}

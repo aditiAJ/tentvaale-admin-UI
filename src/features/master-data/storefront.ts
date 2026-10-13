@@ -19,6 +19,18 @@ export const RATE_TYPE_LABEL: Record<RateType, string> = {
   SqFt: "per sq ft",
 };
 
+/** A quantity with what it counts: "4 pcs", "120 sq ft", "30 rft". Without a rate type it is just the number. */
+export function quantityLabel(quantity: number, rateType?: RateType | null): string {
+  if (!rateType) return String(quantity);
+  if (rateType === "Qty" && quantity === 1) return "1 pc";
+  return `${quantity} ${unitLabel(rateType)}`;
+}
+
+/** What a quantity of this product counts. */
+export function unitLabel(rateType?: RateType | null): string {
+  return rateType === "SqFt" ? "sq ft" : rateType === "RFt" ? "rft" : "pcs";
+}
+
 /** Where a product can be used, as the storefront's Indoor / outdoor spec. */
 export const PRODUCT_SETTINGS = ["Indoor", "Outdoor", "Indoor & outdoor"] as const;
 export type ProductSetting = (typeof PRODUCT_SETTINGS)[number];

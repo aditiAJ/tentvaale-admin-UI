@@ -22,6 +22,7 @@ import {
   updateBundle,
 } from "@/features/master-data/api";
 import { addBundleComponent } from "@/features/master-data/bundles";
+import { unitLabel } from "@/features/master-data/storefront";
 import {
   BUNDLE_HIGHLIGHT_LIMIT,
   BUNDLE_OCCASION_LIMIT,
@@ -599,6 +600,9 @@ export function BundleDialog({
                         className="tabular h-8 w-20 text-right"
                         disabled={mutation.isPending}
                       />
+                      <span className="w-10 text-xs text-muted-foreground">
+                        {unitLabel(byId.get(field.productId)?.rateType)}
+                      </span>
                       <Button
                         type="button"
                         variant="ghost"

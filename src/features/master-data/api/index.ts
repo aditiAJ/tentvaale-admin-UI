@@ -338,6 +338,11 @@ export function setBundleActive(bundleId: string, active: boolean): Promise<Bund
   return backend.setBundleActive(bundleId, active);
 }
 
+export function setBundleFeatured(bundleId: string, featured: boolean): Promise<BundleView> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.setBundleFeatured(bundleId, featured);
+}
+
 export function deleteBundle(bundleId: string): Promise<void> {
   if (IS_MOCK) return mockDeleteBundle(bundleId);
   return backend.deleteBundle(bundleId);

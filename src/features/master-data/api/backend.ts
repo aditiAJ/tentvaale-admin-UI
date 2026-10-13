@@ -1076,6 +1076,7 @@ interface WireBundleItem {
   variantId?: number | null;
   variantName?: string | null;
   quantity: number;
+  rateType?: WireProduct["rateType"];
   productActive: boolean;
   swapOptions: WireBundleSwap[];
 }
@@ -1097,6 +1098,7 @@ interface WireBundle {
   fromPricePerEvent: number;
   discountPercent?: number;
   discountedPrice?: number;
+  featured?: boolean;
 }
 
 interface WireCollection {
@@ -1214,6 +1216,7 @@ function bundleFromWire(bundle: WireBundle, occasions: Map<number, WireOccasion>
       productName: item.productName,
       sku: "",
       quantity: item.quantity,
+      rateType: item.rateType ? RATE_FROM_WIRE[item.rateType] : undefined,
       active: item.productActive,
       variantId: item.variantId == null ? null : String(item.variantId),
       variantName: item.variantName ?? null,
@@ -1228,6 +1231,7 @@ function bundleFromWire(bundle: WireBundle, occasions: Map<number, WireOccasion>
     rentalRate: money(bundle.fromPricePerEvent),
     discountPercent: bundle.discountPercent ?? 0,
     discountedPrice: money(bundle.discountedPrice ?? bundle.fromPricePerEvent),
+    featured: bundle.featured ?? false,
     media: bundle.imageUrl ? [mediaFromUrl(bundle.imageUrl)] : [],
     occasions: bundle.occasionIds.flatMap((id) => {
       const occasion = occasions.get(id);
@@ -1292,6 +1296,15 @@ export async function updateBundle(
 export async function setBundleActive(bundleId: string, active: boolean): Promise<BundleView> {
   const changed = await apiFetch<WireBundle>(
     `${BASE}/bundles/${bundleId}/${active ? "activate" : "deactivate"}`,
+    { method: "POST" },
+  );
+  return bundleFromWire(changed, occasionsById(await fetchOccasions()));
+}
+
+/** A featured bundle is shown on the storefront beside the featured collections. */
+export async function setBundleFeatured(bundleId: string, featured: boolean): Promise<BundleView> {
+  const changed = await apiFetch<WireBundle>(
+    `${BASE}/bundles/${bundleId}/${featured ? "feature" : "unfeature"}`,
     { method: "POST" },
   );
   return bundleFromWire(changed, occasionsById(await fetchOccasions()));

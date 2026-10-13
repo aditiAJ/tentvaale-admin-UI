@@ -383,6 +383,8 @@ export interface BundleView extends BundleStorefrontDetails {
   discountPercent?: number;
   /** The one-day sum after the discount. Real backend only. */
   discountedPrice?: Money;
+  /** Shown on the storefront beside the featured collections (while the bundle is active). Real backend only. */
+  featured?: boolean;
   /** The bundle's own representative image, not a composite of its products'. */
   media: MediaAsset[];
   /**
@@ -459,6 +461,8 @@ export interface BundleComponentView {
   sku: string;
   /** A whole number of at least one. */
   quantity: number;
+  /** What `quantity` counts: pieces, square feet or running feet. Absent when the source does not say. */
+  rateType?: RateType;
   /** False once the product itself is deactivated; it stays in the bundle. */
   active: boolean;
   /** Set for a product that has variants: the one this line is. */

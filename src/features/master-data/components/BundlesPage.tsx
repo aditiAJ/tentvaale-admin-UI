@@ -1,15 +1,18 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, Info, Pencil, Plus, Search, Shapes, Tags, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Eye, EyeOff, Info, Pencil, Plus, Search, Shapes, Star, Tags, Trash2 } from "lucide-react";
 import {
   deleteBundle,
   listBundles,
   masterDataKeys,
   setBundleActive,
+  setBundleFeatured,
 } from "@/features/master-data/api";
 import type { BundleView } from "@/features/master-data/types";
+import { quantityLabel } from "@/features/master-data/storefront";
 import { BundleDetailsDialog } from "@/features/master-data/components/BundleDetailsDialog";
 import { BundleDialog } from "@/features/master-data/components/BundleDialog";
 import { BundleOccasionsDialog } from "@/features/master-data/components/BundleOccasionsDialog";
@@ -71,6 +74,20 @@ export function BundlesPage() {
     queryFn: ({ signal }) => listBundles(signal),
   });
   const productMedia = useProductMedia();
+
+  const featuring = useMutation({
+    mutationFn: (bundle: BundleView) => setBundleFeatured(bundle.id, !bundle.featured),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: masterDataKeys.bundles });
+      queryClient.invalidateQueries({ queryKey: masterDataKeys.featuredCollections });
+      toast.success(
+        updated.featured
+          ? `${updated.name} is now a featured collection. Add images and details under Featured collections.`
+          : `${updated.name} is no longer featured (its collection is hidden, not deleted).`,
+      );
+    },
+    onError: (failure) => toast.error(failure instanceof Error ? failure.message : "Could not change the bundle."),
+  });
 
   // The occasion chips offer the occasions bundles are really filed under, each with its bundle count.
   const occasions = useMemo(() => {
@@ -236,6 +253,12 @@ export function BundlesPage() {
                   />
                   <div className="pointer-events-none absolute top-2 left-2 flex gap-1.5">
                     {inactive ? <Badge className="bg-card/90">Inactive</Badge> : null}
+                    {bundle.featured ? (
+                      <Badge variant="outline" className="bg-card/90 text-primary">
+                        <Star className="fill-current" />
+                        Featured
+                      </Badge>
+                    ) : null}
                     {(bundle.discountPercent ?? 0) > 0 ? (
                       <Badge variant="outline" className="bg-card/90 text-primary">
                         {bundle.discountPercent}% off
@@ -301,7 +324,7 @@ export function BundlesPage() {
                               {component.productName}
                               {component.variantName ? ` (${component.variantName})` : ""}
                             </span>
-                            <span className="shrink-0 text-muted-foreground tabular">× {component.quantity}</span>
+                            <span className="shrink-0 text-muted-foreground tabular">{quantityLabel(component.quantity, component.rateType)}</span>
                           </li>
                         ))}
                       </ul>
@@ -336,6 +359,17 @@ export function BundlesPage() {
                   </Button>
                   {canWrite ? (
                     <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => featuring.mutate(bundle)}
+                        disabled={featuring.isPending}
+                        aria-pressed={Boolean(bundle.featured)}
+                        aria-label={`${bundle.featured ? "Remove" : "Add"} ${bundle.name} ${bundle.featured ? "from" : "to"} featured`}
+                        title={bundle.featured ? "Featured collection: click to hide it" : "Make this bundle a featured collection"}
+                      >
+                        <Star className={bundle.featured ? "fill-current text-primary" : undefined} />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
