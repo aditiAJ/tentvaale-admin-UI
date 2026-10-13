@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Loader2, X } from "lucide-react";
+import { Loader2, ChevronsLeft, ChevronsRight, X } from "lucide-react";
 import { Sidebar } from "@/layouts/Sidebar";
+import { useSidebarCollapsed } from "@/layouts/useSidebarCollapsed";
 import { Topbar } from "@/layouts/Topbar";
 import { useSession } from "@/features/auth";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const fullWidth = FULL_WIDTH_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`));
 
   useEffect(() => {
@@ -49,8 +51,32 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <Topbar onOpenMenu={() => setMenuOpen(true)} />
 
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-60 shrink-0 border-r border-border bg-card lg:block">
-          <Sidebar />
+        {/* Pinned under the top bar and as tall as what is left of the screen: the page scrolls, the menu stays, and
+            a long menu scrolls inside itself (Sidebar's nav is overflow-y-auto). */}
+        <aside
+          id="desktop-sidebar"
+          data-collapsed={collapsed}
+          className={cn(
+            "sticky top-14 hidden h-[calc(100dvh-3.5rem)] z-20 shrink-0 self-start flex-col border-r border-border bg-card transition-[width] duration-200 motion-reduce:transition-none lg:flex",
+            collapsed ? "w-14" : "w-60",
+          )}
+        >
+          {/* A round handle on the sidebar's edge, like a drawer pull. */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            aria-controls="desktop-sidebar"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="absolute top-4 -right-3.5 z-10 size-7 rounded-full border-primary bg-card text-primary shadow-sm hover:bg-primary/10"
+          >
+            {collapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+          </Button>
+          <div className="min-h-0 flex-1">
+            <Sidebar collapsed={collapsed} />
+          </div>
         </aside>
 
         {menuOpen ? (
