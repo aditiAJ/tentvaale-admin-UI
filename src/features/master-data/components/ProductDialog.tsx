@@ -57,6 +57,7 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { TagInput, ToggleChips } from "@/components/ui/tag-input";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
 const FORM_ID = "product-form";
 const DEFAULT_SKU_OWNER = "Tentvaale";
@@ -283,18 +284,29 @@ function AffixInput({
 function ProductForm({
   existing,
   grid,
+  initialStep = 0,
+  onSaved,
   onClose,
 }: {
   existing?: ProductView;
   /** An existing product's stock per variant and warehouse; absent when it could not be loaded. */
   grid?: StockGrid;
+  /** The step to open on: after a Save & Next the form is rebuilt from what was saved and carries on from here. */
+  initialStep?: number;
+  /**
+   * Called after a Save & Next with the saved product and the step to go to. The dialog around the form then rebuilds
+   * this form from the saved product (see ProductDialog), so what is on screen is what the server holds.
+   */
+  onSaved?: (product: ProductView, nextStep: number) => Promise<void>;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaAsset[]>(existing?.media ?? []);
   const [mediaBusy, setMediaBusy] = useState(false);
-  const [step, setStep] = useState(0);
+  // Whether the photos or video were changed here: the form's own dirty flag cannot see them.
+  const [mediaTouched, setMediaTouched] = useState(false);
+  const [step, setStep] = useState(initialStep);
 
   const categories = useQuery({
     queryKey: masterDataKeys.categories,
@@ -386,7 +398,7 @@ function ProductForm({
     handleSubmit,
     setValue,
     trigger,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = form;
 
   const attributeRows = useFieldArray({ control, name: "attributes" });
@@ -437,8 +449,33 @@ function ProductForm({
     return [...new Set([...inCategory, ...ATTRIBUTE_SUGGESTIONS])];
   }, [products.data, selectedCategoryId, existing?.id]);
 
+  // The names already used as a SKU owner, each with how many products carry it. Tentvaale is always on offer,
+  // then the rest in alphabetical order; a name typed that is not here is simply a new one.
+  const ownerOptions = useMemo<ComboboxOption[]>(() => {
+    const counts = new Map<string, { name: string; count: number }>();
+    for (const product of products.data ?? []) {
+      const name = (product.skuOwner ?? "").trim();
+      if (!name) continue;
+      const entry = counts.get(name.toLowerCase());
+      if (entry) entry.count += 1;
+      else counts.set(name.toLowerCase(), { name, count: 1 });
+    }
+    if (!counts.has(DEFAULT_SKU_OWNER.toLowerCase())) {
+      counts.set(DEFAULT_SKU_OWNER.toLowerCase(), { name: DEFAULT_SKU_OWNER, count: 0 });
+    }
+    return [...counts.values()]
+      .sort((a, b) =>
+        a.name === DEFAULT_SKU_OWNER ? -1 : b.name === DEFAULT_SKU_OWNER ? 1 : a.name.localeCompare(b.name),
+      )
+      .map(({ name, count }) => ({
+        value: name,
+        hint: count > 0 ? `${count} product${count === 1 ? "" : "s"}` : undefined,
+      }));
+  }, [products.data]);
+
   const mutation = useMutation({
-    mutationFn: (values: FormOutput) => {
+    // `nextStep` is set by Save & Next: the product is saved and the dialog stays open on that step.
+    mutationFn: ({ values }: { values: FormOutput; nextStep?: number }) => {
       const { length, width, height, dimensionUnit, variants, stock, ...rest } = values;
       // A warehouse that held some of a variant and is no longer listed is emptied.
       const emptied = (variantId: string | undefined, kept: { warehouseId: string }[]) =>
@@ -501,7 +538,7 @@ function ProductForm({
       };
       return existing ? updateProduct(existing.id, request) : createProduct(request);
     },
-    onSuccess: (product) => {
+    onSuccess: async (product, { nextStep }) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.products });
       queryClient.invalidateQueries({ queryKey: ["master-data", "stock-grid"] });
       // Stock entered with the product shows on the Warehouses page.
@@ -509,6 +546,13 @@ function ProductForm({
       // Collections and bundles show each product's name (and collections its image).
       queryClient.invalidateQueries({ queryKey: masterDataKeys.featuredCollections });
       queryClient.invalidateQueries({ queryKey: masterDataKeys.bundles });
+      if (nextStep !== undefined && onSaved) {
+        toast.success(`${product.name} saved`, { description: `Now: ${STEPS[nextStep].label}` });
+        // The dialog rebuilds this form from the saved product, so a variant added here carries its new id
+        // into the next save instead of being created a second time.
+        await onSaved(product, nextStep);
+        return;
+      }
       toast.success(existing ? `${product.name} updated` : `${product.name} added`, {
         description: `SKU ${product.sku}`,
       });
@@ -538,20 +582,39 @@ function ProductForm({
     if (target < step || (await stepsValid(step, target - 1))) setStep(target);
   };
 
-  const submit = handleSubmit(
-    (values) => {
-      // Enter in a text field submits even while the button is disabled, and a
-      // save now would drop the files still being prepared.
-      if (mediaBusy) return;
-      setFormError(null);
-      mutation.mutate(values);
-    },
-    (invalid: FieldErrors<FormInput>) => {
-      // A rule broken on a step that is not showing: take the admin to it.
-      const broken = STEPS.findIndex((candidate) => candidate.fields.some((name) => name in invalid));
-      if (broken >= 0) setStep(broken);
-    },
-  );
+  const onInvalid = (invalid: FieldErrors<FormInput>) => {
+    // A rule broken on a step that is not showing: take the admin to it.
+    const broken = STEPS.findIndex((candidate) => candidate.fields.some((name) => name in invalid));
+    if (broken >= 0) setStep(broken);
+  };
+
+  const submit = handleSubmit((values) => {
+    // Enter in a text field submits even while the button is disabled, and a
+    // save now would drop the files still being prepared.
+    if (mediaBusy) return;
+    setFormError(null);
+    mutation.mutate({ values });
+  }, onInvalid);
+
+  /**
+   * Save & Next, for a product that already exists: this step must be sound, then everything typed so far is saved
+   * (an update replaces the whole product) and the dialog moves on. With nothing changed there is nothing to save,
+   * so it simply moves on. A new product is not created until the last step, so it never goes through here.
+   */
+  const saveAndNext = async () => {
+    if (mediaBusy || mutation.isPending) return;
+    if (!(await trigger(STEPS[step].fields))) return;
+    const next = step + 1;
+    if (!isDirty && !mediaTouched) {
+      setStep(next);
+      return;
+    }
+    setFormError(null);
+    await handleSubmit((values) => mutation.mutate({ values, nextStep: next }), onInvalid)();
+  };
+
+  /** One step on: saving first for an existing product, plain navigation for a new one. */
+  const nextStep = () => (existing ? void saveAndNext() : void goTo(step + 1));
 
   const retailRate = useWatch({ control, name: "retailRate" });
   const wholesaleRate = useWatch({ control, name: "wholesaleRate" });
@@ -578,7 +641,8 @@ function ProductForm({
       open
       onClose={onClose}
       title={existing ? "Edit product" : "New product"}
-      className="max-w-2xl"
+      // Landscape on a desktop (the fields sit in pairs); on a phone the panel is the screen's width and they stack.
+      className="max-w-5xl"
       description={
         existing
           ? `SKU ${existing.sku}`
@@ -596,10 +660,25 @@ function ProductForm({
             </Button>
           ) : null}
           {step < LAST_STEP ? (
-            <Button key="next" type="button" onClick={() => void goTo(step + 1)} disabled={busy}>
-              Next
-              <ArrowRight />
-            </Button>
+            existing ? (
+              // An existing product saves as it goes (MOM follow-up, 2026-10-13); a new one is created once, at the end.
+              <Button
+                key="save-next"
+                type="button"
+                onClick={() => void saveAndNext()}
+                disabled={busy || mediaBusy}
+                title="Saves your changes, then goes to the next step"
+              >
+                {busy ? <Loader2 className="animate-spin" /> : null}
+                Save &amp; Next
+                {busy ? null : <ArrowRight />}
+              </Button>
+            ) : (
+              <Button key="next" type="button" onClick={() => void goTo(step + 1)} disabled={busy}>
+                Next
+                <ArrowRight />
+              </Button>
+            )
           ) : (
             <Button key="create" form={FORM_ID} type="submit" disabled={busy || mediaBusy}>
               {busy ? <Loader2 className="animate-spin" /> : null}
@@ -661,10 +740,10 @@ function ProductForm({
       <form
         id={FORM_ID}
         onSubmit={(event) => {
-          // Enter on a step that is not the last means "next", not "save".
+          // Enter on a step that is not the last means "next" (Save & Next for an existing product), not "save and close".
           if (step < LAST_STEP) {
             event.preventDefault();
-            void goTo(step + 1);
+            nextStep();
             return;
           }
           void submit(event);
@@ -681,7 +760,7 @@ function ProductForm({
             !target.hasAttribute("list")
           ) {
             event.preventDefault();
-            void goTo(step + 1);
+            nextStep();
           }
         }}
         className="space-y-4"
@@ -691,21 +770,7 @@ function ProductForm({
 
         {/* Step 1 — product details */}
         <div className={cn("space-y-5", step !== 0 && "hidden")}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name" required error={errors.name?.message}>
-              {(props) => <Input {...props} {...register("name")} placeholder="Gold Chiavari Chair" autoComplete="off" />}
-            </Field>
-
-            <Field
-              label="Generic name"
-              required
-              error={errors.genericName?.message}
-              hint="The plain name, without size or colour."
-            >
-              {(props) => <Input {...props} {...register("genericName")} placeholder="Chair" autoComplete="off" />}
-            </Field>
-          </div>
-
+          {/* Order (MOM follow-up, 2026-10-13): Category, Sub-category, Name, Generic name + HSN code, SKU owner + SKU. */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Category" required error={errors.categoryId?.message}>
               {(props) => (
@@ -759,6 +824,66 @@ function ProductForm({
                     </option>
                   ))}
                 </Select>
+              )}
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Name" required error={errors.name?.message}>
+              {(props) => <Input {...props} {...register("name")} placeholder="Gold Chiavari Chair" autoComplete="off" />}
+            </Field>
+
+            <Field
+              label="Generic name"
+              required
+              error={errors.genericName?.message}
+              hint="The plain name, without size or colour."
+            >
+              {(props) => <Input {...props} {...register("genericName")} placeholder="Chair" autoComplete="off" />}
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="HSN code" error={errors.hsnCode?.message} hint="Optional. 4, 6 or 8 digits, for GST invoices.">
+              {(props) => <Input {...props} {...register("hsnCode")} placeholder="940360" inputMode="numeric" maxLength={8} autoComplete="off" />}
+            </Field>
+
+            <Field
+              label="SKU owner"
+              error={errors.skuOwner?.message}
+              hint="Whose stock this is. Pick a name already used, or type a new one."
+            >
+              {(props) => (
+                <Controller
+                  control={control}
+                  name="skuOwner"
+                  render={({ field }) => (
+                    <Combobox
+                      {...props}
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      options={ownerOptions}
+                      placeholder={DEFAULT_SKU_OWNER}
+                    />
+                  )}
+                />
+              )}
+            </Field>
+
+            <Field
+              label="SKU"
+              hint={existing ? "Never changes once given." : "Numbered automatically when you save."}
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  readOnly
+                  tabIndex={-1}
+                  value={skuPreview ?? ""}
+                  placeholder="Numbered when you save"
+                  className="bg-muted font-mono text-muted-foreground"
+                />
               )}
             </Field>
           </div>
@@ -834,43 +959,11 @@ function ProductForm({
             ) : null}
           </fieldset>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="HSN code" error={errors.hsnCode?.message} hint="Optional. 4, 6 or 8 digits, for GST invoices.">
-              {(props) => <Input {...props} {...register("hsnCode")} placeholder="940360" inputMode="numeric" maxLength={8} autoComplete="off" />}
-            </Field>
-          </div>
-
           <Field label="Description" error={errors.description?.message}>
             {(props) => (
               <Textarea {...props} {...register("description")} placeholder="Optional details customers will read" />
             )}
           </Field>
-
-          <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-            <Field
-              label="SKU owner"
-              error={errors.skuOwner?.message}
-              hint="Whose stock this is. Tentvaale unless it is sub-hired from a partner."
-            >
-              {(props) => <Input {...props} {...register("skuOwner")} placeholder={DEFAULT_SKU_OWNER} autoComplete="off" />}
-            </Field>
-
-            <Field
-              label="SKU"
-              hint={existing ? "Never changes once given." : "Numbered automatically when you save."}
-            >
-              {(props) => (
-                <Input
-                  {...props}
-                  readOnly
-                  tabIndex={-1}
-                  value={skuPreview ?? ""}
-                  placeholder="Numbered when you save"
-                  className="bg-muted font-mono text-muted-foreground"
-                />
-              )}
-            </Field>
-          </div>
 
           {/* The product's own stock: plain pieces, counted in addition to its variants (100 plain + 20 Gold + 20 Silver = 140). */}
           {!existing || (setupLoaded && defaultVariant) ? (
@@ -1085,7 +1178,10 @@ function ProductForm({
           <MediaField
             media={media}
             limits={PRODUCT_MEDIA_LIMITS}
-            onChange={setMedia}
+            onChange={(next) => {
+              setMedia(next);
+              setMediaTouched(true);
+            }}
             onBusyChange={setMediaBusy}
             disabled={busy}
             allowUrl={false}
@@ -1103,6 +1199,12 @@ function ProductForm({
  * the starting point of the "Variants & stock" step.
  */
 export function ProductDialog({ existing, onClose }: { existing?: ProductView; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  // After a Save & Next the form is rebuilt from the product as it was just saved (its fresh stock grid with it), and
+  // opens on the next step. Rebuilding, rather than patching the form, is what gives a variant added in this
+  // session its real id, so the next save updates it instead of creating it again.
+  const [saved, setSaved] = useState<{ product: ProductView; grid: StockGrid; step: number; version: number } | null>(null);
+  const current = saved?.product ?? existing;
   const grid = useQuery({
     queryKey: ["master-data", "stock-grid", existing?.id],
     queryFn: ({ signal }) => getStockGrid(existing!.id, signal),
@@ -1116,5 +1218,21 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
       </Dialog>
     );
   }
-  return <ProductForm existing={existing} grid={grid.data} onClose={onClose} />;
+  return (
+    <ProductForm
+      key={saved?.version ?? 0}
+      existing={current}
+      grid={saved?.grid ?? grid.data}
+      initialStep={saved?.step ?? 0}
+      onSaved={async (product, step) => {
+        const fresh = await queryClient.fetchQuery({
+          queryKey: ["master-data", "stock-grid", product.id],
+          queryFn: ({ signal }) => getStockGrid(product.id, signal),
+          staleTime: 0,
+        });
+        setSaved((previous) => ({ product, grid: fresh, step, version: (previous?.version ?? 0) + 1 }));
+      }}
+      onClose={onClose}
+    />
+  );
 }

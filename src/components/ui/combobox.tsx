@@ -1,0 +1,193 @@
+"use client";
+
+import { useId, useMemo, useRef, useState } from "react";
+import { ChevronDown, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export interface ComboboxOption {
+  value: string;
+  /** Shown to the right of the value, e.g. "48 products". */
+  hint?: string;
+}
+
+/**
+ * A text box with a list of names to pick from, for a value that is usually one of a known set but may be new
+ * (the SKU owner: a name already used on other products, or a partner not seen before).
+ *
+ * The box holds the value as it is typed, so nothing is ever refused. The list opens on focus (or with the arrow
+ * button, which is what a phone uses), narrows as you type, and arrow keys, Enter and a tap pick from it. A typed
+ * name that is not in the list is offered as "Use “name”" so it is clear it will be new. Escape closes the list
+ * without closing the dialog around it; Enter never submits the form.
+ *
+ * A custom list rather than the browser's `<datalist>`, for the reasons given on TagInput: it cannot be styled,
+ * sized to the box or used reliably on a touch screen.
+ */
+export function Combobox({
+  id,
+  value,
+  onChange,
+  onBlur,
+  options,
+  placeholder,
+  disabled,
+  ...aria
+}: {
+  id?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  options: readonly ComboboxOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+}) {
+  const listId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  // Enter takes the highlighted entry only once the arrow keys have been used.
+  const [navigated, setNavigated] = useState(false);
+
+  const typed = value.trim();
+  const term = typed.toLowerCase();
+  const exact = options.some((option) => option.value.toLowerCase() === term);
+
+  // A value that is already one of the names shows the whole list, so it can be swapped for another;
+  // anything else narrows the list to what it matches, best matches first.
+  const entries = useMemo(() => {
+    const matching = options
+      .filter((option) => exact || !term || option.value.toLowerCase().includes(term))
+      .sort((a, b) => {
+        const rank = (option: ComboboxOption) => (exact || option.value.toLowerCase().startsWith(term) ? 0 : 1);
+        return rank(a) - rank(b);
+      })
+      .map((option) => ({ ...option, custom: false }));
+    return typed && !exact ? [...matching, { value: typed, hint: "new", custom: true }] : matching;
+  }, [options, term, typed, exact]);
+
+  const showList = open && !disabled && entries.length > 0;
+  const highlighted = Math.min(active, Math.max(entries.length - 1, 0));
+  const optionId = (index: number) => `${listId}-option-${index}`;
+
+  const pick = (next: string) => {
+    onChange(next);
+    setOpen(false);
+    setNavigated(false);
+    input.current?.focus();
+  };
+
+  return (
+    <div className="relative">
+      <div
+        className={cn(
+          "flex h-9 w-full items-center rounded-md border border-border bg-input text-sm transition-colors",
+          "focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30",
+          aria["aria-invalid"] && "border-destructive ring-2 ring-destructive/20",
+          disabled && "opacity-60",
+        )}
+      >
+        <input
+          ref={input}
+          id={id}
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls={showList ? listId : undefined}
+          aria-activedescendant={showList ? optionId(highlighted) : undefined}
+          aria-autocomplete="list"
+          autoComplete="off"
+          value={value}
+          disabled={disabled}
+          placeholder={placeholder}
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setActive(0);
+            setNavigated(false);
+            setOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if (!entries.length) return;
+              event.preventDefault();
+              setOpen(true);
+              setNavigated(true);
+              const step = event.key === "ArrowDown" ? 1 : -1;
+              setActive((highlighted + step + entries.length) % entries.length);
+            } else if (event.key === "Enter") {
+              // Enter picks or closes; it must not submit or advance the form around the box.
+              event.preventDefault();
+              if (showList && navigated && entries[highlighted]) pick(entries[highlighted].value);
+              else setOpen(false);
+            } else if (event.key === "Escape" && showList) {
+              event.preventDefault();
+              // React listens on the document itself, where the dialog's Escape handler also sits.
+              event.nativeEvent.stopImmediatePropagation();
+              setOpen(false);
+            }
+          }}
+          onBlur={() => {
+            // A name typed with stray spaces is kept tidy.
+            if (value !== typed) onChange(typed);
+            setOpen(false);
+            onBlur?.();
+          }}
+          className="h-full min-w-0 flex-1 bg-transparent px-3 outline-none placeholder:text-muted-foreground/70"
+          {...aria}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          aria-label="Show the list"
+          // Mouse down, not click: the box keeps focus, or its blur would close the list before the tap lands.
+          onMouseDown={(event) => {
+            event.preventDefault();
+            input.current?.focus();
+            setOpen((current) => !current);
+          }}
+          className="flex h-full w-9 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+        >
+          <ChevronDown className={cn("size-4 transition-transform", showList && "rotate-180")} />
+        </button>
+      </div>
+
+      {showList ? (
+        <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+          <ul id={listId} role="listbox" className="max-h-56 overflow-y-auto p-1">
+            {entries.map((entry, index) => (
+              <li
+                key={`${entry.custom ? "new" : "o"}-${entry.value}`}
+                id={optionId(index)}
+                role="option"
+                aria-selected={index === highlighted}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pick(entry.value);
+                }}
+                onMouseMove={() => setActive(index)}
+                className={cn(
+                  // Tall enough to tap on a phone.
+                  "flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm",
+                  index === highlighted ? "bg-primary/10 text-primary" : "text-foreground",
+                )}
+              >
+                {entry.custom ? (
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Plus className="size-3.5 shrink-0" />
+                    <span className="truncate">
+                      Use <span className="font-medium">“{entry.value}”</span>
+                    </span>
+                  </span>
+                ) : (
+                  <span className="truncate">{entry.value}</span>
+                )}
+                {entry.hint ? <span className="shrink-0 text-xs text-muted-foreground">{entry.hint}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
