@@ -18,7 +18,7 @@ import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/t
 
 /** Rental suppliers and what each can provide. Internal only: customers never see a supplier. */
 export function SuppliersPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("LOGISTICS_WRITE");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SupplierView | null>(null);
   const [viewingStock, setViewingStock] = useState<SupplierView | null>(null);

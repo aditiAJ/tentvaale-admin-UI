@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
  * A product added to a warehouse appears in that warehouse's tab straight away.
  */
 export function WarehousesPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("LOGISTICS_WRITE");
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<WarehouseView | null>(null);

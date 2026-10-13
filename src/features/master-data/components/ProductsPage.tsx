@@ -162,13 +162,15 @@ export function ProductsPage({
           ) : null}
 
           {!isPending && visible.length > 0 ? (
-            <div className={`grid items-start gap-4 ${gridCols}`}>
+            // Cards in a row are stretched to the tallest one (no `items-start`), and each card is built from blocks of
+            // a fixed size, so a product with less to say (no description, a short name) is no smaller than its neighbour.
+            <div className={`grid gap-4 ${gridCols}`}>
               {visible.map((product) => {
                 const inactive = product.active === false;
                 return (
                   <article
                     key={product.id}
-                    className="flex flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-colors hover:border-primary/50"
+                    className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-colors hover:border-primary/50"
                   >
                     <ProductImageCarousel
                       media={product.media}
@@ -191,11 +193,15 @@ export function ProductsPage({
                         </span>
                       </div>
 
-                      <h3 className="mt-1 text-base leading-snug font-semibold">
+                      {/* Two lines are always reserved for the name, so one-line and two-line names line up. */}
+                      <h3
+                        title={product.name}
+                        className="mt-1 line-clamp-2 min-h-11 text-base leading-snug font-semibold"
+                      >
                         {product.name}
                       </h3>
 
-                      <p className="text-xs text-muted-foreground">
+                      <p className="truncate text-xs text-muted-foreground">
                         {product.categoryName
                           ? [product.categoryName, product.subCategoryName]
                               .filter(Boolean)
@@ -203,13 +209,12 @@ export function ProductsPage({
                           : "Uncategorised"}
                       </p>
 
-                      {product.genericName || product.description ? (
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
-                          {[product.genericName, product.description]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                      ) : null}
+                      {/* Two lines are reserved here too, filled or not. */}
+                      <p className="line-clamp-2 min-h-8 text-xs text-muted-foreground">
+                        {[product.genericName, product.description]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
 
                       <div className="mt-auto pt-2">
                         <p className="text-xs text-muted-foreground">

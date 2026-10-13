@@ -20,7 +20,7 @@ import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/t
 const capacity = new Intl.NumberFormat("en-IN");
 
 export function TrucksPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("LOGISTICS_WRITE");
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TruckView | null>(null);

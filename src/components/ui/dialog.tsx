@@ -93,7 +93,7 @@ export function Dialog({
         </div>
         <div className="px-4 py-4">{children}</div>
         {footer ? (
-          <div className="flex justify-end gap-2 border-t border-border px-4 py-3">{footer}</div>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">{footer}</div>
         ) : null}
       </div>
     </div>

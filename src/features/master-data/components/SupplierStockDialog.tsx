@@ -56,7 +56,7 @@ export function SupplierStockDialog({
   supplier: SupplierView;
   onClose: () => void;
 }) {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("LOGISTICS_WRITE");
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);

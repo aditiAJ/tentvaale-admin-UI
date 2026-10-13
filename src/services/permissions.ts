@@ -11,6 +11,7 @@
 export const PERMISSIONS = [
   "MASTER_DATA_READ",
   "MASTER_DATA_WRITE",
+  "LOGISTICS_WRITE",
   "QUOTATION_READ",
   "QUOTATION_WRITE",
   "QUOTATION_APPROVE",
@@ -39,7 +40,7 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const ROLES = ["ADMIN", "SALES", "WAREHOUSE", "ACCOUNTS"] as const;
+export const ROLES = ["ADMIN", "SALES", "OPERATIONS", "WAREHOUSE", "ACCOUNTS"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -47,6 +48,8 @@ export type Role = (typeof ROLES)[number];
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   ADMIN: "Full access, including settings and user management. Typically the owner.",
   SALES: "Drafts, edits and sends quotations and turns accepted ones into orders. An Admin approves quotations. Cannot move stock or issue credit.",
+  OPERATIONS:
+    "The Operations Manager. Runs execution: follows orders through dispatch, delivery, return and completion, manages trucks, suppliers, warehouses and their stock, and sees what is holding up a dispatch. Does not quote, handle money, or change the catalogue, users or settings.",
   WAREHOUSE: "Dispatches and receives goods. Reads orders; no financial access.",
   ACCOUNTS: "Payments received (records and verifies them), invoices, credit notes, deposits and reporting. Cannot create orders or move stock.",
 };
