@@ -15,7 +15,7 @@ import { PRINCIPAL_ADMIN, type Permission, type Role } from "@/services/permissi
 /** Roles map to permissions here only because there is no server to ask. */
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ADMIN: [
-    "MASTER_DATA_READ", "MASTER_DATA_WRITE",
+    "MASTER_DATA_READ", "MASTER_DATA_WRITE", "LOGISTICS_WRITE",
     "QUOTATION_READ", "QUOTATION_WRITE",
     "ORDER_READ", "ORDER_WRITE",
     "INVENTORY_READ", "INVENTORY_WRITE",
@@ -32,6 +32,13 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "CREDIT_NOTE_READ",
     "DEPOSIT_READ",
     "REPORTING_READ", "NOTIFICATION_READ",
+  ],
+  OPERATIONS: [
+    "MASTER_DATA_READ", "LOGISTICS_WRITE",
+    "ORDER_READ",
+    "INVENTORY_READ", "INVENTORY_WRITE",
+    "PAYMENT_READ",
+    "REPORTING_READ",
   ],
   WAREHOUSE: ["MASTER_DATA_READ", "ORDER_READ", "INVENTORY_READ", "INVENTORY_WRITE"],
   ACCOUNTS: [

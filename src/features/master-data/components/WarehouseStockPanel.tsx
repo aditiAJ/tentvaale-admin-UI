@@ -54,7 +54,7 @@ export function WarehouseStockPanel({
   adding: boolean;
   onCloseAdd: () => void;
 }) {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("LOGISTICS_WRITE");
   const queryClient = useQueryClient();
   const stockKey = masterDataKeys.warehouseProducts(warehouse.id);
   const [search, setSearch] = useState("");
