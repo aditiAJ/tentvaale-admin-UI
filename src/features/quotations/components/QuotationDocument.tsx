@@ -81,6 +81,8 @@ export interface QuotationDoc {
   subtotal: number | null;
   bundleDiscounts: { label: string; amount: number }[];
   discount: number;
+  /** "Discount (10%)" for a percentage discount, "Discount" for a flat one. */
+  discountLabel?: string;
   taxable: number | null;
   taxes: { label: string; amount: number }[];
   delivery: number;
@@ -596,7 +598,7 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
               {doc.bundleDiscounts.map((d) => (
                 <Row key={d.label} s={s} label={d.label} value={`− ${number(d.amount)}`} />
               ))}
-              {doc.discount > 0 ? <Row s={s} label="Discount" value={`− ${number(doc.discount)}`} /> : null}
+              {doc.discount > 0 ? <Row s={s} label={doc.discountLabel ?? "Discount"} value={`− ${number(doc.discount)}`} /> : null}
               {doc.taxable != null ? (
                 <View style={{ borderTopWidth: 1, borderTopColor: c.border, marginTop: 4, paddingTop: 4 }}>
                   <Row s={s} label="Taxable Amount" value={number(doc.taxable)} />

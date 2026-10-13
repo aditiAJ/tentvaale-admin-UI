@@ -13,6 +13,7 @@ import type { QuotationView } from "@/features/quotations/types";
 import { listCustomers, listProducts, masterDataKeys } from "@/features/master-data/api";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
+import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
 import { PageHeader } from "@/components/page-header";
@@ -41,6 +42,8 @@ const schema = z.object({
     .trim()
     .refine((v) => v === "" || /^\d+(\.\d{1,2})?$/.test(v), "Enter an amount like 500 or 500.50")
     .transform((v) => (v === "" ? 0 : Number(v))),
+  // The discount box holds either a rupee amount or a percentage, whichever `discountType` says (MOM-14).
+  discountType: z.enum(["FLAT", "PERCENT"]),
   discountAmount: z
     .string()
     .trim()
@@ -65,6 +68,10 @@ const schema = z.object({
       }),
     )
     .min(1, "A quotation needs at least one line"),
+}).superRefine((value, context) => {
+  if (value.discountType === "PERCENT" && value.discountAmount > 100) {
+    context.addIssue({ code: "custom", path: ["discountAmount"], message: "A percentage is between 0 and 100" });
+  }
 });
 
 type FormInput = z.input<typeof schema>;
@@ -84,6 +91,12 @@ const defaultValidUntil = () => {
   date.setDate(date.getDate() + 15);
   return date.toISOString().slice(0, 10);
 };
+
+/** The one box holds a rupee amount or a percentage; the request says which, and carries only that one. */
+const discountRequest = (values: { discountType: "FLAT" | "PERCENT"; discountAmount: number }) =>
+  values.discountType === "PERCENT"
+    ? { discountType: "PERCENT" as const, discountPercent: values.discountAmount }
+    : { discountType: "FLAT" as const, discountAmount: values.discountAmount };
 
 /** Names compared the way a person would: ignoring case and extra spaces. */
 const normaliseName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
@@ -140,7 +153,14 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           validUntil: existing.validUntil ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
           deliveryCharge: existing.deliveryCharge ? String(Number(existing.deliveryCharge.amount)) : "",
-          discountAmount: existing.discountAmount ? String(Number(existing.discountAmount.amount)) : "",
+          discountType: existing.discountType ?? "FLAT",
+          // A percentage discount shows the percentage that was typed, not the rupees it came to.
+          discountAmount:
+            existing.discountType === "PERCENT" && existing.discountPercent != null
+              ? String(Number(existing.discountPercent))
+              : existing.discountAmount
+                ? String(Number(existing.discountAmount.amount))
+                : "",
           lines: existing.lines.map((line) => ({
             lineId: line.id,
             productId: line.productId,
@@ -156,6 +176,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           validUntil: defaultValidUntil(),
           securityDeposit: "",
           deliveryCharge: "",
+          discountType: "FLAT",
           discountAmount: "",
           lines: [emptyLine()],
         },
@@ -197,10 +218,16 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   const watchedDelivery = Number(useWatch({ control, name: "deliveryCharge" })) || 0;
   const watchedDiscount = Number(useWatch({ control, name: "discountAmount" })) || 0;
-  const estimate = Math.max(
-    watchedLines.reduce((running, line) => running + (priceLine(line) ?? 0), 0) + watchedDelivery - watchedDiscount,
-    0,
-  );
+  const watchedDiscountType = useWatch({ control, name: "discountType" });
+  const itemsEstimate = watchedLines.reduce((running, line) => running + (priceLine(line) ?? 0), 0);
+  // A percentage comes off the items after the bundle discounts, as the backend works it out; the bundle discounts
+  // are only known for a quotation that already exists.
+  const bundleDiscounts = (existing?.bundleDiscounts ?? []).reduce((sum, d) => sum + Number(d.amount.amount), 0);
+  const discountEstimate =
+    watchedDiscountType === "PERCENT"
+      ? Math.round(Math.max(itemsEstimate - bundleDiscounts, 0) * Math.min(watchedDiscount, 100)) / 100
+      : watchedDiscount;
+  const estimate = Math.max(itemsEstimate - bundleDiscounts + watchedDelivery - discountEstimate, 0);
 
   // The name is typed, but a quotation still belongs to a customer record by
   // id — its order, deposit and credit notes all hang off that id — so the
@@ -229,7 +256,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           eventDate: existing.eventDate ?? values.eventDate,
           securityDeposit: values.securityDeposit,
           deliveryCharge: values.deliveryCharge,
-          discountAmount: values.discountAmount,
+          ...discountRequest(values),
           lines: values.lines.map((line) => ({
             lineId: line.lineId || undefined,
             productId: line.productId,
@@ -249,7 +276,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         eventDate: values.eventDate,
         securityDeposit: values.securityDeposit,
         deliveryCharge: values.deliveryCharge,
-        discountAmount: values.discountAmount,
+        ...discountRequest(values),
         validUntil: values.validUntil,
         lines: values.lines.map(({ productId, variantId, quantity, rentalDays }) => ({
           productId,
@@ -677,18 +704,45 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           <Field
             label="Discount"
             error={errors.discountAmount?.message}
-            hint="A flat amount off, in INR. Blank if none."
-            className="w-56"
+            hint={
+              watchedDiscountType === "PERCENT"
+                ? "A percentage off the items after bundle discounts, 0 to 100. Blank if none."
+                : "A flat amount off, in INR. Blank if none."
+            }
+            className="w-64"
           >
             {(props) => (
-              <Input
-                {...props}
-                {...register("discountAmount")}
-                inputMode="decimal"
-                placeholder="0.00"
-                disabled={mutation.isPending}
-                className="tabular text-right"
-              />
+              <div className="flex gap-2">
+                <Input
+                  {...props}
+                  {...register("discountAmount")}
+                  inputMode="decimal"
+                  placeholder={watchedDiscountType === "PERCENT" ? "10" : "0.00"}
+                  disabled={mutation.isPending}
+                  className="tabular text-right"
+                />
+                <input type="hidden" {...register("discountType")} />
+                <div role="group" aria-label="Discount type" className="inline-flex shrink-0 overflow-hidden rounded-md border border-input">
+                  {(["FLAT", "PERCENT"] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      aria-pressed={watchedDiscountType === type}
+                      aria-label={type === "FLAT" ? "Flat amount in rupees" : "Percentage"}
+                      disabled={mutation.isPending}
+                      onClick={() => setValue("discountType", type, { shouldDirty: true, shouldValidate: true })}
+                      className={cn(
+                        "w-9 text-sm font-medium transition-colors",
+                        watchedDiscountType === type
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background text-muted-foreground hover:bg-muted",
+                      )}
+                    >
+                      {type === "FLAT" ? "₹" : "%"}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </Field>
           <div className="text-right">

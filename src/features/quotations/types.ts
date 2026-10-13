@@ -76,6 +76,10 @@ export interface QuotationView {
   subtotalAmount?: Money;
   deliveryCharge?: Money;
   discountAmount?: Money;
+  /** How the discount was given: a flat amount, or a percentage of the items after bundle discounts. */
+  discountType?: DiscountType;
+  /** The percentage when `discountType` is PERCENT; null for a flat discount. */
+  discountPercent?: number | null;
   /** One line per bundle on the quotation: its percentage off what its items add up to. */
   bundleDiscounts?: { name: string; percent: number; amount: Money }[];
   /** GST on the items after discounts: CGST + SGST in the company's state, IGST elsewhere. */
@@ -139,8 +143,12 @@ export interface CreateQuotationRequest {
   securityDeposit: number;
   /** Actual delivery cost in INR, entered by staff; part of the total. Omitted: none. */
   deliveryCharge?: number;
-  /** A flat amount off in INR. Omitted: none. */
+  /** A flat amount off in INR, used when `discountType` is FLAT or left out. Omitted: none. */
   discountAmount?: number;
+  /** FLAT (default) or PERCENT. With PERCENT the backend works out the amount from `discountPercent`. */
+  discountType?: DiscountType;
+  /** 0 to 100, used when `discountType` is PERCENT. */
+  discountPercent?: number;
   /** ISO yyyy-MM-dd. Omitted: the backend's default validity (15 days) applies. */
   validUntil?: string;
   lines: CreateQuotationLineRequest[];
@@ -172,8 +180,13 @@ export interface UpdateQuotationRequest {
   securityDeposit: number;
   deliveryCharge?: number;
   discountAmount?: number;
+  discountType?: DiscountType;
+  discountPercent?: number;
   lines: UpdateQuotationLineRequest[];
 }
+
+/** A quotation's own discount (not the per-bundle ones): a flat amount in INR, or a percentage, never both. */
+export type DiscountType = "FLAT" | "PERCENT";
 
 /** One version sent to the customer (QuotationVersionView on the backend). */
 export interface QuotationVersionView {
@@ -183,6 +196,8 @@ export interface QuotationVersionView {
   subtotalAmount: Money;
   deliveryCharge: Money;
   discountAmount: Money;
+  discountType?: DiscountType;
+  discountPercent?: number | null;
   totalAmount: Money;
   securityDeposit: Money;
   lines: { productName: string; quantity: number; rentalDays: number; lineTotal: Money }[];

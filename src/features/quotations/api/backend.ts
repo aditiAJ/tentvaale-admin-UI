@@ -56,6 +56,8 @@ interface WireQuotation {
   subtotalAmount?: Money;
   deliveryCharge?: Money;
   discountAmount?: Money;
+  discountType?: QuotationView["discountType"];
+  discountPercent?: number | null;
   bundleDiscounts?: { name: string; percent: number; amount: Money }[];
   tax?: QuotationView["tax"];
   depositWaiver?: QuotationView["depositWaiver"];
@@ -108,6 +110,8 @@ function fromWire(q: WireQuotation): QuotationView {
     subtotalAmount: q.subtotalAmount,
     deliveryCharge: q.deliveryCharge,
     discountAmount: q.discountAmount,
+    discountType: q.discountType ?? "FLAT",
+    discountPercent: q.discountPercent ?? null,
     bundleDiscounts: q.bundleDiscounts ?? [],
     tax: q.tax,
     depositWaiver: q.depositWaiver,
@@ -126,6 +130,17 @@ function fromWire(q: WireQuotation): QuotationView {
 
 const id = (value: string) => encodeURIComponent(value);
 
+/**
+ * The discount as the backend takes it: a PERCENT sends only the percentage (the backend works the amount out from
+ * the lines), a FLAT one only the amount. Both always say which, so editing a percentage into a flat amount (or the
+ * other way) is never left to guesswork.
+ */
+function discountBody(request: { discountType?: "FLAT" | "PERCENT"; discountAmount?: number; discountPercent?: number }) {
+  return request.discountType === "PERCENT"
+    ? { discountType: "PERCENT" as const, discountPercent: request.discountPercent ?? 0 }
+    : { discountType: "FLAT" as const, discountAmount: request.discountAmount || undefined };
+}
+
 export async function listQuotations(signal?: AbortSignal): Promise<QuotationView[]> {
   const rows = await apiFetch<WireQuotation[]>(BASE, { signal });
   return rows.map(fromWire);
@@ -143,7 +158,7 @@ export async function createQuotation(request: CreateQuotationRequest): Promise<
       eventDate: request.eventDate || undefined,
       securityDeposit: request.securityDeposit,
       deliveryCharge: request.deliveryCharge || undefined,
-      discountAmount: request.discountAmount || undefined,
+      ...discountBody(request),
       validUntil: request.validUntil || undefined,
       lines: request.lines.map((line) => ({
         productId: Number(line.productId),
@@ -171,7 +186,7 @@ export async function updateQuotation(
       eventDate: request.eventDate || undefined,
       securityDeposit: request.securityDeposit,
       deliveryCharge: request.deliveryCharge || undefined,
-      discountAmount: request.discountAmount || undefined,
+      ...discountBody(request),
       lines: request.lines.map((line) => ({
         id: line.lineId,
         productId: Number(line.productId),
@@ -194,7 +209,7 @@ export async function acceptQuotation(quotationId: string): Promise<QuotationVie
   return fromWire(await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/accept`, { method: "POST" }));
 }
 
-/** SENT to REJECTED, with a reason. Needs QUOTATION_APPROVE. */
+/** "Close Quotation": DRAFT or SENT to REJECTED (shown as "Closed"), with a reason. Needs QUOTATION_APPROVE. */
 export async function rejectQuotation(quotationId: string, reason: string): Promise<QuotationView> {
   return fromWire(
     await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/reject`, {

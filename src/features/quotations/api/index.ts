@@ -70,7 +70,10 @@ export function acceptQuotation(quotationId: string): Promise<QuotationView> {
   return backend.acceptQuotation(quotationId);
 }
 
-/** SENT to REJECTED. The reason is required. 403 unless the caller holds QUOTATION_APPROVE. */
+/**
+ * "Close Quotation": DRAFT or SENT to REJECTED (shown as "Closed"; final). The reason is required. 403 unless the
+ * caller holds QUOTATION_APPROVE.
+ */
 export function rejectQuotation(quotationId: string, reason: string): Promise<QuotationView> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.rejectQuotation(quotationId, reason);

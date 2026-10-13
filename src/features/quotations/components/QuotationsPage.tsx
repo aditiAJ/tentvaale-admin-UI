@@ -52,7 +52,7 @@ const FILTERS: { key: string; label: string; status?: QuotationBucket }[] = [
   { key: "sent", label: "Sent", status: "SENT" },
   { key: "accepted", label: "Accepted", status: "ACCEPTED" },
   { key: "converted", label: "Order placed", status: "CONVERTED" },
-  { key: "rejected", label: "Rejected", status: "REJECTED" },
+  { key: "rejected", label: "Closed", status: "REJECTED" },
   { key: "expired", label: "Expired", status: "EXPIRED" },
   ...(IS_MOCK ? [{ key: "discarded", label: "Discarded", status: "DISCARDED" as const }] : []),
 ];
@@ -223,7 +223,7 @@ const STAGE_HINT: Record<string, string> = {
   sent: "With the customer",
   accepted: "Approved, ready for an order",
   converted: "Became an order",
-  rejected: "Turned down",
+  rejected: "Closed by staff or the customer",
   expired: "Past its validity date",
   new: "Newly raised",
   reviewed: "Looked at",
@@ -413,9 +413,9 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
             <QuotationActions quotation={q} onConvert={onConvert} />
           </div>
         </div>
-        <StatusStepper status={q.status} />
+        <StatusStepper status={q.status} wasSent={Boolean(q.sentAt)} />
         {q.changeRequestNote ? <Alert tone="warning" title={`Customer asked for changes: ${q.changeRequestNote}`} /> : null}
-        {q.status === "REJECTED" && q.rejectionReason ? <Alert tone="error" title={`Rejected: ${q.rejectionReason}`} /> : null}
+        {q.status === "REJECTED" && q.rejectionReason ? <Alert tone="error" title={`Closed: ${q.rejectionReason}`} /> : null}
       </Card>
 
       <Card className="space-y-5 p-5">

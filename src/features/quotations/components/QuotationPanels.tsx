@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { listQuotationVersions, quotationKeys } from "@/features/quotations/api";
+import { discountSuffix } from "@/features/quotations/discount";
 import { IS_MOCK } from "@/services/data-source";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
@@ -41,7 +42,8 @@ export function QuotationVersions({ quotationId }: { quotationId: string }) {
                 </p>
               ))}
               <p className="pt-1">
-                Delivery {formatMoney(version.deliveryCharge)} · Discount {formatMoney(version.discountAmount)} ·
+                Delivery {formatMoney(version.deliveryCharge)} · Discount {formatMoney(version.discountAmount)}
+                {discountSuffix(version.discountType, version.discountPercent)} ·
                 Deposit {formatMoney(version.securityDeposit)}
               </p>
             </div>

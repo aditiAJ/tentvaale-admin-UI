@@ -52,6 +52,7 @@ import { amountField } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { RETAIL_MARKUP_PERCENT, suggestedRetail } from "../retail-rate";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
@@ -557,6 +558,8 @@ function ProductForm({
   const rateType = useWatch({ control, name: "rateType" });
   const unit = useWatch({ control, name: "dimensionUnit" });
   const rateNote = planRateNote(retailRate ?? "", wholesaleRate ?? "");
+  const suggestion = suggestedRetail(wholesaleRate);
+  const retailFollowsRule = suggestion !== null && Number(retailRate) === Number(suggestion);
   const rateSuffix = rateType === "SqFt" ? "/ sq ft / day" : rateType === "RFt" ? "/ ft / day" : "/ day";
   const skuPreview = existing
     ? existing.sku
@@ -780,7 +783,14 @@ function ProductForm({
                 {(props) => (
                   <AffixInput
                     {...props}
-                    {...register("wholesaleRate")}
+                    {...register("wholesaleRate", {
+                      // The retail rate is pre-filled as wholesale + 20% whenever the wholesale rate changes (MOM-10).
+                      // It stays editable: typing a retail rate afterwards simply replaces it.
+                      onChange: (event) => {
+                        const next = suggestedRetail(event.target.value);
+                        if (next !== null) setValue("retailRate", next, { shouldDirty: true, shouldValidate: true });
+                      },
+                    })}
                     prefix="₹"
                     suffix={rateSuffix}
                     inputMode="decimal"
@@ -801,6 +811,24 @@ function ProductForm({
                 )}
               </Field>
             </div>
+            {suggestion !== null ? (
+              <p className="text-xs text-muted-foreground">
+                {retailFollowsRule ? (
+                  `Retail is wholesale + ${RETAIL_MARKUP_PERCENT}%.`
+                ) : (
+                  <>
+                    Wholesale + {RETAIL_MARKUP_PERCENT}% would be ₹{suggestion}.{" "}
+                    <button
+                      type="button"
+                      className="font-medium text-primary underline underline-offset-2"
+                      onClick={() => setValue("retailRate", suggestion, { shouldDirty: true, shouldValidate: true })}
+                    >
+                      Use ₹{suggestion}
+                    </button>
+                  </>
+                )}
+              </p>
+            ) : null}
             {rateNote ? (
               <p className={cn("text-xs", rateNote.warn ? "text-warning" : "text-muted-foreground")}>{rateNote.text}</p>
             ) : null}

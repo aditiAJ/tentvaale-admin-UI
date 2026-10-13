@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, CalendarDays, CheckCircle2, Circle, Inbox, Layers, MapPin, MessageSquareWarning, Package, Users } from "lucide-react";
 import { getQuotationPlan, quotationKeys } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
+import { discountSuffix } from "@/features/quotations/discount";
 import { LinesByFunction, PriceGrid, VenueRow, formatEventDate, isPositive } from "@/features/quotations/components/QuotationParts";
 import { QuotationPlanPanel } from "@/features/quotations/components/QuotationPlanPanel";
 import { IS_MOCK } from "@/services/data-source";
@@ -114,7 +115,7 @@ function Checklist({ quotation: q }: { quotation: QuotationView }) {
       detail: isPositive(q.totalSecurityDeposit) ? formatMoney(q.totalSecurityDeposit) : "Not set. Use Edit & price (0 if none).",
     },
     { done: isPositive(q.deliveryCharge), optional: true, label: "Delivery charge", detail: isPositive(q.deliveryCharge) ? formatMoney(q.deliveryCharge) : "None yet" },
-    { done: isPositive(q.discountAmount), optional: true, label: "Discount", detail: isPositive(q.discountAmount) ? `− ${formatMoney(q.discountAmount)}` : "None yet" },
+    { done: isPositive(q.discountAmount), optional: true, label: "Discount", detail: isPositive(q.discountAmount) ? `− ${formatMoney(q.discountAmount)}${discountSuffix(q.discountType, q.discountPercent)}` : "None yet" },
     { done: Boolean(q.validUntil), label: "Valid until", detail: formatEventDate(q.validUntil) },
   ];
   return (

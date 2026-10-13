@@ -3,6 +3,7 @@
 import { Check, CalendarDays, Clock, ExternalLink, MapPin, Users } from "lucide-react";
 import type { QuotationLineView, QuotationPlan, QuotationStatus, QuotationVenue, QuotationView } from "@/features/quotations/types";
 import type { QuotationBucket } from "@/features/quotations/source";
+import { discountLabel } from "@/features/quotations/discount";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { formatMoney, type Money } from "@/lib/money";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +33,8 @@ export const STATUS_LABEL: Record<QuotationBucket, string> = {
   SENT: "Sent",
   ACCEPTED: "Accepted",
   CONVERTED: "Converted",
-  REJECTED: "Rejected",
+  // Stored as REJECTED; "Close Quotation" is what staff and customers call it (MOM-15).
+  REJECTED: "Closed",
   EXPIRED: "Expired",
 };
 
@@ -83,10 +85,11 @@ const STEPS: { status: QuotationStatus; label: string }[] = [
 ];
 
 /** Draft, Sent, Accepted, Order placed: where this quotation is, and the end it came to if it did not finish. */
-export function StatusStepper({ status }: { status: QuotationStatus }) {
+export function StatusStepper({ status, wasSent = true }: { status: QuotationStatus; wasSent?: boolean }) {
   const ended = status === "REJECTED" || status === "EXPIRED";
-  // A quotation that ended was sent first.
-  const current = ended ? 1 : Math.max(0, STEPS.findIndex((s) => s.status === status));
+  // A quotation that ended was normally sent first; a draft closed or lapsed before sending was not (MOM-15).
+  const reached = wasSent ? 1 : 0;
+  const current = ended ? reached : Math.max(0, STEPS.findIndex((s) => s.status === status));
   return (
     <ol className="flex items-center gap-1.5 overflow-x-auto" aria-label="Quotation progress">
       {STEPS.map((step, index) => {
@@ -100,7 +103,7 @@ export function StatusStepper({ status }: { status: QuotationStatus }) {
                 done && "border-success/40 bg-success/10 text-success",
                 active && "border-primary bg-primary/10 font-medium text-primary",
                 !done && !active && "border-border text-muted-foreground",
-                ended && index <= 1 && "border-border text-foreground",
+                ended && index <= reached && "border-border text-foreground",
               )}
             >
               {done ? <Check className="size-3" /> : <span className="tabular">{index + 1}</span>}
@@ -114,7 +117,7 @@ export function StatusStepper({ status }: { status: QuotationStatus }) {
         <>
           <span className="h-px w-4 bg-border" aria-hidden="true" />
           <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-xs font-medium whitespace-nowrap text-destructive">
-            {status === "REJECTED" ? "Rejected" : "Expired"}
+            {status === "REJECTED" ? "Closed" : "Expired"}
           </span>
         </>
       ) : null}
@@ -131,7 +134,7 @@ export function PriceGrid({ quotation: q }: { quotation: QuotationView }) {
     { label: "Items", value: formatMoney(q.subtotalAmount ?? q.totalAmount) },
     ...(q.bundleDiscounts ?? []).map((b) => ({ label: `${b.name} (${b.percent}% off)`, value: `− ${formatMoney(b.amount)}` })),
     { label: "Delivery", value: isPositive(q.deliveryCharge) ? formatMoney(q.deliveryCharge) : "None", muted: !isPositive(q.deliveryCharge) },
-    { label: "Discount", value: isPositive(q.discountAmount) ? `− ${formatMoney(q.discountAmount)}` : "None", muted: !isPositive(q.discountAmount) },
+    { label: discountLabel(q.discountType, q.discountPercent), value: isPositive(q.discountAmount) ? `− ${formatMoney(q.discountAmount)}` : "None", muted: !isPositive(q.discountAmount) },
     ...(tax
       ? [
           { label: "Taxable amount", value: formatMoney(tax.taxableAmount) },

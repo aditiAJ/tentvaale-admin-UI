@@ -1,5 +1,6 @@
 import { policyHistory, type CompanyProfile, type PolicyKind } from "@/features/settings/api";
 import type { QuotationView } from "@/features/quotations/types";
+import { discountLabel } from "@/features/quotations/discount";
 import type { DocFunction, DocLine, QuotationDoc } from "./QuotationDocument";
 import { loadImageData, loadMarkData, loadQrCodes } from "./pdfAssets";
 
@@ -106,6 +107,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
     subtotal: q.subtotalAmount ? amount(q.subtotalAmount) : null,
     bundleDiscounts: (q.bundleDiscounts ?? []).map((d) => ({ label: `${d.name} (${d.percent}% off)`, amount: amount(d.amount) })),
     discount: amount(q.discountAmount),
+    discountLabel: discountLabel(q.discountType, q.discountPercent),
     taxable: tax ? amount(tax.taxableAmount) : null,
     taxes: !tax
       ? []

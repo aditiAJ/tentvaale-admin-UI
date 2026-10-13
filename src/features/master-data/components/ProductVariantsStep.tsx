@@ -8,6 +8,7 @@ import { listFacetOptions, listWarehouses, masterDataKeys } from "@/features/mas
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
+import { suggestedRetail } from "../retail-rate";
 
 /** What a variant can differ by; the facets already in the system are listed too. */
 export const VARIANT_TYPES = ["Colour", "Size", "Fabric", "Material", "Style"];
@@ -121,7 +122,7 @@ export function checkVariantStep(value: VariantStepValues, ctx: z.RefinementCtx)
  * has its own type, so two colours and two sizes can sit side by side. Saved with the product, all or nothing.
  */
 export function ProductVariantsStep() {
-  const { control, register, getValues, formState } = useFormContext<VariantStepValues>();
+  const { control, register, getValues, setValue, formState } = useFormContext<VariantStepValues>();
   const errors = formState.errors;
   const variants = useFieldArray({ control, name: "variants" });
   const facets = useQuery({
@@ -202,7 +203,21 @@ export function ProductVariantsStep() {
                   {(props) => <Input {...props} {...register(`variants.${index}.retailRate`)} inputMode="decimal" placeholder="Product's rate" />}
                 </Field>
                 <Field label="Wholesale rate" error={rowErrors?.wholesaleRate?.message}>
-                  {(props) => <Input {...props} {...register(`variants.${index}.wholesaleRate`)} inputMode="decimal" placeholder="Product's rate" />}
+                  {(props) => (
+                    <Input
+                      {...props}
+                      {...register(`variants.${index}.wholesaleRate`, {
+                        // The retail rate is pre-filled as wholesale + 20% whenever this wholesale rate changes (MOM-10);
+                        // it stays editable. Cleared, it goes back to "same as the product's".
+                        onChange: (event) => {
+                          const next = suggestedRetail(event.target.value);
+                          setValue(`variants.${index}.retailRate`, next ?? "", { shouldDirty: true });
+                        },
+                      })}
+                      inputMode="decimal"
+                      placeholder="Product's rate"
+                    />
+                  )}
                 </Field>
               </div>
 

@@ -32,8 +32,8 @@ type Pending = "send" | "accept" | "behalf" | "reject" | "waive" | null;
 /**
  * The actions a quotation offers, and to whom.
  *
- * The lifecycle is DRAFT, SENT, ACCEPTED, CONVERTED (plus REJECTED and EXPIRED, which end it):
- * sales drafts, edits and sends; only an Admin accepts or rejects (QUOTATION_APPROVE); only an
+ * The lifecycle is DRAFT, SENT, ACCEPTED, CONVERTED (plus REJECTED, shown as "Closed", and EXPIRED, which end it):
+ * sales drafts, edits and sends; only an Admin accepts or closes (QUOTATION_APPROVE); only an
  * ACCEPTED quotation converts. Editing a SENT quotation sends it back to DRAFT, so the edit link
  * warns first. Each button is shown only when the status allows it and the user holds the
  * permission; the backend enforces the same rules and its refusal is shown verbatim.
@@ -117,7 +117,7 @@ export function QuotationActions({
           </Button>
           <Button variant="outline" size={size} onClick={() => setPending("reject")}>
             <X />
-            Reject
+            Close quotation
           </Button>
           <Button variant="outline" size={size} onClick={() => setPending("behalf")}
             title="Accept for the customer and create the order in one step">
@@ -125,6 +125,15 @@ export function QuotationActions({
             Accept on behalf of customer
           </Button>
         </>
+      ) : null}
+
+      {/* A draft can be closed too (MOM-15): staff stop work on it without ever sending it. */}
+      {canApprove && status === "DRAFT" ? (
+        <Button variant="outline" size={size} onClick={() => setPending("reject")}
+          title="End this draft without sending it. It cannot be reopened.">
+          <X />
+          Close quotation
+        </Button>
       ) : null}
 
       {canWaive && status === "DRAFT" && !quotation.depositWaiver?.waived && Number(quotation.totalSecurityDeposit.amount) > 0 ? (
@@ -235,7 +244,7 @@ export function QuotationActions({
           quotation={quotation}
           onDone={(updated) => {
             refresh(updated);
-            toast.success(`${updated.quotationNumber} rejected`);
+            toast.success(`${updated.quotationNumber} closed`);
             setPending(null);
           }}
           onClose={() => setPending(null)}
@@ -312,7 +321,10 @@ function WaiveDialog({
   );
 }
 
-/** Rejecting needs a reason, which is kept on the quotation. */
+/**
+ * Closing a quotation (MOM-15; stored as the REJECTED status) needs a reason, which is kept on the quotation. It is
+ * final: there is no reopening, only a duplicate.
+ */
 function RejectDialog({
   quotation,
   onDone,
@@ -330,7 +342,7 @@ function RejectDialog({
     onSuccess: onDone,
     onError: (mutationError) =>
       setError(
-        mutationError instanceof ApiError ? mutationError.message : "Could not reject the quotation.",
+        mutationError instanceof ApiError ? mutationError.message : "Could not close the quotation.",
       ),
   });
 
@@ -338,8 +350,8 @@ function RejectDialog({
     <Dialog
       open
       onClose={onClose}
-      title={`Reject ${quotation.quotationNumber}`}
-      description="The quotation ends here. Start a new one by duplicating it."
+      title={`Close ${quotation.quotationNumber}`}
+      description="The quotation ends here and cannot be reopened. Start a new one by duplicating it."
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
@@ -354,7 +366,7 @@ function RejectDialog({
             }}
           >
             {mutation.isPending ? <Loader2 className="animate-spin" /> : null}
-            Reject quotation
+            Close quotation
           </Button>
         </>
       }
