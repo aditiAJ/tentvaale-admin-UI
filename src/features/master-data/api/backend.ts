@@ -776,6 +776,11 @@ export async function updateCustomer(
   return customerFromWire(updated);
 }
 
+/** 204; 422 with the reason when quotations, orders or credit notes still refer to the customer. */
+export function deleteCustomer(customerId: string): Promise<void> {
+  return apiFetch<void>(`${BASE}/customers/${encodeURIComponent(customerId)}`, { method: "DELETE" });
+}
+
 /** Pending applications only, oldest first. */
 export async function listPlannerApplications(signal?: AbortSignal): Promise<PlannerProfileView[]> {
   const rows = await apiFetch<WirePlannerProfile[]>(`${BASE}/planner-applications`, { signal });
