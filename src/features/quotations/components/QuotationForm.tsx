@@ -421,7 +421,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         <CardHeader>
           <CardTitle>Customer</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field
             label="Customer name"
             required
@@ -536,10 +536,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             <THead>
               <tr>
                 <TH>Product</TH>
-                <TH className="text-right">Qty</TH>
-                <TH className="text-right">Days</TH>
-                <TH className="text-right">Rate/day</TH>
-                <TH className="text-right">Line total</TH>
+                <TH className="w-28 text-right">Qty</TH>
+                <TH className="w-28 text-right">Days</TH>
+                <TH className="w-32 text-right">Rate/day</TH>
+                <TH className="w-36 text-right">Line total</TH>
                 <TH className="w-9" aria-label="Remove" />
               </tr>
             </THead>
@@ -624,7 +624,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                         aria-invalid={Boolean(rowErrors?.quantity)}
                         inputMode="numeric"
                         disabled={mutation.isPending}
-                        className="tabular w-20 text-right"
+                        className="tabular ml-auto w-20 text-right"
                       />
                       {rowErrors?.quantity ? (
                         <p className="mt-1 text-xs text-destructive">{rowErrors.quantity.message}</p>
@@ -638,7 +638,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                         aria-invalid={Boolean(rowErrors?.rentalDays)}
                         inputMode="numeric"
                         disabled={mutation.isPending}
-                        className="tabular w-20 text-right"
+                        className="tabular ml-auto w-20 text-right"
                       />
                       {rowErrors?.rentalDays ? (
                         <p className="mt-1 text-xs text-destructive">

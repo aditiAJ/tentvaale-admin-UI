@@ -24,6 +24,7 @@ export {
   updateBundle,
   deleteBundle,
   setBundleActive,
+  deleteCustomer,
   setBundleFeatured,
   listBundleOccasions,
   createBundleOccasion,
