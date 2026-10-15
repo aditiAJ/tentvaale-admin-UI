@@ -549,7 +549,7 @@ function MovementFields({
           );
         })}
 
-        {linesError ? <p className="text-xs text-destructive">{linesError}</p> : null}
+        {linesError ? <Alert tone="error" title={linesError} /> : null}
       </div>
 
       <Field label="Remarks" error={errors.remarks?.message}>

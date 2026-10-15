@@ -1158,7 +1158,7 @@ function ProductForm({
               );
             })}
             {errors.attributes?.root?.message ? (
-              <p className="text-xs text-destructive">{errors.attributes.root.message}</p>
+              <Alert tone="error" title={errors.attributes.root.message} />
             ) : null}
             <Button
               type="button"

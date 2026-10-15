@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { SessionProvider } from "@/features/auth";
 import { Toaster } from "@/components/ui/sonner";
-import { ApiError } from "@/services/api-client";
+import { ApiError, NETWORK_ERROR_STATUS } from "@/services/api-client";
 
 function makeQueryClient() {
   return new QueryClient({
@@ -19,7 +19,7 @@ function makeQueryClient() {
         // explained. Only genuine transport and server faults are worth another
         // attempt.
         retry: (failureCount, error) => {
-          if (error instanceof ApiError && error.status < 500) return false;
+          if (error instanceof ApiError && error.status !== NETWORK_ERROR_STATUS && error.status < 500) return false;
           return failureCount < 2;
         },
         refetchOnWindowFocus: true,

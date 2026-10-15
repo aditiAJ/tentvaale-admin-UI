@@ -222,7 +222,7 @@ export function PaymentTermsDialog({
               Total {total}% {balanced ? "✓" : "— must be 100%"}
             </p>
           </div>
-          {linesError ? <p className="text-xs text-destructive">{linesError}</p> : null}
+          {linesError ? <Alert tone="error" title={linesError} /> : null}
         </div>
       </form>
     </Dialog>

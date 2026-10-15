@@ -574,7 +574,7 @@ export function BundleDialog({
               Add
             </Button>
           </div>
-          {pickError ? <p className="text-xs text-destructive">{pickError}</p> : null}
+          {pickError ? <Alert tone="error" title={pickError} /> : null}
 
           {fields.length ? (
             <ul className="divide-y divide-border rounded-md border border-border">
@@ -634,7 +634,7 @@ export function BundleDialog({
             </ul>
           ) : null}
 
-          {componentsError ? <p className="text-xs text-destructive">{componentsError}</p> : null}
+          {componentsError ? <Alert tone="error" title={componentsError} /> : null}
         </div>
 
         {existing ? (
@@ -795,7 +795,7 @@ function SwapEditor({
               </Button>
             </div>
           ) : null}
-          {error ? <p className="text-destructive">{error}</p> : null}
+          {error ? <Alert tone="error" title={error} /> : null}
         </div>
       ) : null}
     </div>

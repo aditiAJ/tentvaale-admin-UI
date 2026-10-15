@@ -276,7 +276,7 @@ export function PriceListDialog({
               Add rate
             </Button>
           </div>
-          {addError ? <p className="text-xs text-destructive">{addError}</p> : null}
+          {addError ? <Alert tone="error" title={addError} /> : null}
 
           {fields.length ? (
             <ul className="divide-y divide-border rounded-md border border-border">

@@ -13,6 +13,7 @@ import {
   readMedia,
   VIDEO_TYPES,
 } from "@/features/master-data/media";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,8 @@ export function MediaField({
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // One entry per refused file or rule, so each shows on its own line.
+  const [errors, setErrors] = useState<string[]>([]);
   const [urlText, setUrlText] = useState("");
   const [notes, setNotes] = useState<string | null>(null);
 
@@ -101,7 +103,7 @@ export function MediaField({
       ...pickedVideos.slice(0, videoRoom).map((file) => [file, "VIDEO"] as [File, "VIDEO"]),
     ];
 
-    setError(null);
+    setErrors([]);
     setBusy(true);
     onBusyChange(true);
     const added: MediaAsset[] = [];
@@ -166,11 +168,11 @@ export function MediaField({
       const replaced = replacesImage && added.some((item) => item.kind === "IMAGE");
       onChange([...(replaced ? videos : media), ...added]);
     }
-    if (problems.length) setError(problems.join(" "));
+    if (problems.length) setErrors(problems);
   };
 
   const remove = (item: MediaAsset) => {
-    setError(null);
+    setErrors([]);
     onChange(media.filter((candidate) => candidate.id !== item.id));
   };
 
@@ -190,15 +192,15 @@ export function MediaField({
   const addUrl = () => {
     const text = urlText.trim();
     if (!/^https?:\/\/\S+$/i.test(text)) {
-      setError("Enter a full image URL starting with http:// or https://");
+      setErrors(["Enter a full image URL starting with http:// or https://"]);
       return;
     }
     const item = mediaFromUrl(text);
     if (item.kind === "VIDEO" ? videosLeft <= 0 : imagesLeft <= 0) {
-      setError(item.kind === "VIDEO" ? "Only one video is allowed." : `Only ${limits.images} image(s) allowed.`);
+      setErrors([item.kind === "VIDEO" ? "Only one video is allowed." : `Only ${limits.images} image(s) allowed.`]);
       return;
     }
-    setError(null);
+    setErrors([]);
     setUrlText("");
     const replaced = replacesImage && item.kind === "IMAGE";
     onChange([...(replaced ? videos : media), item]);
@@ -284,8 +286,16 @@ export function MediaField({
           />
         </div>
 
-        {notes ? <p className="text-xs text-[var(--warning)]">{notes}</p> : null}
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        {notes ? <Alert tone="warning" title={notes} /> : null}
+        {errors.length ? (
+          <Alert tone="error" title={errors.length > 1 ? "Some files were not added" : "The file was not added"}>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {errors.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
 
         {media.length ? (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -410,7 +420,7 @@ export function MediaField({
             and one MP4 video (under 10 MB, 30 seconds, up to 1080p).
           </p>
         ) : null}
-        {notes ? <p className="basis-full text-xs text-[var(--warning)]">{notes}</p> : null}
+        {notes ? <Alert tone="warning" title={notes} className="basis-full" /> : null}
         {busy ? (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />
@@ -495,7 +505,15 @@ export function MediaField({
         </ul>
       ) : null}
 
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {errors.length ? (
+          <Alert tone="error" title={errors.length > 1 ? "Some files were not added" : "The file was not added"}>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {errors.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
     </div>
   );
 }

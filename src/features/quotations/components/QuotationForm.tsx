@@ -681,7 +681,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
         {linesError ? (
           <CardContent className="border-t border-border">
-            <p className="text-xs text-destructive">{linesError}</p>
+            <Alert tone="error" title={linesError} />
           </CardContent>
         ) : null}
 

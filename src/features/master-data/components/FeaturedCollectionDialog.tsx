@@ -298,7 +298,7 @@ export function FeaturedCollectionDialog({
             </ul>
           ) : null}
 
-          {productsError ? <p className="text-xs text-destructive">{productsError}</p> : null}
+          {productsError ? <Alert tone="error" title={productsError} /> : null}
         </div>
 
         <MediaField
