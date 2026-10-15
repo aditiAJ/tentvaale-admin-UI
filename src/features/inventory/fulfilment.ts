@@ -75,9 +75,8 @@ export function allowedDirections(
   fulfilment: OrderFulfilment,
 ): MovementDirection[] {
   if (order.status === "CONFIRMED") return ["OUTWARD"];
-  if (order.status === "DISPATCHED") {
-    return fulfilment.leftToDispatch > 0 ? ["INWARD", "OUTWARD"] : ["INWARD"];
-  }
+  // Returns always come after installation (owner's rule, 2026-10-15): a dispatched order can only send the rest.
+  if (order.status === "DISPATCHED") return fulfilment.leftToDispatch > 0 ? ["OUTWARD"] : [];
   if (order.status === "INSTALLATION") return ["INWARD"];
   return [];
 }

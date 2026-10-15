@@ -48,6 +48,16 @@ const schema = z.object({
     .trim()
     .max(100, "Maximum 100 characters")
     .transform((value) => (value === "" ? undefined : value)),
+  addressLine: z
+    .string()
+    .trim()
+    .max(500, "Maximum 500 characters")
+    .transform((value) => (value === "" ? undefined : value)),
+  postalCode: z
+    .string()
+    .trim()
+    .max(20, "Maximum 20 characters")
+    .transform((value) => (value === "" ? undefined : value)),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -82,6 +92,8 @@ export function CustomerDialog({
       accountType: existing?.accountType ?? "CUSTOMER",
       gstin: existing?.gstin ?? "",
       state: existing?.state ?? "",
+      addressLine: existing?.addressLine ?? "",
+      postalCode: existing?.postalCode ?? "",
     },
   });
 
@@ -173,6 +185,18 @@ export function CustomerDialog({
 
           <Field label="State" error={errors.state?.message} hint="Decides CGST + SGST or IGST. Needed before a quotation is sent.">
             {(props) => <Input {...props} {...register("state")} placeholder="Gujarat" />}
+          </Field>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+          <Field label="Address" error={errors.addressLine?.message}>
+            {(props) => (
+              <Input {...props} {...register("addressLine")} placeholder="12, Alkapuri Society, Vadodara" />
+            )}
+          </Field>
+
+          <Field label="PIN code" error={errors.postalCode?.message}>
+            {(props) => <Input {...props} {...register("postalCode")} placeholder="390007" inputMode="numeric" />}
           </Field>
         </div>
       </form>

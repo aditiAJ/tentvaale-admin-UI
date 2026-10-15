@@ -695,6 +695,8 @@ interface WireCustomer {
   accountType: CustomerView["accountType"];
   gstin?: string | null;
   state?: string | null;
+  addressLine?: string | null;
+  postalCode?: string | null;
   active: boolean;
   storefrontAccountId?: string | null;
   plannerProfile?: WirePlannerProfile | null;
@@ -725,6 +727,8 @@ function customerFromWire(customer: WireCustomer): CustomerView {
     accountType: customer.accountType,
     gstin: customer.gstin ?? null,
     state: customer.state ?? null,
+    addressLine: customer.addressLine ?? null,
+    postalCode: customer.postalCode ?? null,
     active: customer.active,
     storefrontAccountId: customer.storefrontAccountId ?? null,
     plannerProfile: customer.plannerProfile ? plannerFromWire(customer.plannerProfile) : null,
@@ -742,6 +746,8 @@ function customerBody(request: CreateCustomerRequest | UpdateCustomerRequest) {
     gstin: request.gstin || undefined,
     // Always sent: blank clears it (an absent state would leave the old one).
     state: request.state ?? "",
+    addressLine: request.addressLine ?? "",
+    postalCode: request.postalCode ?? "",
   };
 }
 

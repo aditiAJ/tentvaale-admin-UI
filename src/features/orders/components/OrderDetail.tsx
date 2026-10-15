@@ -458,16 +458,11 @@ function NextStep({
         : null;
       actions = can.writeStock || can.writeOrder ? (
         <>
+          {/* No return here: goods only come back once installation has started (owner's rule, 2026-10-15). */}
           {can.writeOrder ? (
             <Button size="sm" onClick={() => onAct("start-installation")}>
               <Wrench />
               Start installation
-            </Button>
-          ) : null}
-          {can.writeStock ? (
-            <Button size="sm" variant={can.writeOrder ? "outline" : "default"} onClick={() => onMove("INWARD")}>
-              <ArrowDownLeft />
-              Record return
             </Button>
           ) : null}
           {can.writeStock && (fulfilment?.leftToDispatch ?? 0) > 0 ? (

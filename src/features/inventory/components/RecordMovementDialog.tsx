@@ -163,7 +163,11 @@ export function RecordMovementDialog({
         {order.data && fulfilment && directions.length === 0 ? (
           <Alert
             tone="warning"
-            title={`${order.data.orderNumber} is ${order.data.status.toLowerCase()}; nothing can be dispatched or returned against it.`}
+            title={
+              order.data.status === "DISPATCHED"
+                ? `${order.data.orderNumber} is fully dispatched. Goods can only be returned once installation has started: start installation on the order first.`
+                : `${order.data.orderNumber} is ${order.data.status.toLowerCase()}; nothing can be dispatched or returned against it.`
+            }
           />
         ) : null}
 
