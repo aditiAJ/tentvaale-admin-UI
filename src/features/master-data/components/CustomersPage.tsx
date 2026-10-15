@@ -1,9 +1,9 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Pencil, Percent, Plus, Search, UserCheck, Users } from "lucide-react";
-import { listCustomers, listPriceLists, masterDataKeys } from "@/features/master-data/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Percent, Plus, Search, Trash2, UserCheck, Users } from "lucide-react";
+import { deleteCustomer, listCustomers, listPriceLists, masterDataKeys } from "@/features/master-data/api";
 import type { CustomerView } from "@/features/master-data/types";
 import { CustomerDialog } from "@/features/master-data/components/CustomerDialog";
 import { AssignPriceListDialog } from "@/features/master-data/components/AssignPriceListDialog";
@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -57,6 +58,8 @@ export function CustomersPage() {
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CustomerView | null>(null);
+  const [removing, setRemoving] = useState<CustomerView | null>(null);
+  const queryClient = useQueryClient();
   const [applying, setApplying] = useState<CustomerView | null>(null);
   const [pricing, setPricing] = useState<CustomerView | null>(null);
 
@@ -161,11 +164,9 @@ export function CustomersPage() {
                       </TD>
                       {canWrite ? (
                         <TD>
-                          {/* Edit only. An account is what a quotation and an
-                              order were raised against, and neither stores
-                              anything but a copied name — deleting one would
-                              leave those records pointing at nothing, with no
-                              foreign key to notice. */}
+                          {/* Delete is offered, but the backend refuses a customer that a
+                              quotation, order or credit note was raised against (they store
+                              only a copied name, with no foreign key to notice), and says so. */}
                           <div className="flex justify-end">
                             {customer.accountType === "EVENT_PLANNER" ? (
                               <Button
@@ -198,6 +199,15 @@ export function CustomersPage() {
                               title="Edit"
                             >
                               <Pencil />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setRemoving(customer)}
+                              aria-label={`Delete ${customer.fullName}`}
+                              title="Delete"
+                            >
+                              <Trash2 />
                             </Button>
                           </div>
                         </TD>
@@ -241,6 +251,20 @@ export function CustomersPage() {
       {editing ? <CustomerDialog existing={editing} onClose={() => setEditing(null)} /> : null}
       {pricing ? <AssignPriceListDialog customer={pricing} onClose={() => setPricing(null)} /> : null}
       {applying ? <PlannerApplicationDialog customer={applying} onClose={() => setApplying(null)} /> : null}
+      {removing ? (
+        <ConfirmDialog
+          title={`Delete ${removing.fullName}?`}
+          description="Removes the customer, with their planner application and price list. It is refused if they have quotations, orders or credit notes. Their storefront login is not touched."
+          confirmLabel="Delete customer"
+          fallbackError="Could not delete the customer."
+          action={() => deleteCustomer(removing.id)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: masterDataKeys.customers });
+            setRemoving(null);
+          }}
+          onClose={() => setRemoving(null)}
+        />
+      ) : null}
     </div>
   );
 }
