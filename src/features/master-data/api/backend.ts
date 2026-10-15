@@ -462,7 +462,9 @@ export interface UploadResult {
 
 /**
  * Sends images to the backend (stored in R2, with a thumbnail); every file has its own result. `product` applies
- * the product media rules (PNG or JPEG under 2 MB, 800 to 3000 pixels, or one MP4 under 10 MB, 30 s, 1080p).
+ * the product media rules (PNG or JPEG, 800 to 3000 pixels, or one MP4 under 10 MB, 30 s, 1080p). The backend
+ * still hard-rejects a product image over 2 MB — MediaField compresses to under that first (see media.ts's
+ * compressProductImage), so a caller here should already be under the cap.
  */
 export function uploadMedia(files: File[], purpose: "general" | "product" = "general"): Promise<UploadResult[]> {
   const form = new FormData();
@@ -774,6 +776,11 @@ export async function updateCustomer(
     body: customerBody(request),
   });
   return customerFromWire(updated);
+}
+
+/** 204; 422 with the reason when quotations, orders or credit notes still refer to the customer. */
+export function deleteCustomer(customerId: string): Promise<void> {
+  return apiFetch<void>(`${BASE}/customers/${encodeURIComponent(customerId)}`, { method: "DELETE" });
 }
 
 /** Pending applications only, oldest first. */

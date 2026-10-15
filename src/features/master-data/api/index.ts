@@ -441,6 +441,15 @@ export function updateCustomer(
   return backend.updateCustomer(customerId, request);
 }
 
+/**
+ * Only a customer nothing refers to: 422 with the reason when quotations, orders or credit notes do (deactivate the
+ * account instead). Their planner application and price-list assignment go with them.
+ */
+export function deleteCustomer(customerId: string): Promise<void> {
+  if (IS_MOCK) return Promise.reject(new ApiError("Deleting a customer needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.deleteCustomer(customerId);
+}
+
 // Rental suppliers exist only on the real backend; the demo data has no such concept.
 const SUPPLIERS_NEED_BACKEND = "Suppliers need the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
 

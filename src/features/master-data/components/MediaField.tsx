@@ -4,9 +4,12 @@ import { useRef, useState } from "react";
 import { Film, ImagePlus, Loader2, Star, Upload, X } from "lucide-react";
 import type { MediaAsset, MediaLimits } from "@/features/master-data/types";
 import {
+  compressProductImage,
   formatBytes,
   IMAGE_TYPES,
+  MAX_PRODUCT_IMAGE_PICK_BYTES,
   MediaError,
+  PRODUCT_IMAGE_TARGET_BYTES,
   readMedia,
   VIDEO_TYPES,
 } from "@/features/master-data/media";
@@ -104,7 +107,21 @@ export function MediaField({
     const added: MediaAsset[] = [];
     if (!IS_MOCK) {
       // Live backend: images go to storage in one request, each file with its own outcome.
-      const toSend = accepted.map(([file]) => file);
+      // A product photo over the backend's 2 MB cap is compressed here first rather than
+      // rejected outright — the admin can pick up to 5 MB and never see the 2 MB limit at all
+      // unless compression genuinely can't get it under that (an unusually busy/large photo).
+      const toSend: File[] = [];
+      for (const [file, kind] of accepted) {
+        if (kind === "IMAGE" && acceptsVideo) {
+          if (file.size > MAX_PRODUCT_IMAGE_PICK_BYTES) {
+            problems.push(`${file.name}: over ${formatBytes(MAX_PRODUCT_IMAGE_PICK_BYTES)}; choose a smaller photo`);
+            continue;
+          }
+          toSend.push(await compressProductImage(file, PRODUCT_IMAGE_TARGET_BYTES));
+        } else {
+          toSend.push(file);
+        }
+      }
       const warnings: string[] = [];
       try {
         for (const result of toSend.length ? await uploadMedia(toSend, acceptsVideo ? "product" : "general") : []) {
@@ -246,7 +263,7 @@ export function MediaField({
                 {videos.length} of {limits.videos} video
               </span>
             ) : null}
-            <span className="rounded-full border border-border bg-card px-2.5 py-0.5">PNG or JPEG, under 2 MB</span>
+            <span className="rounded-full border border-border bg-card px-2.5 py-0.5">PNG or JPEG, up to 5 MB (compressed automatically)</span>
             {acceptsVideo ? (
               <span className="rounded-full border border-border bg-card px-2.5 py-0.5">MP4, under 10 MB</span>
             ) : null}
@@ -389,7 +406,7 @@ export function MediaField({
         </Button>
         {acceptsVideo && !IS_MOCK ? (
           <p className="basis-full text-xs text-muted-foreground">
-            Up to {limits.images} images (PNG or JPEG, square, 1200 x 1200 recommended, 800 to 3000 pixels, under 2 MB each)
+            Up to {limits.images} images (PNG or JPEG, square, 1200 x 1200 recommended, 800 to 3000 pixels, up to 5 MB each — compressed automatically)
             and one MP4 video (under 10 MB, 30 seconds, up to 1080p).
           </p>
         ) : null}
