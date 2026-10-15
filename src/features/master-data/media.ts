@@ -30,6 +30,10 @@ export const MAX_VIDEO_BYTES = 50 * MB;
 const IMAGE_MAX_EDGE = 1024;
 const IMAGE_QUALITY = 0.8;
 
+/** What the admin may pick for a product photo; the backend's hard cap it must land under. */
+export const MAX_PRODUCT_IMAGE_PICK_BYTES = 5 * MB;
+export const PRODUCT_IMAGE_TARGET_BYTES = 2 * MB;
+
 /** A refusal written for the admin, shown under the media field. */
 export class MediaError extends Error {}
 
@@ -76,6 +80,72 @@ async function downscaleImage(file: File): Promise<string> {
   // WebP keeps transparency and is small; a browser that cannot encode it
   // hands back PNG instead, which is larger but still correct.
   return canvas.toDataURL("image/webp", IMAGE_QUALITY);
+}
+
+/**
+ * Re-encodes a product photo under `targetBytes` before it reaches the backend's hard cap
+ * (MediaUploadService.MAX_PRODUCT_IMAGE_BYTES) — a no-op if it already fits. JPEGs step down
+ * quality first (lossless to the eye at these sizes); PNGs step down dimensions instead, since
+ * canvas has no quality knob for PNG and a product cutout's transparency must survive. Gives up
+ * after a few steps and returns the original file, letting the backend's own check reject it
+ * with its usual message rather than silently shipping something unreadable.
+ */
+export async function compressProductImage(file: File, targetBytes: number): Promise<File> {
+  if (file.size <= targetBytes) return file;
+  if (file.type !== "image/jpeg" && file.type !== "image/png") return file;
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    return file;
+  }
+
+  const draw = (width: number, height: number) => {
+    canvas.width = width;
+    canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+  };
+  const toBlob = (type: string, quality?: number) =>
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+
+  let best: Blob | null = null;
+  if (file.type === "image/jpeg") {
+    draw(bitmap.width, bitmap.height);
+    for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+      const blob = await toBlob("image/jpeg", quality);
+      if (blob) best = blob;
+      if (blob && blob.size <= targetBytes) break;
+    }
+    if (best && best.size > targetBytes) {
+      for (const scale of [0.8, 0.6, 0.45]) {
+        draw(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+        const blob = await toBlob("image/jpeg", 0.6);
+        if (blob) best = blob;
+        if (blob && blob.size <= targetBytes) break;
+      }
+    }
+  } else {
+    // PNG: no quality parameter, and transparency must survive — shrink dimensions instead.
+    for (const scale of [0.85, 0.65, 0.5, 0.35]) {
+      draw(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
+      const blob = await toBlob("image/png");
+      if (blob) best = blob;
+      if (blob && blob.size <= targetBytes) break;
+    }
+  }
+
+  bitmap.close();
+  if (!best || best.size >= file.size) return file;
+  return new File([best], file.name, { type: file.type });
 }
 
 export async function readMedia(
