@@ -1,4 +1,4 @@
-import { apiFetch } from "@/services/api-client";
+import { apiFetch, ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
@@ -387,21 +387,34 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
   };
 }
 
+interface WireProductPage {
+  items: WireProduct[];
+  page: number;
+  size: number;
+  total: number;
+}
+
 export async function listProducts(
   signal?: AbortSignal,
   includeInactive = false,
 ): Promise<ProductView[]> {
-  const rows = await apiFetch<WireProduct[]>(
-    `${BASE}/products${includeInactive ? "?includeInactive=true" : ""}`,
-    { signal },
-  );
-  // The list is a summary with no variants, media or facets; the screens read all three off the
-  // product, so each row is completed from its detail.
-  return Promise.all(
-    rows.map(async (row) =>
-      productFromWire(await apiFetch<WireProduct>(`${BASE}/products/${row.id}`, { signal })),
-    ),
-  );
+  // The summary row now carries its own media and description, so one call is enough; no more
+  // fetching every product's full detail (variants, facets, stock) just to read its thumbnail.
+  // `size` is a generous cap, not real paging: screens still expect every matching product back
+  // (pickers, the bundle/quotation forms, the products grid's own client-side filters).
+  const params = new URLSearchParams({ size: "10000" });
+  if (includeInactive) params.set("includeInactive", "true");
+  const { items, total } = await apiFetch<WireProductPage>(`${BASE}/products?${params}`, { signal });
+  // Loud, not silent: a catalogue past the cap must be visibly wrong, never quietly incomplete
+  // (a picker missing products, a grid under-reporting its own count).
+  if (total > items.length) {
+    throw new ApiError(
+      `The catalogue has ${total} products, more than this screen loads at once (${items.length}). ` +
+        "This needs real paging before the catalogue can grow further.",
+      500,
+    );
+  }
+  return items.map((row) => productFromWire(row));
 }
 
 function productBody(request: CreateProductRequest) {
