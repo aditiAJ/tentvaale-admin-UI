@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CalendarDays, Clock, ExternalLink, MapPin, Users } from "lucide-react";
+import { Check, CalendarDays, Clock, ExternalLink, MapPin, Users, X } from "lucide-react";
 import type { QuotationLineView, QuotationPlan, QuotationStatus, QuotationVenue, QuotationView } from "@/features/quotations/types";
 import type { QuotationBucket } from "@/features/quotations/source";
 import { discountLabel } from "@/features/quotations/discount";
@@ -84,43 +84,99 @@ const STEPS: { status: QuotationStatus; label: string }[] = [
   { status: "CONVERTED", label: "Order placed" },
 ];
 
-/** Draft, Sent, Accepted, Order placed: where this quotation is, and the end it came to if it did not finish. */
+type StageState = "completed" | "current" | "final" | "ended" | "upcoming";
+
+const STAGE_STATE_LABEL: Record<StageState, string> = {
+  completed: "completed",
+  current: "current stage",
+  final: "completed, final stage",
+  ended: "current stage, ended",
+  upcoming: "upcoming",
+};
+
+/**
+ * Draft, Sent, Accepted, Order placed, drawn like the order page's stepper: filled check nodes for stages
+ * passed, a ringed node for where the quotation is now, hollow dashed nodes for what is still to come, and
+ * connectors solid up to the current stage and dashed after it. "Order placed" is the final stage (green).
+ *
+ * A quotation that was closed or expired shows the path it actually took (Draft, Sent if it was sent, then
+ * Closed or Expired) rather than stages it can no longer reach. A draft closed or lapsed before sending was
+ * never sent (MOM-15).
+ */
 export function StatusStepper({ status, wasSent = true }: { status: QuotationStatus; wasSent?: boolean }) {
   const ended = status === "REJECTED" || status === "EXPIRED";
-  // A quotation that ended was normally sent first; a draft closed or lapsed before sending was not (MOM-15).
-  const reached = wasSent ? 1 : 0;
-  const current = ended ? reached : Math.max(0, STEPS.findIndex((s) => s.status === status));
+  const steps = ended
+    ? [...STEPS.slice(0, wasSent ? 2 : 1), { status, label: status === "REJECTED" ? "Closed" : "Expired" }]
+    : STEPS;
+  const reached = Math.max(0, steps.findIndex((s) => s.status === status));
+
+  const stateOf = (index: number): StageState => {
+    if (index < reached) return "completed";
+    if (index > reached) return "upcoming";
+    if (ended) return "ended";
+    return status === "CONVERTED" ? "final" : "current";
+  };
+
   return (
-    <ol className="flex items-center gap-1.5 overflow-x-auto" aria-label="Quotation progress">
-      {STEPS.map((step, index) => {
-        const done = !ended && index < current;
-        const active = index === current && !ended;
+    <ol className="flex max-w-xl items-start" aria-label="Quotation progress">
+      {steps.map((step, index) => {
+        const state = stateOf(index);
         return (
-          <li key={step.status} className="flex items-center gap-1.5">
+          <li
+            key={step.status}
+            className="relative flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center"
+            aria-current={index === reached ? "step" : undefined}
+          >
+            {/* The connector leading into this stage, from the previous one's centre. */}
+            {index > 0 ? (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute top-3.5 right-1/2 left-[-50%] -translate-y-1/2",
+                  state === "upcoming"
+                    ? "border-t-2 border-dashed border-border"
+                    : state === "ended"
+                      ? "h-0.5 bg-destructive/60"
+                      : "h-0.5 bg-primary",
+                )}
+              />
+            ) : null}
+
             <span
+              aria-hidden="true"
               className={cn(
-                "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs whitespace-nowrap",
-                done && "border-success/40 bg-success/10 text-success",
-                active && "border-primary bg-primary/10 font-medium text-primary",
-                !done && !active && "border-border text-muted-foreground",
-                ended && index <= reached && "border-border text-foreground",
+                "relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full border-2",
+                state === "completed" && "border-primary bg-primary text-primary-foreground",
+                state === "current" && "border-primary bg-card ring-4 ring-primary/20",
+                state === "final" && "border-success bg-success text-card ring-4 ring-success/20",
+                state === "ended" && "border-destructive bg-destructive text-destructive-foreground ring-4 ring-destructive/20",
+                state === "upcoming" && "border-dashed border-muted-foreground/40 bg-card",
               )}
             >
-              {done ? <Check className="size-3" /> : <span className="tabular">{index + 1}</span>}
-              {step.label}
+              {state === "completed" || state === "final" ? (
+                <Check className="size-4" strokeWidth={3} />
+              ) : state === "ended" ? (
+                <X className="size-4" strokeWidth={3} />
+              ) : state === "current" ? (
+                <span className="size-2.5 rounded-full bg-primary" />
+              ) : null}
             </span>
-            {index < STEPS.length - 1 ? <span className="h-px w-4 bg-border" aria-hidden="true" /> : null}
+
+            <span
+              className={cn(
+                "max-w-full truncate px-0.5 text-xs",
+                state === "completed" && "text-foreground",
+                (state === "current" || state === "final") && "font-semibold text-foreground",
+                state === "ended" && "font-semibold text-destructive",
+                state === "upcoming" && "text-muted-foreground",
+              )}
+            >
+              {step.label}
+              <span className="sr-only">, {STAGE_STATE_LABEL[state]}</span>
+            </span>
           </li>
         );
       })}
-      {ended ? (
-        <>
-          <span className="h-px w-4 bg-border" aria-hidden="true" />
-          <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-xs font-medium whitespace-nowrap text-destructive">
-            {status === "REJECTED" ? "Closed" : "Expired"}
-          </span>
-        </>
-      ) : null}
     </ol>
   );
 }
@@ -156,8 +212,9 @@ export function PriceGrid({ quotation: q }: { quotation: QuotationView }) {
   ];
   return (
     <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-      {rows.map((row) => (
-        <div key={row.label}>
+      {/* Labels can repeat (the same bundle added twice gives two equal discount rows), so the key adds the position. */}
+      {rows.map((row, index) => (
+        <div key={`${row.label}-${index}`}>
           <dt className="text-xs text-muted-foreground">{row.label}</dt>
           <dd className={cn("tabular mt-0.5", row.strong ? "text-xl font-semibold" : "text-base font-medium", row.muted && "text-muted-foreground")}>
             {row.value}

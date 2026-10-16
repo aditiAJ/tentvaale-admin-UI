@@ -345,6 +345,8 @@ export interface CustomerView {
   gstin?: string | null;
   /** Place of supply: decides CGST + SGST (the company's state) or IGST. Needed before a quotation is sent. */
   state?: string | null;
+  addressLine?: string | null;
+  postalCode?: string | null;
   active?: boolean;
   storefrontAccountId?: string | null;
   /** Present once the customer, an event planner, has applied for trade pricing. */
@@ -740,6 +742,8 @@ export interface CreateCustomerRequest {
   accountType: CustomerType;
   gstin?: string;
   state?: string;
+  addressLine?: string;
+  postalCode?: string;
 }
 
 export interface PlannerApplicationRequest {
