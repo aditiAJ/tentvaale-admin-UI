@@ -6,6 +6,7 @@ import { formatMoney } from "@/lib/money";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { videoOf } from "@/features/master-data/components/ProductVideoButton";
 
 /** The variants a customer can choose between: a lone untouched default is just the product itself. */
 function realVariants(product: ProductView) {
@@ -89,6 +90,8 @@ export function ProductVariantsDialog({
   onEdit?: () => void;
 }) {
   const list = realVariants(product);
+  const images = (product.media ?? []).filter((item) => item.kind === "IMAGE" && item.url);
+  const video = videoOf(product.media);
   const typeOf = (variant: ProductVariantView) => variantType(product, variant.attributeFacetIds) || "Other";
   const types = [...new Set(list.map(typeOf))];
   // The product's own pieces (its default variant) sit beside the variants, counted in the product's total.
@@ -115,6 +118,29 @@ export function ProductVariantsDialog({
       }
     >
       <div className="space-y-4">
+        {images.length || video ? (
+          <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Product media">
+            {images.map((image) => (
+              // eslint-disable-next-line @next/next/no-img-element -- the stored thumbnail or image address
+              <img
+                key={image.id}
+                src={image.thumbnailUrl ?? image.url ?? undefined}
+                alt={image.fileName}
+                className="size-24 shrink-0 rounded-lg border border-border bg-muted object-cover"
+              />
+            ))}
+            {video ? (
+              <video
+                src={video.url ?? undefined}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={`${product.name} video`}
+                className="h-24 shrink-0 rounded-lg border border-border bg-black"
+              />
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="rounded-md bg-muted px-2 py-1">
             <span className="font-semibold tabular">{list.length}</span> variant{list.length === 1 ? "" : "s"}

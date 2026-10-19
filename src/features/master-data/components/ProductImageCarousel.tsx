@@ -4,13 +4,28 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { FALLBACK_IMAGE, type MediaAsset } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
+import { ProductVideoButton } from "@/features/master-data/components/ProductVideoButton";
 import { cn } from "@/lib/utils";
 
 /**
  * A product card's picture. One image (or none, or only a video) is exactly what MediaThumb shows. Two or more get
  * previous/next arrows that wrap round, so the set can be paged through endlessly, plus dots and arrow-key support.
  */
-export function ProductImageCarousel({
+export function ProductImageCarousel(props: {
+  media: MediaAsset[] | null | undefined;
+  alt: string;
+  className?: string;
+}) {
+  // A product's video is not part of the picture set; it plays from its own button over the picture's corner.
+  return (
+    <div className="relative">
+      <ImageCarousel {...props} />
+      <ProductVideoButton media={props.media} title={props.alt} className="absolute right-2 bottom-2 z-20" />
+    </div>
+  );
+}
+
+function ImageCarousel({
   media,
   alt,
   className,
