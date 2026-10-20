@@ -8,7 +8,7 @@ import { listFacetOptions, listWarehouses, masterDataKeys } from "@/features/mas
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
-import { suggestedRetail } from "../retail-rate";
+import { suggestedRetail, suggestedWholesale } from "../retail-rate";
 
 /** What a variant can differ by; the facets already in the system are listed too. */
 export const VARIANT_TYPES = ["Colour", "Size", "Fabric", "Material", "Style"];
@@ -200,7 +200,21 @@ export function ProductVariantsStep() {
                   )}
                 </Field>
                 <Field label="Retail rate" error={rowErrors?.retailRate?.message}>
-                  {(props) => <Input {...props} {...register(`variants.${index}.retailRate`)} inputMode="decimal" placeholder="Product's rate" />}
+                  {(props) => (
+                    <Input
+                      {...props}
+                      {...register(`variants.${index}.retailRate`, {
+                        // The other way round: a typed retail rate pre-fills wholesale as retail ÷ 1.2. Cleared, both go
+                        // back to "same as the product's".
+                        onChange: (event) => {
+                          const next = suggestedWholesale(event.target.value);
+                          setValue(`variants.${index}.wholesaleRate`, next ?? "", { shouldDirty: true });
+                        },
+                      })}
+                      inputMode="decimal"
+                      placeholder="Product's rate"
+                    />
+                  )}
                 </Field>
                 <Field label="Wholesale rate" error={rowErrors?.wholesaleRate?.message}>
                   {(props) => (

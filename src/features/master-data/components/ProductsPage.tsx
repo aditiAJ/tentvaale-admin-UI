@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Eye,
@@ -39,6 +39,24 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
+/** Where the filter panel sits beside the list (Tailwind's `lg`); narrower, it would sit above the list. */
+const WIDE_SCREEN = "(min-width: 1024px)";
+
+function subscribeToWidth(onChange: () => void) {
+  const query = window.matchMedia(WIDE_SCREEN);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+/** True on a wide screen. The server has no screen, so it assumes a wide one; the browser corrects it at once. */
+function useWideScreen(): boolean {
+  return useSyncExternalStore(
+    subscribeToWidth,
+    () => window.matchMedia(WIDE_SCREEN).matches,
+    () => true,
+  );
+}
+
 export function ProductsPage({
   initialCategoryId = "",
   initialSubCategoryId = "",
@@ -54,7 +72,11 @@ export function ProductsPage({
     categoryIds: initialCategoryId && !initialSubCategoryId ? [initialCategoryId] : [],
     subCategoryIds: initialSubCategoryId ? [initialSubCategoryId] : [],
   }));
-  const [showFilters, setShowFilters] = useState(true);
+  // Open beside the list on a wide screen, closed on a phone or tablet, where the panel would sit above the products and
+  // push them a long scroll down. Once the button is pressed, that choice holds whatever the width.
+  const wideScreen = useWideScreen();
+  const [filtersChoice, setFiltersChoice] = useState<boolean | null>(null);
+  const showFilters = filtersChoice ?? wideScreen;
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
@@ -107,7 +129,7 @@ export function ProductsPage({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
-          onClick={() => setShowFilters((value) => !value)}
+          onClick={() => setFiltersChoice(!showFilters)}
           aria-expanded={showFilters}
           aria-controls="product-filters"
         >

@@ -52,7 +52,7 @@ import { amountField } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { RETAIL_MARKUP_PERCENT, suggestedRetail } from "../retail-rate";
+import { RETAIL_MARKUP_PERCENT, followsRetailRule, suggestedRetail, suggestedWholesale } from "../retail-rate";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
@@ -622,7 +622,7 @@ function ProductForm({
   const unit = useWatch({ control, name: "dimensionUnit" });
   const rateNote = planRateNote(retailRate ?? "", wholesaleRate ?? "");
   const suggestion = suggestedRetail(wholesaleRate);
-  const retailFollowsRule = suggestion !== null && Number(retailRate) === Number(suggestion);
+  const retailFollowsRule = followsRetailRule(retailRate, wholesaleRate);
   const rateSuffix = rateType === "SqFt" ? "/ sq ft / day" : rateType === "RFt" ? "/ ft / day" : "/ day";
   const skuPreview = existing
     ? existing.sku
@@ -895,7 +895,13 @@ function ProductForm({
                 {(props) => (
                   <AffixInput
                     {...props}
-                    {...register("retailRate")}
+                    {...register("retailRate", {
+                      // The other way round of the rule below: a typed retail rate pre-fills wholesale as retail ÷ 1.2.
+                      onChange: (event) => {
+                        const next = suggestedWholesale(event.target.value);
+                        if (next !== null) setValue("wholesaleRate", next, { shouldDirty: true, shouldValidate: true });
+                      },
+                    })}
                     prefix="₹"
                     suffix={rateSuffix}
                     inputMode="decimal"
@@ -939,7 +945,7 @@ function ProductForm({
             {suggestion !== null ? (
               <p className="text-xs text-muted-foreground">
                 {retailFollowsRule ? (
-                  `Retail is wholesale + ${RETAIL_MARKUP_PERCENT}%.`
+                  `Retail is wholesale + ${RETAIL_MARKUP_PERCENT}%. Type either rate and the other fills in.`
                 ) : (
                   <>
                     Wholesale + {RETAIL_MARKUP_PERCENT}% would be ₹{suggestion}.{" "}
