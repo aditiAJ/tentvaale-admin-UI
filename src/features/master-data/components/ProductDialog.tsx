@@ -9,6 +9,7 @@ import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Trash2 } from "lucide-reac
 import { toast } from "sonner";
 import {
   createProduct,
+  getProduct,
   getStockGrid,
   listCategories,
   listProducts,
@@ -1249,14 +1250,22 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
   // opens on the next step. Rebuilding, rather than patching the form, is what gives a variant added in this
   // session its real id, so the next save updates it instead of creating it again.
   const [saved, setSaved] = useState<{ product: ProductView; grid: StockGrid; step: number; version: number } | null>(null);
-  const current = saved?.product ?? existing;
+  // A list row carries no variants, so the product itself is loaded: without it the Variants step opens blank and
+  // a variant the product already has would be sent again as a new one.
+  const full = useQuery({
+    queryKey: ["master-data", "product", existing?.id],
+    queryFn: ({ signal }) => getProduct(existing!.id, signal),
+    enabled: Boolean(existing),
+    gcTime: 0,
+  });
+  const current = saved?.product ?? full.data ?? existing;
   const grid = useQuery({
     queryKey: ["master-data", "stock-grid", existing?.id],
     queryFn: ({ signal }) => getStockGrid(existing!.id, signal),
     enabled: Boolean(existing),
     gcTime: 0,
   });
-  if (existing && grid.isPending) {
+  if (existing && (full.isPending || grid.isPending)) {
     return (
       <Dialog open onClose={onClose} title="Edit product" description={`SKU ${existing.sku}`} className="max-w-2xl">
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -1267,7 +1276,8 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
     <ProductForm
       key={saved?.version ?? 0}
       existing={current}
-      grid={saved?.grid ?? grid.data}
+      // Without the full product its variants are unknown, so the form leaves variants and stock untouched.
+      grid={saved?.grid ?? (full.data ? grid.data : undefined)}
       initialStep={saved?.step ?? 0}
       onSaved={async (product, step) => {
         const fresh = await queryClient.fetchQuery({

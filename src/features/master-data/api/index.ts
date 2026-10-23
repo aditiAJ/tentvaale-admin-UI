@@ -122,6 +122,14 @@ export function listProducts(
   return backend.listProducts(signal, options?.includeInactive);
 }
 
+/** One product with its variants; a list row has none, so screens showing variants load the product itself. */
+export async function getProduct(productId: string, signal?: AbortSignal): Promise<ProductView> {
+  if (!IS_MOCK) return backend.getProduct(productId, signal);
+  const product = (await mockListProducts()).find((item) => item.id === productId);
+  if (!product) throw new ApiError("Product not found", 404);
+  return product;
+}
+
 /** Inactive products stay on record but leave pickers and the storefront. Real backend only. */
 export function setProductActive(productId: string, active: boolean): Promise<void> {
   if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));

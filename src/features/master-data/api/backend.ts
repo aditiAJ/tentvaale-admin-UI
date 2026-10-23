@@ -428,6 +428,11 @@ export async function listProducts(
   return items.map((row) => productFromWire(row));
 }
 
+/** One product in full: unlike a list row it carries its variants, which View variants and Edit product need. */
+export async function getProduct(productId: string, signal?: AbortSignal): Promise<ProductView> {
+  return productFromWire(await apiFetch<WireProduct>(`${BASE}/products/${productId}`, { signal }));
+}
+
 function productBody(request: CreateProductRequest) {
   return {
     subCategoryId: Number(request.subCategoryId),
