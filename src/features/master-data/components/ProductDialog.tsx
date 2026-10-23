@@ -56,6 +56,7 @@ import { RETAIL_MARKUP_PERCENT, followsRetailRule, suggestedRetail, suggestedWho
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import Link from "next/link";
 import { TagInput, ToggleChips } from "@/components/ui/tag-input";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
@@ -428,6 +429,7 @@ function ProductForm({
                 companyId: existing.companyId,
                 categoryId: existing.categoryId,
                 name: existing.subCategoryName ?? existing.subCategoryId,
+                active: false,
               },
             ]
           : [],
@@ -437,8 +439,23 @@ function ProductForm({
   }, [categories.data, existing]);
 
   const selectedCategoryId = useWatch({ control, name: "categoryId" });
-  const subCategoryOptions =
-    categoryOptions.find((category) => category.id === selectedCategoryId)?.subCategories ?? [];
+  const selectedSubCategoryId = useWatch({ control, name: "subCategoryId" });
+  const selectedCategory = categoryOptions.find((category) => category.id === selectedCategoryId);
+  const subCategoryOptions = selectedCategory?.subCategories ?? [];
+  // A switched-off sub-category takes no new product, but the one this product is already filed under stays
+  // choosable: the product can be saved where it is, and stays hidden from the storefront meanwhile.
+  const isCurrentFiling = (subId: string) => subId === existing?.subCategoryId;
+  const canTake = (category: CategoryView) =>
+    category.subCategories.some((sub) => sub.active !== false || isCurrentFiling(sub.id));
+  const selectedSub = subCategoryOptions.find((sub) => sub.id === selectedSubCategoryId);
+  const hiddenBecause =
+    selectedSub && selectedCategory
+      ? !selectedCategory.active
+        ? `its category, ${selectedCategory.name}, is switched off`
+        : selectedSub.active === false
+          ? `its sub-category, ${selectedSub.name}, is switched off`
+          : null
+      : null;
 
   // Names other products in the same category use come first, since those are
   // what this kind of product most likely needs; then the storefront's own.
@@ -792,15 +809,21 @@ function ProductForm({
                     {categories.isPending ? "Loading categories" : "Choose a category"}
                   </option>
                   {categoryOptions.map((category) => (
-                    // A category with no sub-categories cannot take a product
-                    // yet; it stays visible so it is clear why.
+                    // A category with no usable sub-category cannot take a
+                    // product; it stays visible so it is clear why.
                     <option
                       key={category.id}
                       value={category.id}
-                      disabled={!category.subCategories.length}
+                      disabled={!canTake(category)}
                     >
                       {category.name}
-                      {category.subCategories.length ? "" : " (no sub-categories)"}
+                      {!category.subCategories.length
+                        ? " (no sub-categories)"
+                        : !canTake(category)
+                          ? " (all sub-categories hidden)"
+                          : !category.active
+                            ? " (switched off)"
+                            : ""}
                     </option>
                   ))}
                 </Select>
@@ -819,14 +842,30 @@ function ProductForm({
                     {selectedCategoryId ? "Choose a sub-category" : "Choose a category first"}
                   </option>
                   {subCategoryOptions.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
+                    <option
+                      key={sub.id}
+                      value={sub.id}
+                      disabled={sub.active === false && !isCurrentFiling(sub.id)}
+                    >
                       {sub.name}
+                      {sub.active === false ? " (hidden)" : ""}
                     </option>
                   ))}
                 </Select>
               )}
             </Field>
           </div>
+
+          {hiddenBecause ? (
+            <Alert tone="warning" title="Hidden from the storefront">
+              Customers cannot see this product because {hiddenBecause}. You can still edit and save it here. To show
+              it, switch it back on in{" "}
+              <Link href="/master-data/categories" className="font-medium text-foreground underline underline-offset-2">
+                Categories
+              </Link>
+              , or move the product to a sub-category that is shown.
+            </Alert>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Name" required error={errors.name?.message}>

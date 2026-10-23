@@ -48,6 +48,7 @@ import type {
   BundleOccasionView,
   BundleView,
   CategoryView,
+  SubCategoryView,
   CreateBundleOccasionRequest,
   CreateBundleRequest,
   CreateCategoryRequest,
@@ -263,6 +264,12 @@ export function deactivateCategory(categoryId: string): Promise<CategoryView> {
 export function activateCategory(categoryId: string): Promise<CategoryView> {
   if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
   return backend.activateCategory(categoryId);
+}
+
+/** Switches one sub-category off or back on; see SubCategoryView.active. Real backend only. */
+export function setSubCategoryActive(subCategoryId: string, active: boolean): Promise<SubCategoryView> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.setSubCategoryActive(subCategoryId, active);
 }
 
 export function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {

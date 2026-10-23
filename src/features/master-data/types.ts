@@ -299,6 +299,12 @@ export interface SubCategoryView {
   companyId: string;
   categoryId: string;
   name: string;
+  /**
+   * Switched off, its products are hidden from the storefront and nothing new
+   * can be filed under it; products already there stay editable. A row saved
+   * by an older mock store has no value, which means active.
+   */
+  active: boolean;
 }
 
 export interface CreateCategoryRequest {

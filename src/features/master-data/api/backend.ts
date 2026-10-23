@@ -78,6 +78,7 @@ interface WireSubCategory {
   id: number;
   categoryId: number;
   name: string;
+  active: boolean;
 }
 
 interface WireCategory {
@@ -188,6 +189,7 @@ function subCategoryFromWire(sub: WireSubCategory): SubCategoryView {
     companyId: companyId(),
     categoryId: String(sub.categoryId),
     name: sub.name,
+    active: sub.active,
   };
 }
 
@@ -276,6 +278,15 @@ export async function deactivateCategory(categoryId: string): Promise<CategoryVi
 export async function activateCategory(categoryId: string): Promise<CategoryView> {
   return categoryFromWire(
     await apiFetch<WireCategory>(`${BASE}/categories/${categoryId}/activate`, { method: "POST" }),
+  );
+}
+
+/** Switches one sub-category off (its products hidden from the storefront, still editable) or back on. */
+export async function setSubCategoryActive(subCategoryId: string, active: boolean): Promise<SubCategoryView> {
+  return subCategoryFromWire(
+    await apiFetch<WireSubCategory>(`${BASE}/sub-categories/${subCategoryId}/${active ? "activate" : "deactivate"}`, {
+      method: "POST",
+    }),
   );
 }
 

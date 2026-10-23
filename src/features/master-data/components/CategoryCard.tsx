@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Eye, EyeOff, Layers, Plus } from "lucide-react";
-import type { CategoryView, MediaAsset } from "@/features/master-data/types";
+import { ChevronRight, Eye, EyeOff, Info, Layers, Plus } from "lucide-react";
+import type { CategoryView, MediaAsset, SubCategoryView } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,9 @@ export const NO_COUNTS: CategoryCounts = { total: 0, bySub: new Map(), subMedia:
  *
  * `term` is the active search, already lower-cased. Sub-categories it matches are listed first and marked, so a card
  * kept in view by a sub-category match shows why it is there without being expanded.
+ *
+ * Each sub-category carries a storefront switch for a user who may write master data. A switched-off one is marked
+ * Hidden: its products stay in Admin and stay editable, but the storefront does not show them.
  */
 export function CategoryCard({
   category,
@@ -42,6 +45,7 @@ export function CategoryCard({
   onEdit,
   onDeactivate,
   onActivate,
+  onToggleSub,
 }: {
   category: CategoryView;
   term: string;
@@ -55,6 +59,8 @@ export function CategoryCard({
   onDeactivate?: () => void;
   /** Offered instead of Deactivate on an inactive category. */
   onActivate?: () => void;
+  /** Switches one sub-category on or off. Absent for a user who cannot write master data. */
+  onToggleSub?: (sub: SubCategoryView) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -72,12 +78,19 @@ export function CategoryCard({
   const productsHref = (sub?: string) =>
     `/master-data/products?category=${encodeURIComponent(category.id)}${sub ? `&sub=${encodeURIComponent(sub)}` : ""}`;
   const cover = category.media.length > 0 ? category.media : counts?.media;
+  const hiddenSubs = category.subCategories.filter((sub) => !isOn(sub)).length;
 
   const meta = (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground tabular">
       {counts ? (
         <span className="rounded-md bg-muted px-1.5 py-0.5 text-foreground">
           {counts.total} {counts.total === 1 ? "product" : "products"}
+        </span>
+      ) : null}
+      {hiddenSubs > 0 && category.active ? (
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
+          <EyeOff className="size-3" aria-hidden="true" />
+          {hiddenSubs} hidden
         </span>
       ) : null}
       {category.skuPrefix ? (
@@ -170,6 +183,8 @@ export function CategoryCard({
                   name={sub.name}
                   count={counts?.bySub.get(sub.id)}
                   highlight={matches(sub.name)}
+                  on={isOn(sub)}
+                  onToggle={onToggleSub ? () => onToggleSub(sub) : undefined}
                 />
               </li>
             ))
@@ -217,6 +232,13 @@ export function CategoryCard({
           )
         ) : (
           <ul className="space-y-2" aria-label={`Sub-categories of ${category.name}`}>
+            {!category.active ? (
+              <li className="flex items-start gap-1.5 rounded-lg bg-muted px-2.5 py-2 text-xs text-muted-foreground">
+                <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                This category is off, so all its sub-categories are hidden from the storefront whatever their own
+                switch says.
+              </li>
+            ) : null}
             {shown.map((sub) => (
               <li key={sub.id}>
                 <SubRow
@@ -225,6 +247,8 @@ export function CategoryCard({
                   count={counts?.bySub.get(sub.id) ?? (counts ? 0 : undefined)}
                   media={counts?.subMedia.get(sub.id)}
                   highlight={matches(sub.name)}
+                  on={isOn(sub)}
+                  onToggle={onToggleSub ? () => onToggleSub(sub) : undefined}
                 />
               </li>
             ))}
@@ -251,75 +275,192 @@ export function CategoryCard({
   );
 }
 
-/** A sub-category as a bordered row with a picture, its product count and a chevron into its products. */
+/** An older mock store saved sub-categories without `active`; those are on. */
+function isOn(sub: SubCategoryView): boolean {
+  return sub.active !== false;
+}
+
+/**
+ * Whether a sub-category's products show on the storefront, as a switch. It sits beside the row's link, never
+ * inside it, so a click toggles rather than navigates.
+ */
+function StorefrontSwitch({
+  name,
+  on,
+  onToggle,
+  compact = false,
+}: {
+  name: string;
+  on: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`Show ${name} on the storefront`}
+      title={on ? `Shown on the storefront. Click to hide ${name}.` : `Hidden from the storefront. Click to show ${name}.`}
+      onClick={onToggle}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        compact ? "p-0.5" : "py-1 pr-1 pl-2 hover:bg-muted",
+      )}
+    >
+      {compact ? null : (
+        <span className={cn("text-[0.7rem] font-medium", on ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
+          {on ? "Shown" : "Hidden"}
+        </span>
+      )}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative inline-flex shrink-0 rounded-full transition-colors",
+          compact ? "h-3.5 w-6" : "h-4.5 w-8",
+          on ? "bg-primary" : "bg-muted-foreground/30",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 left-0.5 rounded-full bg-white shadow-sm transition-transform",
+            compact ? "size-2.5" : "size-3.5",
+            on && (compact ? "translate-x-2.5" : "translate-x-3.5"),
+          )}
+        />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * A sub-category as a bordered row with a picture, its product count and a chevron into its products, plus the
+ * storefront switch for a user who may change it. A hidden one has a dashed amber outline and a greyed picture.
+ */
 function SubRow({
   href,
   name,
   count,
   media,
   highlight,
+  on,
+  onToggle,
 }: {
   href?: string;
   name: string;
   count?: number;
   media?: MediaAsset[];
   highlight: boolean;
+  on: boolean;
+  onToggle?: () => void;
 }) {
   const body = (
     <>
-      <MediaThumb media={media} className="size-10 rounded-md" />
-      <span className={cn("min-w-0 flex-1 truncate text-sm", highlight ? "font-medium text-primary" : "font-medium")}>
-        {name}
-      </span>
-      {count !== undefined ? (
-        <span className="shrink-0 text-xs text-muted-foreground tabular">
-          {count} {count === 1 ? "product" : "products"}
+      <MediaThumb media={media} className={cn("size-10 shrink-0 rounded-md", !on && "opacity-50 grayscale")} />
+      <span className="min-w-0 flex-1">
+        <span
+          title={name}
+          className={cn(
+            "line-clamp-2 text-sm leading-snug font-medium wrap-break-word",
+            highlight ? "text-primary" : !on && "text-muted-foreground",
+          )}
+        >
+          {name}
         </span>
-      ) : null}
+        {count !== undefined || (!on && !onToggle) ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground tabular">
+            {count !== undefined ? `${count} ${count === 1 ? "product" : "products"}` : null}
+            {!on && !onToggle ? (
+              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                <EyeOff className="size-3" aria-hidden="true" />
+                Hidden
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+      </span>
       {href ? <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
     </>
   );
-  const row = "flex items-center gap-3 rounded-lg border border-border bg-background px-2.5 py-2";
-  return href ? (
-    <Link
-      href={href}
-      title={`View ${name} products`}
-      className={cn(row, "outline-none transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50")}
+  const inner = "flex min-w-0 flex-1 items-center gap-3 px-2.5 py-2";
+  return (
+    <div
+      className={cn(
+        "flex items-center rounded-lg border bg-background transition-colors",
+        on ? "border-border" : "border-dashed border-amber-500/50 bg-amber-500/5",
+        href && "hover:border-primary/40",
+      )}
     >
-      {body}
-    </Link>
-  ) : (
-    <div className={row}>{body}</div>
+      {href ? (
+        <Link
+          href={href}
+          title={`View ${name} products`}
+          className={cn(inner, "rounded-lg outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50")}
+        >
+          {body}
+        </Link>
+      ) : (
+        <div className={inner}>{body}</div>
+      )}
+      {onToggle ? (
+        <div className="flex shrink-0 items-center self-stretch border-l border-border py-1 pr-1.5 pl-1">
+          <StorefrontSwitch name={name} on={on} onToggle={onToggle} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-/** A sub-category as a pill, for the compact list layout. */
+/** A sub-category as a pill, for the compact list layout; a hidden one is dashed and struck through. */
 function SubChip({
   href,
   name,
   count,
   highlight,
+  on,
+  onToggle,
 }: {
   href?: string;
   name: string;
   count?: number;
   highlight: boolean;
+  on: boolean;
+  onToggle?: () => void;
 }) {
   const chip = cn(
-    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
-    highlight ? "border-primary/50 font-medium text-primary" : "border-border text-muted-foreground",
+    "inline-flex items-center rounded-full border text-xs",
+    highlight
+      ? "border-primary/50 font-medium text-primary"
+      : on
+        ? "border-border text-muted-foreground"
+        : "border-dashed border-amber-500/60 text-muted-foreground",
   );
   const body = (
     <>
-      {name}
+      {!on ? <EyeOff className="size-3 text-amber-700 dark:text-amber-400" aria-label="Hidden" /> : null}
+      <span className={cn(!on && "line-through decoration-muted-foreground/50")}>{name}</span>
       {count !== undefined ? <span className="tabular opacity-70">{count}</span> : null}
     </>
   );
-  return href ? (
-    <Link href={href} className={cn(chip, "outline-none hover:border-primary/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50")}>
-      {body}
-    </Link>
-  ) : (
-    <span className={chip}>{body}</span>
+  const pad = cn("inline-flex items-center gap-1.5 py-1 pl-2.5", onToggle ? "pr-1" : "pr-2.5");
+  return (
+    <span className={chip}>
+      {href ? (
+        <Link
+          href={href}
+          className={cn(pad, "rounded-full outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50")}
+        >
+          {body}
+        </Link>
+      ) : (
+        <span className={pad}>{body}</span>
+      )}
+      {onToggle ? (
+        <span className="flex items-center pr-1.5">
+          <StorefrontSwitch name={name} on={on} onToggle={onToggle} compact />
+        </span>
+      ) : null}
+    </span>
   );
 }
+

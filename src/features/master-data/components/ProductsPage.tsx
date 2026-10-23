@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import {
+  listCategories,
   listProducts,
   masterDataKeys,
   setProductActive,
@@ -95,6 +96,22 @@ export function ProductsPage({
     queryFn: ({ signal }) =>
       listProducts(signal, { includeInactive: showInactive }),
   });
+
+  // Why an active product is still not on the storefront: its sub-category or its category is switched off.
+  const categories = useQuery({
+    queryKey: masterDataKeys.categories,
+    queryFn: ({ signal }) => listCategories(signal),
+  });
+  const hiddenReason = useMemo(() => {
+    const reasons = new Map<string, string>();
+    for (const category of categories.data ?? []) {
+      for (const sub of category.subCategories) {
+        if (!category.active) reasons.set(sub.id, `Its category, ${category.name}, is switched off`);
+        else if (sub.active === false) reasons.set(sub.id, `Its sub-category, ${sub.name}, is switched off`);
+      }
+    }
+    return reasons;
+  }, [categories.data]);
 
   const visible = useMemo(
     () =>
@@ -191,6 +208,7 @@ export function ProductsPage({
             <div className={`grid gap-4 ${gridCols}`}>
               {visible.map((product) => {
                 const inactive = product.active === false;
+                const hiddenBy = !inactive && product.subCategoryId ? hiddenReason.get(product.subCategoryId) : undefined;
                 return (
                   <article
                     key={product.id}
@@ -204,9 +222,20 @@ export function ProductsPage({
 
                     <div className="flex flex-1 flex-col gap-1.5 p-4">
                       <div className="flex items-center justify-between gap-2">
-                        <Badge variant={inactive ? "default" : "outline"}>
-                          {inactive ? "Inactive" : "Active"}
-                        </Badge>
+                        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <Badge variant={inactive ? "default" : "outline"}>
+                            {inactive ? "Inactive" : "Active"}
+                          </Badge>
+                          {hiddenBy ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-amber-700 dark:text-amber-400"
+                              title={`${hiddenBy}, so customers cannot see this product. Switch it on in Categories.`}
+                            >
+                              <EyeOff className="size-3" aria-hidden="true" />
+                              Not on storefront
+                            </span>
+                          ) : null}
+                        </span>
                         <span className="min-w-0 text-right">
                           <span className="block truncate font-mono text-xs">
                             {product.sku}
