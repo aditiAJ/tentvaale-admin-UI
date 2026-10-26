@@ -124,3 +124,37 @@ function defaultMessage(status: number, statusText: string): string {
   if (status >= 500) return "The server could not complete the request.";
   return statusText || "Request failed";
 }
+
+/**
+ * A GET whose answer is a file (the Excel export), not JSON. Sends the same login token as {@link apiFetch}, so
+ * the file is never behind an open link, and returns the bytes with the name the server chose for them.
+ */
+export async function apiDownload(path: string, signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  const token = getAuthToken();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_PATH}/${path.replace(/^\//, "")}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal,
+    });
+  } catch (caught) {
+    if (caught instanceof DOMException && caught.name === "AbortError") throw caught;
+    throw new ApiError("Cannot reach the server. Check your connection and try again.", NETWORK_ERROR_STATUS);
+  }
+  if (res.status === 401) {
+    clearAuthToken();
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+    throw new ApiError("Your session has expired. Please sign in again.", 401);
+  }
+  if (!res.ok) {
+    let problem: ProblemBody = {};
+    try {
+      problem = JSON.parse(await res.text()) as ProblemBody;
+    } catch {
+      // Not JSON (a proxy's error page): fall back to the status copy.
+    }
+    throw new ApiError(problem.detail ?? defaultMessage(res.status, res.statusText), res.status, problem.errors);
+  }
+  const named = /filename="?([^";]+)"?/i.exec(res.headers.get("content-disposition") ?? "");
+  return { blob: await res.blob(), filename: named?.[1] ?? "export.xlsx" };
+}

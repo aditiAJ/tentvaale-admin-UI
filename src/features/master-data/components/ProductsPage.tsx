@@ -29,6 +29,7 @@ import { DEFAULT_SORT, SortSelect, sortItems, type SortKey } from "@/features/ma
 import { ProductImageCarousel } from "@/features/master-data/components/ProductImageCarousel";
 import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
+import { ProductExportButton } from "@/features/master-data/components/ProductExportButton";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
@@ -134,12 +135,15 @@ export function ProductsPage({
         title="Products"
         description="The rental catalogue for this company."
         actions={
-          canWrite ? (
-            <Button onClick={() => setCreating(true)}>
-              <Plus />
-              New product
-            </Button>
-          ) : null
+          <>
+            <ProductExportButton shownIds={visible.map((product) => product.id)} categories={categories.data ?? []} />
+            {canWrite ? (
+              <Button onClick={() => setCreating(true)}>
+                <Plus />
+                New product
+              </Button>
+            ) : null}
+          </>
         }
       />
 

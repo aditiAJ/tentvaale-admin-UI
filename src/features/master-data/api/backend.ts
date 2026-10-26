@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from "@/services/api-client";
+import { apiDownload, apiFetch, ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
@@ -1597,4 +1597,21 @@ export async function updatePaymentTerms(
     },
   });
   return termsFromWire(updated);
+}
+
+/** What the Products page can ask the Excel export for. `ids` wins: exactly those products. */
+export interface ProductExportRequest {
+  categoryId?: string;
+  subCategoryId?: string;
+  includeInactive: boolean;
+  ids?: string[];
+}
+
+/** The catalogue as an .xlsx file (two sheets: Products and Variants), with the name the server gave it. */
+export function exportProducts(request: ProductExportRequest, signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  const params = new URLSearchParams({ includeInactive: String(request.includeInactive) });
+  if (request.categoryId) params.set("categoryId", request.categoryId);
+  if (request.subCategoryId) params.set("subCategoryId", request.subCategoryId);
+  if (request.ids?.length) params.set("ids", request.ids.join(","));
+  return apiDownload(`${BASE}/products/export?${params}`, signal);
 }

@@ -114,6 +114,15 @@ export const saveStockGrid = (
   cells: { variantId: string; warehouseId: string; quantity: number }[],
 ) => (IS_MOCK ? variantsNeedBackend<StockGrid>() : backend.saveStockGrid(productId, cells));
 
+/** Real backend only: the Excel file is built by the server. */
+export function exportProducts(
+  request: backend.ProductExportRequest,
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; filename: string }> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.exportProducts(request, signal);
+}
+
 export function listProducts(
   signal?: AbortSignal,
   options?: { includeInactive?: boolean },
