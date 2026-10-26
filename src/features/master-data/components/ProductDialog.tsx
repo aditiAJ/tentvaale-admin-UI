@@ -25,6 +25,7 @@ import {
   PRODUCT_SETTINGS,
   RATE_TYPE_LABEL,
   RATE_TYPES,
+  ratePerDayLabel,
   THEMES,
 } from "@/features/master-data/storefront";
 import {
@@ -641,7 +642,7 @@ function ProductForm({
   const rateNote = planRateNote(retailRate ?? "", wholesaleRate ?? "");
   const suggestion = suggestedRetail(wholesaleRate);
   const retailFollowsRule = followsRetailRule(retailRate, wholesaleRate);
-  const rateSuffix = rateType === "SqFt" ? "/ sq ft / day" : rateType === "RFt" ? "/ ft / day" : "/ day";
+  const rateSuffix = ratePerDayLabel(rateType);
   const skuPreview = existing
     ? existing.sku
     : previewSku(

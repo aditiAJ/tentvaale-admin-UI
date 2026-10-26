@@ -15,6 +15,7 @@ import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
+import { RATE_TYPE_LABEL, ratePerDayLabel, unitLabel } from "@/features/master-data/storefront";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -219,6 +220,16 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     // verified planner) and the saved quotation shows the final figure.
     const variant = line.variantId ? product.variants?.find((v) => v.id === line.variantId) : undefined;
     return Number((variant ?? product).retailRate.amount);
+  };
+
+  /** How a line is charged: what it was priced at when saved, else the chosen product's own setting. */
+  const rateTypeFor = (
+    line: { lineId: string; productId: string } | undefined,
+  ) => {
+    if (!line?.productId) return null;
+    const stored = line.lineId ? storedLines.get(line.lineId) : undefined;
+    if (stored && stored.productId === line.productId && stored.rateType) return stored.rateType;
+    return productsById.get(line.productId)?.rateType ?? null;
   };
 
   const priceLine = (line: FormInput["lines"][number] | undefined) => {
@@ -536,7 +547,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             <THead>
               <tr>
                 <TH>Product</TH>
-                <TH className="w-28 text-right">Qty</TH>
+                <TH className="w-32 text-right">Qty</TH>
                 <TH className="w-28 text-right">Days</TH>
                 <TH className="w-32 text-right">Rate/day</TH>
                 <TH className="w-36 text-right">Line total</TH>
@@ -547,6 +558,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
               {fields.map((field, index) => {
                 const line = watchedLines[index];
                 const rate = rateFor(line);
+                const rateType = rateTypeFor(line);
                 const priced = priceLine(line);
                 const rowErrors = errors.lines?.[index];
                 const stored = line?.lineId ? storedLines.get(line.lineId) : undefined;
@@ -574,7 +586,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                         </option>
                         {(products.data ?? []).map((product) => (
                           <option key={product.id} value={product.id}>
-                            {product.name} — {formatMoney(product.retailRate)}/day
+                            {product.name} — {formatMoney(product.retailRate)} {ratePerDayLabel(product.rateType)}
                           </option>
                         ))}
                         {/* A line can name a product that has since been
@@ -590,6 +602,11 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                           {rowErrors.productId.message}
                         </p>
                       ) : null}
+                      {rateType ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Charged {RATE_TYPE_LABEL[rateType]}
+                        </p>
+                      ) : null}
                       {line?.productId && productsById.get(line.productId)?.hasVariants ? (
                         <>
                           <Select
@@ -602,9 +619,12 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                             className="mt-1.5 min-w-52"
                           >
                             <option value="">Choose a variant</option>
-                            {(productsById.get(line.productId)?.variants ?? []).map((variant) => (
+                            {/* An inactive variant cannot be priced, so it is not offered; one already on the line stays so it still shows. */}
+                            {(productsById.get(line.productId)?.variants ?? [])
+                              .filter((variant) => variant.active !== false || variant.id === line.variantId)
+                              .map((variant) => (
                               <option key={variant.id} value={variant.id}>
-                                {variant.name} — {formatMoney(variant.retailRate)}/day
+                                {variant.name} — {formatMoney(variant.retailRate)} {ratePerDayLabel(productsById.get(line.productId)?.rateType)}
                               </option>
                             ))}
                           </Select>
@@ -618,14 +638,24 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                     </TD>
 
                     <TD className="align-top">
-                      <Input
-                        {...register(`lines.${index}.quantity`)}
-                        aria-label={`Quantity for line ${index + 1}`}
-                        aria-invalid={Boolean(rowErrors?.quantity)}
-                        inputMode="numeric"
-                        disabled={mutation.isPending}
-                        className="tabular ml-auto w-20 text-right"
-                      />
+                      <div className="relative ml-auto w-24">
+                        <Input
+                          {...register(`lines.${index}.quantity`)}
+                          aria-label={`Quantity for line ${index + 1}`}
+                          aria-invalid={Boolean(rowErrors?.quantity)}
+                          inputMode="numeric"
+                          disabled={mutation.isPending}
+                          className={cn("tabular w-full text-right", rateType && "pr-10")}
+                        />
+                        {rateType ? (
+                          <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-muted-foreground opacity-50"
+                          >
+                            {unitLabel(rateType)}
+                          </span>
+                        ) : null}
+                      </div>
                       {rowErrors?.quantity ? (
                         <p className="mt-1 text-xs text-destructive">{rowErrors.quantity.message}</p>
                       ) : null}
@@ -649,6 +679,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
                     <TD className="tabular text-right align-top">
                       {rate !== null ? formatMoney({ amount: rate, currency: "INR" }) : "—"}
+                      {rate !== null && rateType ? (
+                        <span className="block text-xs text-muted-foreground">{ratePerDayLabel(rateType)}</span>
+                      ) : null}
                     </TD>
 
                     <TD className="tabular text-right align-top">

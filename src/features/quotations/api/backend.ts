@@ -1,5 +1,6 @@
 import { apiFetch } from "@/services/api-client";
 import type { Money } from "@/lib/money";
+import type { RateType } from "@/features/master-data/storefront";
 import type {
   QuotationVersionView,
   CreateQuotationRequest,
@@ -27,6 +28,7 @@ interface WireLine {
   productId: number;
   variantId?: number | null;
   productName: string;
+  rateType?: "QTY" | "RFT" | "SQFT" | null;
   quantity: number;
   rentalDays: number;
   unitRatePerDay: Money;
@@ -75,12 +77,15 @@ interface WireQuotation {
   lines: WireLine[];
 }
 
+const RATE_FROM_WIRE: Record<"QTY" | "RFT" | "SQFT", RateType> = { QTY: "Qty", RFT: "RFt", SQFT: "SqFt" };
+
 function lineFromWire(line: WireLine): QuotationLineView {
   return {
     id: line.id,
     productId: String(line.productId),
     variantId: line.variantId == null ? null : String(line.variantId),
     productName: line.productName,
+    rateType: line.rateType ? RATE_FROM_WIRE[line.rateType] : null,
     quantity: line.quantity,
     rentalDays: line.rentalDays,
     unitRatePerDay: line.unitRatePerDay,
