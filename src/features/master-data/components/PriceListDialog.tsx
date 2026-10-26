@@ -252,7 +252,7 @@ export function PriceListDialog({
                 className="w-40"
               >
                 <option value="">Choose a variant</option>
-                {picked.variants.map((variant) => (
+                {picked.variants.filter((variant) => variant.active !== false).map((variant) => (
                   <option key={variant.id} value={variant.id}>
                     {variant.name}
                   </option>

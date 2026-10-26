@@ -1,4 +1,5 @@
 import type { Money } from "@/lib/money";
+import type { RateType } from "@/features/master-data/storefront";
 
 /**
  * Mirrors com.tentvaale.quotation.api.QuotationStatus.
@@ -35,6 +36,8 @@ export interface QuotationLineView {
   /** Whether the rate came from the customer's trade price list. */
   tradePrice?: boolean;
   productName: string;
+  /** How the product was charged when this line was priced: per piece, per running ft or per sq ft. */
+  rateType?: RateType | null;
   quantity: number;
   rentalDays: number;
   unitRatePerDay: Money;
