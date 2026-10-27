@@ -349,7 +349,7 @@ function ProductForm({
     // each one down as soon as the field is put right.
     mode: "onTouched",
     defaultValues: {
-      skuOwner: existing?.skuOwner || DEFAULT_SKU_OWNER,
+      skuOwner: existing?.skuOwner ?? "",
       name: existing?.name ?? "",
       genericName: existing?.genericName ?? "",
       hsnCode: existing?.hsnCode ?? "",
@@ -892,7 +892,7 @@ function ProductForm({
             <Field
               label="SKU owner"
               error={errors.skuOwner?.message}
-              hint="Whose stock this is. Pick a name already used, or type a new one."
+              hint="Whose stock this is. Pick a name from the list, or type a new one and choose it. Left empty, it is Tentvaale."
             >
               {(props) => (
                 <Controller
@@ -905,7 +905,7 @@ function ProductForm({
                       onChange={field.onChange}
                       onBlur={field.onBlur}
                       options={ownerOptions}
-                      placeholder={DEFAULT_SKU_OWNER}
+                      placeholder="Select SKU owner"
                     />
                   )}
                 />
