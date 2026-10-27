@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,12 +15,14 @@ import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
+import { areaOf, bestFit } from "@/lib/area";
 import { RATE_TYPE_LABEL, ratePerDayLabel, unitLabel } from "@/features/master-data/storefront";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
+import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -128,6 +130,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  // The length and width boxes of an area line, as typed; until one is typed they show the best whole-number fit of the area.
+  const [sides, setSides] = useState<Record<string, { length: string; width: string }>>({});
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -140,6 +144,18 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   const productsById = useMemo(
     () => new Map((products.data ?? []).map((product) => [product.id, product])),
+    [products.data],
+  );
+
+  // The catalogue as a searchable list: typing matches the name or the SKU.
+  const productOptions = useMemo<SearchSelectOption[]>(
+    () =>
+      (products.data ?? []).map((product) => ({
+        value: product.id,
+        label: product.name,
+        hint: `${formatMoney(product.retailRate)} ${ratePerDayLabel(product.rateType)}`,
+        keywords: product.sku,
+      })),
     [products.data],
   );
   const storedLines = useMemo(
@@ -239,6 +255,26 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     const days = Number(line.rentalDays);
     if (!Number.isInteger(count) || !Number.isInteger(days) || count < 1 || days < 1) return null;
     return rate * count * days;
+  };
+
+  /** A side typed: both sides known gives the area, which goes into the line. */
+  const changeSide = (
+    id: string,
+    index: number,
+    current: { length: string; width: string },
+    which: "length" | "width",
+    value: string,
+  ) => {
+    const next = { ...current, [which]: value };
+    setSides((previous) => ({ ...previous, [id]: next }));
+    const area = areaOf(next.length, next.width);
+    if (area !== null) setValue(`lines.${index}.quantity`, String(area), { shouldValidate: true, shouldDirty: true });
+  };
+
+  /** An area typed: the sides show the whole-number fit nearest a square, or empty when there is none. */
+  const followArea = (id: string, value: string) => {
+    const fit = /^\d+$/.test(value) ? bestFit(Number(value)) : null;
+    setSides((previous) => ({ ...previous, [id]: { length: fit ? String(fit[0]) : "", width: fit ? String(fit[1]) : "" } }));
   };
 
   const watchedDelivery = Number(useWatch({ control, name: "deliveryCharge" })) || 0;
@@ -547,7 +583,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             <THead>
               <tr>
                 <TH>Product</TH>
-                <TH className="w-32 text-right">Qty</TH>
+                <TH className="w-44 text-right">Qty</TH>
                 <TH className="w-28 text-right">Days</TH>
                 <TH className="w-32 text-right">Rate/day</TH>
                 <TH className="w-36 text-right">Line total</TH>
@@ -560,43 +596,44 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                 const rate = rateFor(line);
                 const rateType = rateTypeFor(line);
                 const priced = priceLine(line);
+                // An area product is entered as length x width or as the area: each fills in the other.
+                const areaLine = rateType === "SqFt";
+                const fit = areaLine && line ? bestFit(Number(line.quantity)) : null;
+                const boxes = sides[field.id] ?? { length: fit ? String(fit[0]) : "", width: fit ? String(fit[1]) : "" };
                 const rowErrors = errors.lines?.[index];
                 const stored = line?.lineId ? storedLines.get(line.lineId) : undefined;
 
                 return (
                   <TR key={field.id}>
                     <TD className="align-top">
-                      <Select
-                        {...register(`lines.${index}.productId`, {
-                          // A different product is a different line: it is
-                          // priced afresh rather than inheriting this line's
-                          // stored rate.
-                          onChange: () => {
-                            setValue(`lines.${index}.lineId`, "");
-                            setValue(`lines.${index}.variantId`, "");
-                          },
-                        })}
-                        aria-label={`Product for line ${index + 1}`}
-                        aria-invalid={Boolean(rowErrors?.productId)}
-                        disabled={products.isPending || mutation.isPending}
-                        className="min-w-52"
-                      >
-                        <option value="">
-                          {products.isPending ? "Loading catalogue" : "Choose a product"}
-                        </option>
-                        {(products.data ?? []).map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name} — {formatMoney(product.retailRate)} {ratePerDayLabel(product.rateType)}
-                          </option>
-                        ))}
-                        {/* A line can name a product that has since been
-                            deactivated, which the catalogue no longer lists;
-                            keeping it as an option stops the select silently
-                            resetting the line. */}
-                        {stored && !productsById.has(stored.productId) ? (
-                          <option value={stored.productId}>{stored.productName}</option>
-                        ) : null}
-                      </Select>
+                      <Controller
+                        control={control}
+                        name={`lines.${index}.productId`}
+                        render={({ field: productField }) => (
+                          <SearchSelect
+                            value={productField.value}
+                            // A different product is a different line: it is priced afresh rather than
+                            // inheriting this line's stored rate.
+                            onChange={(productId) => {
+                              productField.onChange(productId);
+                              setValue(`lines.${index}.lineId`, "");
+                              setValue(`lines.${index}.variantId`, "");
+                            }}
+                            // A line can name a product that has since been deactivated, which the catalogue no
+                            // longer lists; keeping it as an option stops the box silently resetting the line.
+                            options={
+                              stored && !productsById.has(stored.productId)
+                                ? [...productOptions, { value: stored.productId, label: stored.productName }]
+                                : productOptions
+                            }
+                            placeholder={products.isPending ? "Loading catalogue" : "Choose a product — type to search"}
+                            aria-label={`Product for line ${index + 1}`}
+                            aria-invalid={Boolean(rowErrors?.productId)}
+                            disabled={products.isPending || mutation.isPending}
+                            className="min-w-52"
+                          />
+                        )}
+                      />
                       {rowErrors?.productId ? (
                         <p className="mt-1 text-xs text-destructive">
                           {rowErrors.productId.message}
@@ -638,23 +675,53 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                     </TD>
 
                     <TD className="align-top">
-                      <div className="relative ml-auto w-24">
-                        <Input
-                          {...register(`lines.${index}.quantity`)}
-                          aria-label={`Quantity for line ${index + 1}`}
-                          aria-invalid={Boolean(rowErrors?.quantity)}
-                          inputMode="numeric"
-                          disabled={mutation.isPending}
-                          className={cn("tabular w-full text-right", rateType && "pr-10")}
-                        />
-                        {rateType ? (
-                          <span
-                            aria-hidden="true"
-                            className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-muted-foreground opacity-50"
-                          >
-                            {unitLabel(rateType)}
-                          </span>
+                      <div className="ml-auto flex w-44 flex-col items-end gap-1.5">
+                        {areaLine ? (
+                          // Two sides for the floor; the area below follows them, and they follow a typed area.
+                          <div className="flex w-full items-center gap-1.5">
+                            <Input
+                              value={boxes.length}
+                              onChange={(event) => changeSide(field.id, index, boxes, "length", event.target.value)}
+                              aria-label={`Length in feet for line ${index + 1}`}
+                              placeholder="Length"
+                              inputMode="decimal"
+                              disabled={mutation.isPending}
+                              className="tabular min-w-0 text-right"
+                            />
+                            <span aria-hidden="true" className="text-muted-foreground">×</span>
+                            <Input
+                              value={boxes.width}
+                              onChange={(event) => changeSide(field.id, index, boxes, "width", event.target.value)}
+                              aria-label={`Width in feet for line ${index + 1}`}
+                              placeholder="Width"
+                              inputMode="decimal"
+                              disabled={mutation.isPending}
+                              className="tabular min-w-0 text-right"
+                            />
+                          </div>
                         ) : null}
+                        <div className={cn("relative", areaLine ? "w-full" : "w-24")}>
+                          <Input
+                            {...register(`lines.${index}.quantity`, {
+                              onChange: (event) => {
+                                if (areaLine) followArea(field.id, event.target.value);
+                              },
+                            })}
+                            aria-label={areaLine ? `Area for line ${index + 1}` : `Quantity for line ${index + 1}`}
+                            aria-invalid={Boolean(rowErrors?.quantity)}
+                            inputMode="numeric"
+                            disabled={mutation.isPending}
+                            className={cn("tabular w-full text-right", rateType && "pr-10")}
+                          />
+                          {rateType ? (
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-muted-foreground opacity-50"
+                            >
+                              {unitLabel(rateType)}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       {rowErrors?.quantity ? (
                         <p className="mt-1 text-xs text-destructive">{rowErrors.quantity.message}</p>
