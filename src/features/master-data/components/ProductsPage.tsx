@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Eye,
@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import {
+  listCategories,
   listProducts,
   masterDataKeys,
   setProductActive,
@@ -28,6 +29,7 @@ import { DEFAULT_SORT, SortSelect, sortItems, type SortKey } from "@/features/ma
 import { ProductImageCarousel } from "@/features/master-data/components/ProductImageCarousel";
 import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
+import { ProductExportButton } from "@/features/master-data/components/ProductExportButton";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
@@ -38,6 +40,24 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+
+/** Where the filter panel sits beside the list (Tailwind's `lg`); narrower, it would sit above the list. */
+const WIDE_SCREEN = "(min-width: 1024px)";
+
+function subscribeToWidth(onChange: () => void) {
+  const query = window.matchMedia(WIDE_SCREEN);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+/** True on a wide screen. The server has no screen, so it assumes a wide one; the browser corrects it at once. */
+function useWideScreen(): boolean {
+  return useSyncExternalStore(
+    subscribeToWidth,
+    () => window.matchMedia(WIDE_SCREEN).matches,
+    () => true,
+  );
+}
 
 export function ProductsPage({
   initialCategoryId = "",
@@ -54,7 +74,11 @@ export function ProductsPage({
     categoryIds: initialCategoryId && !initialSubCategoryId ? [initialCategoryId] : [],
     subCategoryIds: initialSubCategoryId ? [initialSubCategoryId] : [],
   }));
-  const [showFilters, setShowFilters] = useState(true);
+  // Open beside the list on a wide screen, closed on a phone or tablet, where the panel would sit above the products and
+  // push them a long scroll down. Once the button is pressed, that choice holds whatever the width.
+  const wideScreen = useWideScreen();
+  const [filtersChoice, setFiltersChoice] = useState<boolean | null>(null);
+  const showFilters = filtersChoice ?? wideScreen;
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ProductView | null>(null);
@@ -73,6 +97,22 @@ export function ProductsPage({
     queryFn: ({ signal }) =>
       listProducts(signal, { includeInactive: showInactive }),
   });
+
+  // Why an active product is still not on the storefront: its sub-category or its category is switched off.
+  const categories = useQuery({
+    queryKey: masterDataKeys.categories,
+    queryFn: ({ signal }) => listCategories(signal),
+  });
+  const hiddenReason = useMemo(() => {
+    const reasons = new Map<string, string>();
+    for (const category of categories.data ?? []) {
+      for (const sub of category.subCategories) {
+        if (!category.active) reasons.set(sub.id, `Its category, ${category.name}, is switched off`);
+        else if (sub.active === false) reasons.set(sub.id, `Its sub-category, ${sub.name}, is switched off`);
+      }
+    }
+    return reasons;
+  }, [categories.data]);
 
   const visible = useMemo(
     () =>
@@ -95,19 +135,22 @@ export function ProductsPage({
         title="Products"
         description="The rental catalogue for this company."
         actions={
-          canWrite ? (
-            <Button onClick={() => setCreating(true)}>
-              <Plus />
-              New product
-            </Button>
-          ) : null
+          <>
+            <ProductExportButton shownIds={visible.map((product) => product.id)} categories={categories.data ?? []} />
+            {canWrite ? (
+              <Button onClick={() => setCreating(true)}>
+                <Plus />
+                New product
+              </Button>
+            ) : null}
+          </>
         }
       />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
-          onClick={() => setShowFilters((value) => !value)}
+          onClick={() => setFiltersChoice(!showFilters)}
           aria-expanded={showFilters}
           aria-controls="product-filters"
         >
@@ -169,6 +212,7 @@ export function ProductsPage({
             <div className={`grid gap-4 ${gridCols}`}>
               {visible.map((product) => {
                 const inactive = product.active === false;
+                const hiddenBy = !inactive && product.subCategoryId ? hiddenReason.get(product.subCategoryId) : undefined;
                 return (
                   <article
                     key={product.id}
@@ -182,9 +226,20 @@ export function ProductsPage({
 
                     <div className="flex flex-1 flex-col gap-1.5 p-4">
                       <div className="flex items-center justify-between gap-2">
-                        <Badge variant={inactive ? "default" : "outline"}>
-                          {inactive ? "Inactive" : "Active"}
-                        </Badge>
+                        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <Badge variant={inactive ? "default" : "outline"}>
+                            {inactive ? "Inactive" : "Active"}
+                          </Badge>
+                          {hiddenBy ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-amber-700 dark:text-amber-400"
+                              title={`${hiddenBy}, so customers cannot see this product. Switch it on in Categories.`}
+                            >
+                              <EyeOff className="size-3" aria-hidden="true" />
+                              Not on storefront
+                            </span>
+                          ) : null}
+                        </span>
                         <span className="min-w-0 text-right">
                           <span className="block truncate font-mono text-xs">
                             {product.sku}

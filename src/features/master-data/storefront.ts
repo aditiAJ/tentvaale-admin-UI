@@ -31,6 +31,11 @@ export function unitLabel(rateType?: RateType | null): string {
   return rateType === "SqFt" ? "sq ft" : rateType === "RFt" ? "rft" : "pcs";
 }
 
+/** The unit a per-day rate is quoted in: "/ day", "/ ft / day" or "/ sq ft / day". */
+export function ratePerDayLabel(rateType?: RateType | null): string {
+  return rateType === "SqFt" ? "/ sq ft / day" : rateType === "RFt" ? "/ ft / day" : "/ day";
+}
+
 /** Where a product can be used, as the storefront's Indoor / outdoor spec. */
 export const PRODUCT_SETTINGS = ["Indoor", "Outdoor", "Indoor & outdoor"] as const;
 export type ProductSetting = (typeof PRODUCT_SETTINGS)[number];

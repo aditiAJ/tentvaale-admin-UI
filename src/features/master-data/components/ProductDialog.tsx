@@ -9,6 +9,7 @@ import { ArrowLeft, ArrowRight, Check, Loader2, Plus, Trash2 } from "lucide-reac
 import { toast } from "sonner";
 import {
   createProduct,
+  getProduct,
   getStockGrid,
   listCategories,
   listProducts,
@@ -24,6 +25,7 @@ import {
   PRODUCT_SETTINGS,
   RATE_TYPE_LABEL,
   RATE_TYPES,
+  ratePerDayLabel,
   THEMES,
 } from "@/features/master-data/storefront";
 import {
@@ -52,10 +54,11 @@ import { amountField } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { RETAIL_MARKUP_PERCENT, suggestedRetail } from "../retail-rate";
+import { RETAIL_MARKUP_PERCENT, followsRetailRule, suggestedRetail, suggestedWholesale } from "../retail-rate";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import Link from "next/link";
 import { TagInput, ToggleChips } from "@/components/ui/tag-input";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 
@@ -346,7 +349,7 @@ function ProductForm({
     // each one down as soon as the field is put right.
     mode: "onTouched",
     defaultValues: {
-      skuOwner: existing?.skuOwner || DEFAULT_SKU_OWNER,
+      skuOwner: existing?.skuOwner ?? "",
       name: existing?.name ?? "",
       genericName: existing?.genericName ?? "",
       hsnCode: existing?.hsnCode ?? "",
@@ -428,6 +431,7 @@ function ProductForm({
                 companyId: existing.companyId,
                 categoryId: existing.categoryId,
                 name: existing.subCategoryName ?? existing.subCategoryId,
+                active: false,
               },
             ]
           : [],
@@ -437,8 +441,23 @@ function ProductForm({
   }, [categories.data, existing]);
 
   const selectedCategoryId = useWatch({ control, name: "categoryId" });
-  const subCategoryOptions =
-    categoryOptions.find((category) => category.id === selectedCategoryId)?.subCategories ?? [];
+  const selectedSubCategoryId = useWatch({ control, name: "subCategoryId" });
+  const selectedCategory = categoryOptions.find((category) => category.id === selectedCategoryId);
+  const subCategoryOptions = selectedCategory?.subCategories ?? [];
+  // A switched-off sub-category takes no new product, but the one this product is already filed under stays
+  // choosable: the product can be saved where it is, and stays hidden from the storefront meanwhile.
+  const isCurrentFiling = (subId: string) => subId === existing?.subCategoryId;
+  const canTake = (category: CategoryView) =>
+    category.subCategories.some((sub) => sub.active !== false || isCurrentFiling(sub.id));
+  const selectedSub = subCategoryOptions.find((sub) => sub.id === selectedSubCategoryId);
+  const hiddenBecause =
+    selectedSub && selectedCategory
+      ? !selectedCategory.active
+        ? `its category, ${selectedCategory.name}, is switched off`
+        : selectedSub.active === false
+          ? `its sub-category, ${selectedSub.name}, is switched off`
+          : null
+      : null;
 
   // Names other products in the same category use come first, since those are
   // what this kind of product most likely needs; then the storefront's own.
@@ -622,8 +641,8 @@ function ProductForm({
   const unit = useWatch({ control, name: "dimensionUnit" });
   const rateNote = planRateNote(retailRate ?? "", wholesaleRate ?? "");
   const suggestion = suggestedRetail(wholesaleRate);
-  const retailFollowsRule = suggestion !== null && Number(retailRate) === Number(suggestion);
-  const rateSuffix = rateType === "SqFt" ? "/ sq ft / day" : rateType === "RFt" ? "/ ft / day" : "/ day";
+  const retailFollowsRule = followsRetailRule(retailRate, wholesaleRate);
+  const rateSuffix = ratePerDayLabel(rateType);
   const skuPreview = existing
     ? existing.sku
     : previewSku(
@@ -792,15 +811,21 @@ function ProductForm({
                     {categories.isPending ? "Loading categories" : "Choose a category"}
                   </option>
                   {categoryOptions.map((category) => (
-                    // A category with no sub-categories cannot take a product
-                    // yet; it stays visible so it is clear why.
+                    // A category with no usable sub-category cannot take a
+                    // product; it stays visible so it is clear why.
                     <option
                       key={category.id}
                       value={category.id}
-                      disabled={!category.subCategories.length}
+                      disabled={!canTake(category)}
                     >
                       {category.name}
-                      {category.subCategories.length ? "" : " (no sub-categories)"}
+                      {!category.subCategories.length
+                        ? " (no sub-categories)"
+                        : !canTake(category)
+                          ? " (all sub-categories hidden)"
+                          : !category.active
+                            ? " (switched off)"
+                            : ""}
                     </option>
                   ))}
                 </Select>
@@ -819,14 +844,30 @@ function ProductForm({
                     {selectedCategoryId ? "Choose a sub-category" : "Choose a category first"}
                   </option>
                   {subCategoryOptions.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
+                    <option
+                      key={sub.id}
+                      value={sub.id}
+                      disabled={sub.active === false && !isCurrentFiling(sub.id)}
+                    >
                       {sub.name}
+                      {sub.active === false ? " (hidden)" : ""}
                     </option>
                   ))}
                 </Select>
               )}
             </Field>
           </div>
+
+          {hiddenBecause ? (
+            <Alert tone="warning" title="Hidden from the storefront">
+              Customers cannot see this product because {hiddenBecause}. You can still edit and save it here. To show
+              it, switch it back on in{" "}
+              <Link href="/master-data/categories" className="font-medium text-foreground underline underline-offset-2">
+                Categories
+              </Link>
+              , or move the product to a sub-category that is shown.
+            </Alert>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Name" required error={errors.name?.message}>
@@ -851,7 +892,7 @@ function ProductForm({
             <Field
               label="SKU owner"
               error={errors.skuOwner?.message}
-              hint="Whose stock this is. Pick a name already used, or type a new one."
+              hint="Whose stock this is. Pick a name from the list, or type a new one and choose it. Left empty, it is Tentvaale."
             >
               {(props) => (
                 <Controller
@@ -864,7 +905,7 @@ function ProductForm({
                       onChange={field.onChange}
                       onBlur={field.onBlur}
                       options={ownerOptions}
-                      placeholder={DEFAULT_SKU_OWNER}
+                      placeholder="Select SKU owner"
                     />
                   )}
                 />
@@ -895,7 +936,13 @@ function ProductForm({
                 {(props) => (
                   <AffixInput
                     {...props}
-                    {...register("retailRate")}
+                    {...register("retailRate", {
+                      // The other way round of the rule below: a typed retail rate pre-fills wholesale as retail ÷ 1.2.
+                      onChange: (event) => {
+                        const next = suggestedWholesale(event.target.value);
+                        if (next !== null) setValue("wholesaleRate", next, { shouldDirty: true, shouldValidate: true });
+                      },
+                    })}
                     prefix="₹"
                     suffix={rateSuffix}
                     inputMode="decimal"
@@ -939,7 +986,7 @@ function ProductForm({
             {suggestion !== null ? (
               <p className="text-xs text-muted-foreground">
                 {retailFollowsRule ? (
-                  `Retail is wholesale + ${RETAIL_MARKUP_PERCENT}%.`
+                  `Retail is wholesale + ${RETAIL_MARKUP_PERCENT}%. Type either rate and the other fills in.`
                 ) : (
                   <>
                     Wholesale + {RETAIL_MARKUP_PERCENT}% would be ₹{suggestion}.{" "}
@@ -1204,14 +1251,22 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
   // opens on the next step. Rebuilding, rather than patching the form, is what gives a variant added in this
   // session its real id, so the next save updates it instead of creating it again.
   const [saved, setSaved] = useState<{ product: ProductView; grid: StockGrid; step: number; version: number } | null>(null);
-  const current = saved?.product ?? existing;
+  // A list row carries no variants, so the product itself is loaded: without it the Variants step opens blank and
+  // a variant the product already has would be sent again as a new one.
+  const full = useQuery({
+    queryKey: ["master-data", "product", existing?.id],
+    queryFn: ({ signal }) => getProduct(existing!.id, signal),
+    enabled: Boolean(existing),
+    gcTime: 0,
+  });
+  const current = saved?.product ?? full.data ?? existing;
   const grid = useQuery({
     queryKey: ["master-data", "stock-grid", existing?.id],
     queryFn: ({ signal }) => getStockGrid(existing!.id, signal),
     enabled: Boolean(existing),
     gcTime: 0,
   });
-  if (existing && grid.isPending) {
+  if (existing && (full.isPending || grid.isPending)) {
     return (
       <Dialog open onClose={onClose} title="Edit product" description={`SKU ${existing.sku}`} className="max-w-2xl">
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -1222,7 +1277,8 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
     <ProductForm
       key={saved?.version ?? 0}
       existing={current}
-      grid={saved?.grid ?? grid.data}
+      // Without the full product its variants are unknown, so the form leaves variants and stock untouched.
+      grid={saved?.grid ?? (full.data ? grid.data : undefined)}
       initialStep={saved?.step ?? 0}
       onSaved={async (product, step) => {
         const fresh = await queryClient.fetchQuery({

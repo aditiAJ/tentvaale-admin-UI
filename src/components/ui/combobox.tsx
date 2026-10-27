@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
-import { ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ComboboxOption {
@@ -11,13 +11,15 @@ export interface ComboboxOption {
 }
 
 /**
- * A text box with a list of names to pick from, for a value that is usually one of a known set but may be new
+ * A box with a list of names to pick from, for a value that is usually one of a known set but may be new
  * (the SKU owner: a name already used on other products, or a partner not seen before).
  *
- * The box holds the value as it is typed, so nothing is ever refused. The list opens on focus (or with the arrow
- * button, which is what a phone uses), narrows as you type, and arrow keys, Enter and a tap pick from it. A typed
- * name that is not in the list is offered as "Use “name”" so it is clear it will be new. Escape closes the list
- * without closing the dialog around it; Enter never submits the form.
+ * Typing only searches: the form keeps the last name that was picked until another is picked, so text left in the
+ * box can never look filled in without being saved. A name is taken by clicking it, or with the arrow keys and Enter
+ * (Enter takes the top match when no arrow key was used). A typed name that is not in the list is offered as
+ * "Use “name”", which is how a new one is added. Leaving the box with text that was not picked puts the saved name
+ * back; clearing the box and leaving it empties the field. Escape closes the list without closing the dialog around
+ * it; Enter never submits the form.
  *
  * A custom list rather than the browser's `<datalist>`, for the reasons given on TagInput: it cannot be styled,
  * sized to the box or used reliably on a touch screen.
@@ -46,22 +48,24 @@ export function Combobox({
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  // Enter takes the highlighted entry only once the arrow keys have been used.
-  const [navigated, setNavigated] = useState(false);
+  // What is being typed, or null while the box just shows the saved name. Never reaches the form until picked.
+  const [query, setQuery] = useState<string | null>(null);
 
-  const typed = value.trim();
+  const typed = (query ?? "").trim();
   const term = typed.toLowerCase();
+  const saved = value.trim().toLowerCase();
   const exact = options.some((option) => option.value.toLowerCase() === term);
 
-  // A value that is already one of the names shows the whole list, so it can be swapped for another;
-  // anything else narrows the list to what it matches, best matches first.
+  // Nothing typed (or the saved name left as it is) shows the whole list, so it can be swapped for another;
+  // otherwise the list narrows to what matches, the exact name first.
   const entries = useMemo(() => {
+    const rank = (option: ComboboxOption) => {
+      const name = option.value.toLowerCase();
+      return name === term ? 0 : name.startsWith(term) ? 1 : 2;
+    };
     const matching = options
-      .filter((option) => exact || !term || option.value.toLowerCase().includes(term))
-      .sort((a, b) => {
-        const rank = (option: ComboboxOption) => (exact || option.value.toLowerCase().startsWith(term) ? 0 : 1);
-        return rank(a) - rank(b);
-      })
+      .filter((option) => !term || option.value.toLowerCase().includes(term))
+      .sort((a, b) => rank(a) - rank(b))
       .map((option) => ({ ...option, custom: false }));
     return typed && !exact ? [...matching, { value: typed, hint: "new", custom: true }] : matching;
   }, [options, term, typed, exact]);
@@ -70,10 +74,14 @@ export function Combobox({
   const highlighted = Math.min(active, Math.max(entries.length - 1, 0));
   const optionId = (index: number) => `${listId}-option-${index}`;
 
+  const close = () => {
+    setOpen(false);
+    setQuery(null);
+    setActive(0);
+  };
   const pick = (next: string) => {
     onChange(next);
-    setOpen(false);
-    setNavigated(false);
+    close();
     input.current?.focus();
   };
 
@@ -96,14 +104,14 @@ export function Combobox({
           aria-activedescendant={showList ? optionId(highlighted) : undefined}
           aria-autocomplete="list"
           autoComplete="off"
-          value={value}
+          spellCheck={false}
+          value={query ?? value}
           disabled={disabled}
           placeholder={placeholder}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
-            onChange(event.target.value);
+            setQuery(event.target.value);
             setActive(0);
-            setNavigated(false);
             setOpen(true);
           }}
           onKeyDown={(event) => {
@@ -111,25 +119,24 @@ export function Combobox({
               if (!entries.length) return;
               event.preventDefault();
               setOpen(true);
-              setNavigated(true);
               const step = event.key === "ArrowDown" ? 1 : -1;
               setActive((highlighted + step + entries.length) % entries.length);
             } else if (event.key === "Enter") {
               // Enter picks or closes; it must not submit or advance the form around the box.
               event.preventDefault();
-              if (showList && navigated && entries[highlighted]) pick(entries[highlighted].value);
-              else setOpen(false);
+              if (showList && entries[highlighted]) pick(entries[highlighted].value);
+              else close();
             } else if (event.key === "Escape" && showList) {
               event.preventDefault();
               // React listens on the document itself, where the dialog's Escape handler also sits.
               event.nativeEvent.stopImmediatePropagation();
-              setOpen(false);
+              close();
             }
           }}
           onBlur={() => {
-            // A name typed with stray spaces is kept tidy.
-            if (value !== typed) onChange(typed);
-            setOpen(false);
+            // Text that was not picked is dropped, so the box shows what the form holds. An emptied box clears it.
+            if (query !== null && !typed && value) onChange("");
+            close();
             onBlur?.();
           }}
           className="h-full min-w-0 flex-1 bg-transparent px-3 outline-none placeholder:text-muted-foreground/70"
@@ -160,7 +167,7 @@ export function Combobox({
                 key={`${entry.custom ? "new" : "o"}-${entry.value}`}
                 id={optionId(index)}
                 role="option"
-                aria-selected={index === highlighted}
+                aria-selected={entry.value.toLowerCase() === saved}
                 onMouseDown={(event) => {
                   event.preventDefault();
                   pick(entry.value);
@@ -180,7 +187,10 @@ export function Combobox({
                     </span>
                   </span>
                 ) : (
-                  <span className="truncate">{entry.value}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Check className={cn("size-3.5 shrink-0", entry.value.toLowerCase() === saved ? "opacity-100" : "opacity-0")} />
+                    <span className="truncate">{entry.value}</span>
+                  </span>
                 )}
                 {entry.hint ? <span className="shrink-0 text-xs text-muted-foreground">{entry.hint}</span> : null}
               </li>

@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from "@/services/api-client";
+import { apiDownload, apiFetch, ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
@@ -78,6 +78,7 @@ interface WireSubCategory {
   id: number;
   categoryId: number;
   name: string;
+  active: boolean;
 }
 
 interface WireCategory {
@@ -188,6 +189,7 @@ function subCategoryFromWire(sub: WireSubCategory): SubCategoryView {
     companyId: companyId(),
     categoryId: String(sub.categoryId),
     name: sub.name,
+    active: sub.active,
   };
 }
 
@@ -276,6 +278,15 @@ export async function deactivateCategory(categoryId: string): Promise<CategoryVi
 export async function activateCategory(categoryId: string): Promise<CategoryView> {
   return categoryFromWire(
     await apiFetch<WireCategory>(`${BASE}/categories/${categoryId}/activate`, { method: "POST" }),
+  );
+}
+
+/** Switches one sub-category off (its products hidden from the storefront, still editable) or back on. */
+export async function setSubCategoryActive(subCategoryId: string, active: boolean): Promise<SubCategoryView> {
+  return subCategoryFromWire(
+    await apiFetch<WireSubCategory>(`${BASE}/sub-categories/${subCategoryId}/${active ? "activate" : "deactivate"}`, {
+      method: "POST",
+    }),
   );
 }
 
@@ -415,6 +426,11 @@ export async function listProducts(
     );
   }
   return items.map((row) => productFromWire(row));
+}
+
+/** One product in full: unlike a list row it carries its variants, which View variants and Edit product need. */
+export async function getProduct(productId: string, signal?: AbortSignal): Promise<ProductView> {
+  return productFromWire(await apiFetch<WireProduct>(`${BASE}/products/${productId}`, { signal }));
 }
 
 function productBody(request: CreateProductRequest) {
@@ -1581,4 +1597,21 @@ export async function updatePaymentTerms(
     },
   });
   return termsFromWire(updated);
+}
+
+/** What the Products page can ask the Excel export for. `ids` wins: exactly those products. */
+export interface ProductExportRequest {
+  categoryId?: string;
+  subCategoryId?: string;
+  includeInactive: boolean;
+  ids?: string[];
+}
+
+/** The catalogue as an .xlsx file (two sheets: Products and Variants), with the name the server gave it. */
+export function exportProducts(request: ProductExportRequest, signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  const params = new URLSearchParams({ includeInactive: String(request.includeInactive) });
+  if (request.categoryId) params.set("categoryId", request.categoryId);
+  if (request.subCategoryId) params.set("subCategoryId", request.subCategoryId);
+  if (request.ids?.length) params.set("ids", request.ids.join(","));
+  return apiDownload(`${BASE}/products/export?${params}`, signal);
 }

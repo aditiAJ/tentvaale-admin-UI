@@ -82,14 +82,39 @@ function retailAmount(product: ProductView): number {
   return typeof amount === "string" ? Number(amount) : amount;
 }
 
-/** Whether a product passes every group of the filters except `skip` (used to count what a group would offer). */
-function passes(product: ProductView, filters: ProductFilters, skip?: "categories" | "bands" | FacetKey): boolean {
+/**
+ * The ticked categories that also have one of their own sub-categories ticked. Such a category is narrowed to those
+ * sub-categories: ticking "Floor Styling Elements" and then "Backdrops" shows the backdrops, not the whole category.
+ */
+function narrowedCategories(products: ProductView[], filters: ProductFilters): Set<string> {
+  const narrowed = new Set<string>();
+  if (filters.subCategoryIds.length === 0) return narrowed;
+  for (const product of products) {
+    if (product.categoryId && product.subCategoryId && filters.subCategoryIds.includes(product.subCategoryId)) {
+      narrowed.add(product.categoryId);
+    }
+  }
+  return narrowed;
+}
+
+/**
+ * Whether a product passes every group of the filters except `skip` (used to count what a group would offer).
+ * `narrowed` is {@link narrowedCategories} for the same filters.
+ */
+function passes(
+  product: ProductView,
+  filters: ProductFilters,
+  narrowed: Set<string>,
+  skip?: "categories" | "bands" | FacetKey,
+): boolean {
   const term = filters.query.trim().toLowerCase();
   if (term && !matchesQuery(product, term)) return false;
 
   if (skip !== "categories" && (filters.categoryIds.length > 0 || filters.subCategoryIds.length > 0)) {
-    const inCategory = product.categoryId !== null && filters.categoryIds.includes(product.categoryId);
+    // A ticked sub-category always counts; a ticked category counts whole only while none of its sub-categories is ticked.
     const inSub = product.subCategoryId !== null && filters.subCategoryIds.includes(product.subCategoryId);
+    const inCategory =
+      product.categoryId !== null && filters.categoryIds.includes(product.categoryId) && !narrowed.has(product.categoryId);
     if (!inCategory && !inSub) return false;
   }
 
@@ -109,7 +134,8 @@ function passes(product: ProductView, filters: ProductFilters, skip?: "categorie
 }
 
 export function applyFilters(products: ProductView[], filters: ProductFilters): ProductView[] {
-  return products.filter((product) => passes(product, filters));
+  const narrowed = narrowedCategories(products, filters);
+  return products.filter((product) => passes(product, filters, narrowed));
 }
 
 function toggle(list: string[], value: string): string[] {
@@ -241,6 +267,7 @@ export function ProductFilterPanel({
 }) {
   const [expanded, setExpanded] = useState<string[]>([]);
   const active = activeFilterCount(filters);
+  const narrowed = useMemo(() => narrowedCategories(products, filters), [products, filters]);
 
   // Category tree: each category with its sub-categories, counted against the other groups' choices.
   const categories = useMemo(() => {
@@ -250,7 +277,7 @@ export function ProductFilterPanel({
       const entry =
         byId.get(product.categoryId) ??
         { id: product.categoryId, name: product.categoryName ?? product.categoryId, count: 0, subs: new Map() };
-      if (passes(product, filters, "categories")) {
+      if (passes(product, filters, narrowed, "categories")) {
         entry.count += 1;
         if (product.subCategoryId) {
           const sub = entry.subs.get(product.subCategoryId) ?? {
@@ -273,13 +300,13 @@ export function ProductFilterPanel({
     return [...byId.values()]
       .map((entry) => ({ ...entry, subs: [...entry.subs.values()].sort((a, b) => a.name.localeCompare(b.name)) }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [products, filters]);
+  }, [products, filters, narrowed]);
 
   const facetOptions = useMemo(() => {
     return FACET_GROUPS.map((group) => {
       const counts = new Map<string, number>();
       for (const product of products) {
-        const matching = passes(product, filters, group.key);
+        const matching = passes(product, filters, narrowed, group.key);
         for (const value of new Set(group.values(product))) {
           counts.set(value, (counts.get(value) ?? 0) + (matching ? 1 : 0));
         }
@@ -289,19 +316,19 @@ export function ProductFilterPanel({
         .sort((a, b) => a.value.localeCompare(b.value));
       return { ...group, options };
     }).filter((group) => group.options.length > 0);
-  }, [products, filters]);
+  }, [products, filters, narrowed]);
 
   const bandCounts = useMemo(
     () =>
       PRICE_BANDS.map((band) => ({
         band,
         count: products.filter((product) => {
-          if (!passes(product, filters, "bands")) return false;
+          if (!passes(product, filters, narrowed, "bands")) return false;
           const amount = retailAmount(product);
           return amount >= band.min && amount <= band.max;
         }).length,
       })),
-    [products, filters],
+    [products, filters, narrowed],
   );
 
   const set = (patch: Partial<ProductFilters>) => onChange({ ...filters, ...patch });

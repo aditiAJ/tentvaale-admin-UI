@@ -551,7 +551,7 @@ export function BundleDialog({
                 className="w-40"
               >
                 <option value="">Choose a variant</option>
-                {pickedProduct.variants.map((variant) => (
+                {pickedProduct.variants.filter((variant) => variant.active !== false).map((variant) => (
                   <option key={variant.id} value={variant.id}>
                     {variant.name}
                   </option>
@@ -782,7 +782,7 @@ function SwapEditor({
                   className="h-8 w-36"
                 >
                   <option value="">Variant…</option>
-                  {picked.variants.map((variant) => (
+                  {picked.variants.filter((variant) => variant.active !== false).map((variant) => (
                     <option key={variant.id} value={variant.id}>
                       {variant.name}
                     </option>

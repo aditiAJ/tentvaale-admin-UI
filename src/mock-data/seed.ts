@@ -231,6 +231,7 @@ const subCategory = (id: number, categoryId: string, name: string): SubCategoryV
   companyId: COMPANY_ID,
   categoryId,
   name,
+  active: true,
 });
 
 /**

@@ -48,6 +48,7 @@ import type {
   BundleOccasionView,
   BundleView,
   CategoryView,
+  SubCategoryView,
   CreateBundleOccasionRequest,
   CreateBundleRequest,
   CreateCategoryRequest,
@@ -113,12 +114,29 @@ export const saveStockGrid = (
   cells: { variantId: string; warehouseId: string; quantity: number }[],
 ) => (IS_MOCK ? variantsNeedBackend<StockGrid>() : backend.saveStockGrid(productId, cells));
 
+/** Real backend only: the Excel file is built by the server. */
+export function exportProducts(
+  request: backend.ProductExportRequest,
+  signal?: AbortSignal,
+): Promise<{ blob: Blob; filename: string }> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.exportProducts(request, signal);
+}
+
 export function listProducts(
   signal?: AbortSignal,
   options?: { includeInactive?: boolean },
 ): Promise<ProductView[]> {
   if (IS_MOCK) return mockListProducts();
   return backend.listProducts(signal, options?.includeInactive);
+}
+
+/** One product with its variants; a list row has none, so screens showing variants load the product itself. */
+export async function getProduct(productId: string, signal?: AbortSignal): Promise<ProductView> {
+  if (!IS_MOCK) return backend.getProduct(productId, signal);
+  const product = (await mockListProducts()).find((item) => item.id === productId);
+  if (!product) throw new ApiError("Product not found", 404);
+  return product;
 }
 
 /** Inactive products stay on record but leave pickers and the storefront. Real backend only. */
@@ -263,6 +281,12 @@ export function deactivateCategory(categoryId: string): Promise<CategoryView> {
 export function activateCategory(categoryId: string): Promise<CategoryView> {
   if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
   return backend.activateCategory(categoryId);
+}
+
+/** Switches one sub-category off or back on; see SubCategoryView.active. Real backend only. */
+export function setSubCategoryActive(subCategoryId: string, active: boolean): Promise<SubCategoryView> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.setSubCategoryActive(subCategoryId, active);
 }
 
 export function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {

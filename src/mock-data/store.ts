@@ -746,6 +746,7 @@ export async function mockCreateCategory(request: CreateCategoryRequest): Promis
       companyId: COMPANY_ID,
       categoryId: created.id,
       name,
+      active: true,
     })),
   ];
   saveWithMedia(current, previous);
@@ -881,6 +882,7 @@ export async function mockUpdateCategory(
     companyId: COMPANY_ID,
     categoryId,
     name: names[i],
+    active: current.subCategories.find((sub) => sub.id === entry.id)?.active ?? true,
   }));
   const updated: CategoryRecord = {
     ...current.categories[index],

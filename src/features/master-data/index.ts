@@ -10,6 +10,7 @@ export {
   updateCategory,
   deactivateCategory,
   activateCategory,
+  setSubCategoryActive,
   setProductActive,
   listCustomers,
   getCustomer,

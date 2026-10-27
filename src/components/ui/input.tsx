@@ -31,21 +31,5 @@ export function Textarea({ className, ...props }: React.ComponentProps<"textarea
   );
 }
 
-export function Select({ className, ...props }: React.ComponentProps<"select">) {
-  return (
-    <select
-      className={cn(
-        "h-9 w-full rounded-md border border-border bg-input px-2.5 text-sm outline-none transition-colors",
-        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
-        // A disabled select that only dims slightly reads as "enabled but
-        // ugly". Dropping it onto the muted ground makes it plainly inert,
-        // which matters here because the reason lives in a title tooltip the
-        // user only looks for once they believe it is unavailable.
-        "disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-80",
-        "aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+// The dropdown lives in select.tsx: a native select for short lists, a type-to-search box for long ones.
+export { Select } from "./select";

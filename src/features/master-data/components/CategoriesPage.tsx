@@ -1,7 +1,8 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { LayoutGrid, List, Plus, Search, SearchX, Tags, X } from "lucide-react";
 import {
   activateCategory,
@@ -9,8 +10,9 @@ import {
   listCategories,
   listProducts,
   masterDataKeys,
+  setSubCategoryActive,
 } from "@/features/master-data/api";
-import type { CategoryView } from "@/features/master-data/types";
+import type { CategoryView, SubCategoryView } from "@/features/master-data/types";
 import { CategoryCard, NO_COUNTS, type CategoryCounts } from "@/features/master-data/components/CategoryCard";
 import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
 import { useCan } from "@/features/auth";
@@ -37,6 +39,8 @@ export function CategoriesPage() {
   const [editing, setEditing] = useState<CategoryView | null>(null);
   const [deactivating, setDeactivating] = useState<CategoryView | null>(null);
   const [activating, setActivating] = useState<CategoryView | null>(null);
+  // The sub-category whose storefront switch was clicked, with its category for the wording.
+  const [switching, setSwitching] = useState<{ category: CategoryView; sub: SubCategoryView } | null>(null);
   const queryClient = useQueryClient();
 
   const deferredSearch = useDeferredValue(search);
@@ -246,6 +250,7 @@ export function CategoriesPage() {
               onActivate={
                 canWrite && !category.active ? () => setActivating(category) : undefined
               }
+              onToggleSub={canWrite ? (sub) => setSwitching({ category, sub }) : undefined}
             />
           ))}
         </div>
@@ -271,7 +276,7 @@ export function CategoriesPage() {
       {deactivating ? (
         <ConfirmDialog
           title={`Deactivate ${deactivating.name}?`}
-          description="It disappears from the list and from any picker, along with its sub-categories, but the rows stay, so products already filed under it keep their label."
+          description="Its products disappear from the storefront and it leaves the product picker, along with its sub-categories. The products stay in Admin, keep their category and can still be edited."
           confirmLabel="Deactivate category"
           fallbackError="Could not deactivate the category."
           action={() => deactivateCategory(deactivating.id)}
@@ -282,6 +287,75 @@ export function CategoriesPage() {
           onClose={() => setDeactivating(null)}
         />
       ) : null}
+      {switching ? (
+        <SubCategorySwitchDialog
+          category={switching.category}
+          sub={switching.sub}
+          productCount={counts ? (counts.get(switching.category.id)?.bySub.get(switching.sub.id) ?? 0) : null}
+          onDone={(updated) => {
+            queryClient.invalidateQueries({ queryKey: masterDataKeys.categories });
+            toast.success(
+              updated.active
+                ? `${updated.name} is shown on the storefront again`
+                : `${updated.name} is now hidden from the storefront`,
+            );
+            setSwitching(null);
+          }}
+          onClose={() => setSwitching(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** "N products", or "its products" while the counts are unknown. */
+function productsPhrase(count: number | null): string {
+  if (count === null) return "its products";
+  return count === 1 ? "its 1 product" : `its ${count} products`;
+}
+
+/**
+ * Confirms turning a sub-category's storefront switch. Hiding says what stays (the products, editable in Admin) and
+ * what goes (the storefront, bundles shown there, new filing); showing warns when the category itself is still off,
+ * since then nothing appears yet.
+ */
+function SubCategorySwitchDialog({
+  category,
+  sub,
+  productCount,
+  onDone,
+  onClose,
+}: {
+  category: CategoryView;
+  sub: SubCategoryView;
+  productCount: number | null;
+  onDone: (updated: SubCategoryView) => void;
+  onClose: () => void;
+}) {
+  const saved = useRef<SubCategoryView | null>(null);
+  const hiding = sub.active !== false;
+  const products = productsPhrase(productCount);
+  const description = hiding
+    ? `${products.charAt(0).toUpperCase()}${products.slice(1)} disappear from the storefront, and from any bundle shown there. ` +
+      "They stay in Admin and can still be edited. No new product can be filed under it until you show it again."
+    : category.active
+      ? `${products.charAt(0).toUpperCase()}${products.slice(1)} appear on the storefront again, and new products can be filed under it.`
+      : `It will be switched on, but nothing appears on the storefront yet: its category, ${category.name}, is off. ` +
+        "Activate the category as well to show these products.";
+  return (
+    <ConfirmDialog
+      title={hiding ? `Hide “${sub.name}” from the storefront?` : `Show “${sub.name}” on the storefront?`}
+      description={description}
+      confirmLabel={hiding ? "Hide sub-category" : "Show sub-category"}
+      destructive={hiding}
+      fallbackError={hiding ? "Could not hide the sub-category." : "Could not show the sub-category."}
+      action={async () => {
+        saved.current = await setSubCategoryActive(sub.id, !hiding);
+      }}
+      onDone={() => {
+        if (saved.current) onDone(saved.current);
+      }}
+      onClose={onClose}
+    />
   );
 }
