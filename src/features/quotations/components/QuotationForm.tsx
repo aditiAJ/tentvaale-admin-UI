@@ -16,7 +16,7 @@ import { ApiError } from "@/services/api-client";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
 import { areaOf, bestFit } from "@/lib/area";
-import { RATE_TYPE_LABEL, ratePerDayLabel, unitLabel } from "@/features/master-data/storefront";
+import { RATE_TYPES, RATE_TYPE_LABEL, ratePerDayLabel, unitLabel, type RateType } from "@/features/master-data/storefront";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -71,13 +71,29 @@ const schema = z.object({
     .array(
       z.object({
         // "" for a line added in this form. Set for a line the quotation
-        // already has, which keeps the rate it was priced at.
+        // already has; staff can change that saved rate below.
         lineId: z.string(),
-        productId: z.string().min(1, "Choose a product"),
+        // A catalogue product's id; empty for a one-time line (checked below).
+        productId: z.string(),
         // Required, by the check on submit, for a product that has variants.
         variantId: z.string(),
         quantity: positiveIntegerField("Quantity"),
         rentalDays: positiveIntegerField("Rental days"),
+        unitRatePerDay: amountField("Rate per day").refine(
+          (value) => value <= 99999999.99,
+          "Rate per day must not exceed 99999999.99",
+        ),
+        rateOverride: z.boolean(),
+        // A one-time line is quoted by the name and rate typed here, not taken from the catalogue.
+        oneTime: z.boolean(),
+        oneTimeName: z.string().trim().max(200, "Maximum 200 characters"),
+        oneTimeRateType: z.enum(RATE_TYPES),
+      }).superRefine((line, context) => {
+        if (line.oneTime) {
+          if (!line.oneTimeName) context.addIssue({ code: "custom", path: ["oneTimeName"], message: "Give the product a name" });
+        } else if (!line.productId) {
+          context.addIssue({ code: "custom", path: ["productId"], message: "Choose a product" });
+        }
       }),
     )
     .min(1, "A quotation needs at least one line"),
@@ -90,12 +106,23 @@ const schema = z.object({
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
 
+/** A product's first image, as its thumbnail when it has one; null when it has no picture. */
+const pictureOf = (media: { kind: string; url: string | null; thumbnailUrl?: string | null }[] | undefined) => {
+  const image = media?.find((item) => item.kind === "IMAGE" && (item.thumbnailUrl || item.url));
+  return image ? (image.thumbnailUrl ?? image.url) : null;
+};
+
 const emptyLine = () => ({
   lineId: "",
   productId: "",
   variantId: "",
   quantity: "1",
   rentalDays: "1",
+  unitRatePerDay: "",
+  rateOverride: false,
+  oneTime: false,
+  oneTimeName: "",
+  oneTimeRateType: "Qty" as const,
 });
 
 /** Today plus the backend's default validity, as yyyy-MM-dd, shown so staff can see and change it. */
@@ -118,13 +145,10 @@ const sameName = (a: string, b: string) => normaliseName(a) === normaliseName(b)
 /**
  * Raises a quotation, or edits one that has not been converted.
  *
- * The line totals shown are an estimate and never sent: the server prices
- * the quotation and stores the result, and that stored figure is what the
- * customer is held to. The estimate follows the same rule the server does —
- * a line the quotation already has is priced at the per-day rate it was
- * priced at originally, not today's catalogue rate; only a new line uses the
- * product's current retail rate. Choosing a different product for an existing
- * line makes it a new line, priced afresh.
+ * The line totals shown are an estimate: the server stores the final result,
+ * using catalogue/trade pricing unless staff explicitly override a line rate.
+ * Existing lines keep their saved rate unless staff changes it. Choosing a
+ * different product for an existing line makes it a new line, priced afresh.
  */
 export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const router = useRouter();
@@ -147,14 +171,28 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     [products.data],
   );
 
-  // The catalogue as a searchable list: typing matches the name or the SKU.
+  // Match the Admin Products search fields so staff can find products by SKU,
+  // generic name, category, sub-category or storefront facets.
   const productOptions = useMemo<SearchSelectOption[]>(
     () =>
       (products.data ?? []).map((product) => ({
         value: product.id,
         label: product.name,
         hint: `${formatMoney(product.retailRate)} ${ratePerDayLabel(product.rateType)}`,
-        keywords: product.sku,
+        // The small picture where there is one: a list of fifty full-size photos would be slow to open.
+        image: pictureOf(product.media),
+        keywords: [
+          product.sku,
+          product.skuOwner,
+          product.genericName,
+          product.categoryName ?? "",
+          product.subCategoryName ?? "",
+          ...(product.colours ?? []),
+          ...(product.materials ?? []),
+          ...(product.fabrics ?? []),
+          ...(product.moods ?? []),
+          ...(product.themes ?? []),
+        ].join(" "),
       })),
     [products.data],
   );
@@ -196,6 +234,11 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             variantId: line.variantId ?? "",
             quantity: String(line.quantity),
             rentalDays: String(line.rentalDays),
+            unitRatePerDay: String(Number(line.unitRatePerDay.amount)),
+            rateOverride: false,
+            oneTime: Boolean(line.oneTime),
+            oneTimeName: line.oneTime ? line.productName : "",
+            oneTimeRateType: line.rateType ?? "Qty",
           })),
         }
       : {
@@ -225,9 +268,18 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   /** The per-day rate a line is priced at, or null until it has a product. */
   const rateFor = (
-    line: { lineId: string; productId: string; variantId?: string } | undefined,
+    line: { lineId: string; productId: string; variantId?: string; unitRatePerDay?: string; oneTime?: boolean } | undefined,
   ) => {
+    // A one-time line is priced at exactly what was typed, and has no catalogue rate to fall back on.
+    if (line?.oneTime) {
+      const typedRate = Number(line.unitRatePerDay);
+      return line.unitRatePerDay?.trim() && Number.isFinite(typedRate) ? typedRate : null;
+    }
     if (!line?.productId) return null;
+    if (line.unitRatePerDay?.trim()) {
+      const enteredRate = Number(line.unitRatePerDay);
+      return Number.isFinite(enteredRate) ? enteredRate : null;
+    }
     const stored = line.lineId ? storedLines.get(line.lineId) : undefined;
     if (stored && stored.productId === line.productId) return Number(stored.unitRatePerDay.amount);
     const product = productsById.get(line.productId);
@@ -240,8 +292,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   /** How a line is charged: what it was priced at when saved, else the chosen product's own setting. */
   const rateTypeFor = (
-    line: { lineId: string; productId: string } | undefined,
+    line: { lineId: string; productId: string; oneTime?: boolean; oneTimeRateType?: RateType } | undefined,
   ) => {
+    if (line?.oneTime) return line.oneTimeRateType ?? "Qty";
     if (!line?.productId) return null;
     const stored = line.lineId ? storedLines.get(line.lineId) : undefined;
     if (stored && stored.productId === line.productId && stored.rateType) return stored.rateType;
@@ -324,10 +377,14 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           ...discountRequest(values),
           lines: values.lines.map((line) => ({
             lineId: line.lineId || undefined,
-            productId: line.productId,
-            variantId: line.variantId || undefined,
+            productId: line.oneTime ? "" : line.productId,
+            variantId: line.oneTime ? undefined : line.variantId || undefined,
             quantity: line.quantity,
             rentalDays: line.rentalDays,
+            // A one-time line has no catalogue rate, so its rate and name always go.
+            unitRatePerDay: line.oneTime || line.rateOverride ? line.unitRatePerDay : undefined,
+            oneTimeName: line.oneTime ? line.oneTimeName : undefined,
+            oneTimeRateType: line.oneTime ? line.oneTimeRateType : undefined,
           })),
         });
       }
@@ -345,11 +402,14 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         installationCharge: values.installationCharge,
         ...discountRequest(values),
         validUntil: values.validUntil,
-        lines: values.lines.map(({ productId, variantId, quantity, rentalDays }) => ({
-          productId,
-          variantId: variantId || undefined,
+        lines: values.lines.map(({ productId, variantId, quantity, rentalDays, unitRatePerDay, rateOverride, oneTime, oneTimeName, oneTimeRateType }) => ({
+          productId: oneTime ? "" : productId,
+          variantId: oneTime ? undefined : variantId || undefined,
           quantity,
           rentalDays,
+          unitRatePerDay: oneTime || rateOverride ? unitRatePerDay : undefined,
+          oneTimeName: oneTime ? oneTimeName : undefined,
+          oneTimeRateType: oneTime ? oneTimeRateType : undefined,
         })),
       });
     },
@@ -357,8 +417,11 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       // The response is the whole priced record, so the lookup screen can be
       // handed it rather than re-fetching what was just returned.
       queryClient.setQueryData(quotationKeys.byId(quotation.id), quotation);
-      // A new draft moves the only company-wide count of quotations there is.
-      if (!existing) queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+      // A changed rate or quantity changes this quotation's totals wherever they are shown: the list, the plan panel
+      // and the dashboard's figures, not only the detail that was just handed the new record.
+      queryClient.invalidateQueries({ queryKey: quotationKeys.list });
+      queryClient.invalidateQueries({ queryKey: quotationKeys.plan(quotation.id) });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
       toast.success(
         existing ? `${quotation.quotationNumber} updated` : `${quotation.quotationNumber} raised`,
         { description: `${quotation.customerName} — ${formatMoney(quotation.totalAmount)}` },
@@ -420,8 +483,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         title={existing ? `Edit ${existing.quotationNumber}` : "New quotation"}
         description={
           existing
-            ? "Existing lines keep the rate they were priced at."
-            : "Priced from the catalogue at the moment it is saved."
+            ? "Saved rates stay in place unless you change them."
+            : "Catalogue pricing applies unless you change a line's rate."
         }
         actions={
           <>
@@ -582,6 +645,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           <Table>
             <THead>
               <tr>
+                <TH className="w-12">Sr</TH>
                 <TH>Product</TH>
                 <TH className="w-44 text-right">Qty</TH>
                 <TH className="w-28 text-right">Days</TH>
@@ -605,19 +669,84 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
                 return (
                   <TR key={field.id}>
+                    <TD className="tabular pt-4 align-top text-muted-foreground">{index + 1}</TD>
                     <TD className="align-top">
+                      {line?.oneTime ? (
+                        <div className="min-w-52 space-y-1.5">
+                          <Input
+                            {...register(`lines.${index}.oneTimeName`)}
+                            placeholder="One-time product name"
+                            aria-label={`One-time product name for line ${index + 1}`}
+                            aria-invalid={Boolean(rowErrors?.oneTimeName)}
+                            disabled={mutation.isPending}
+                            maxLength={200}
+                          />
+                          {rowErrors?.oneTimeName ? (
+                            <p className="text-xs text-destructive">{rowErrors.oneTimeName.message}</p>
+                          ) : null}
+                          <div className="flex items-center gap-2">
+                            <Select
+                              {...register(`lines.${index}.oneTimeRateType`)}
+                              aria-label={`How one-time product ${index + 1} is charged`}
+                              disabled={mutation.isPending}
+                              className="h-8 w-auto text-xs"
+                            >
+                              {RATE_TYPES.map((type) => (
+                                <option key={type} value={type}>
+                                  Charged {RATE_TYPE_LABEL[type]}
+                                </option>
+                              ))}
+                            </Select>
+                            <button
+                              type="button"
+                              disabled={mutation.isPending}
+                              onClick={() => {
+                                setValue(`lines.${index}.oneTime`, false);
+                                setValue(`lines.${index}.oneTimeName`, "");
+                                setValue(`lines.${index}.lineId`, "");
+                                setValue(`lines.${index}.unitRatePerDay`, "");
+                                setValue(`lines.${index}.rateOverride`, false);
+                              }}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              Choose from catalogue
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
                       <Controller
                         control={control}
                         name={`lines.${index}.productId`}
                         render={({ field: productField }) => (
                           <SearchSelect
                             value={productField.value}
+                            // Something that is not in the catalogue is typed in by name and rate instead.
+                            action={{
+                              label: "Add one-time product",
+                              onSelect: (typed) => {
+                                setValue(`lines.${index}.oneTime`, true);
+                                setValue(`lines.${index}.oneTimeName`, typed);
+                                setValue(`lines.${index}.productId`, "");
+                                setValue(`lines.${index}.variantId`, "");
+                                setValue(`lines.${index}.lineId`, "");
+                                setValue(`lines.${index}.unitRatePerDay`, "");
+                                setValue(`lines.${index}.rateOverride`, false);
+                              },
+                            }}
                             // A different product is a different line: it is priced afresh rather than
                             // inheriting this line's stored rate.
                             onChange={(productId) => {
                               productField.onChange(productId);
                               setValue(`lines.${index}.lineId`, "");
                               setValue(`lines.${index}.variantId`, "");
+                              setValue(
+                                `lines.${index}.unitRatePerDay`,
+                                productsById.get(productId)
+                                  ? String(Number(productsById.get(productId)?.retailRate.amount))
+                                  : "",
+                                { shouldValidate: true },
+                              );
+                              setValue(`lines.${index}.rateOverride`, false);
                             }}
                             // A line can name a product that has since been deactivated, which the catalogue no
                             // longer lists; keeping it as an option stops the box silently resetting the line.
@@ -634,12 +763,13 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                           />
                         )}
                       />
+                      )}
                       {rowErrors?.productId ? (
                         <p className="mt-1 text-xs text-destructive">
                           {rowErrors.productId.message}
                         </p>
                       ) : null}
-                      {rateType ? (
+                      {rateType && !line?.oneTime ? (
                         <p className="mt-1 text-xs text-muted-foreground">
                           Charged {RATE_TYPE_LABEL[rateType]}
                         </p>
@@ -648,7 +778,15 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                         <>
                           <Select
                             {...register(`lines.${index}.variantId`, {
-                              onChange: () => setValue(`lines.${index}.lineId`, ""),
+                              onChange: (event) => {
+                                setValue(`lines.${index}.lineId`, "");
+                                setValue(`lines.${index}.unitRatePerDay`, String(Number(
+                                  productsById.get(line.productId)?.variants?.find(
+                                    (variant) => variant.id === event.target.value,
+                                  )?.retailRate.amount ?? productsById.get(line.productId)?.retailRate.amount ?? "",
+                                )), { shouldValidate: true });
+                                setValue(`lines.${index}.rateOverride`, false);
+                              },
                             })}
                             aria-label={`Variant for line ${index + 1}`}
                             aria-invalid={Boolean(rowErrors?.variantId)}
@@ -744,8 +882,21 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                       ) : null}
                     </TD>
 
-                    <TD className="tabular text-right align-top">
-                      {rate !== null ? formatMoney({ amount: rate, currency: "INR" }) : "—"}
+                    <TD className="align-top">
+                      <Input
+                        {...register(`lines.${index}.unitRatePerDay`, {
+                          onChange: () => setValue(`lines.${index}.rateOverride`, true),
+                        })}
+                        aria-label={`Rate per day for line ${index + 1}`}
+                        aria-invalid={Boolean(rowErrors?.unitRatePerDay)}
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        disabled={mutation.isPending || !(line?.productId || line?.oneTime)}
+                        className="tabular ml-auto w-28 text-right"
+                      />
+                      {rowErrors?.unitRatePerDay ? (
+                        <p className="mt-1 text-xs text-destructive">{rowErrors.unitRatePerDay.message}</p>
+                      ) : null}
                       {rate !== null && rateType ? (
                         <span className="block text-xs text-muted-foreground">{ratePerDayLabel(rateType)}</span>
                       ) : null}
