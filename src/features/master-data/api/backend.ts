@@ -2,6 +2,7 @@ import { apiDownload, apiFetch, ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
+import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
 import type {
   AddWarehouseProductRequest,
   CategoryView,
@@ -1614,4 +1615,23 @@ export function exportProducts(request: ProductExportRequest, signal?: AbortSign
   if (request.subCategoryId) params.set("subCategoryId", request.subCategoryId);
   if (request.ids?.length) params.set("ids", request.ids.join(","));
   return apiDownload(`${BASE}/products/export?${params}`, signal);
+}
+
+/** Checks an Excel file against the catalogue and says what importing it would do. Writes nothing. */
+export function previewProductImport(file: File, signal?: AbortSignal): Promise<ImportPreview> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<ImportPreview>(`${BASE}/products/import/preview`, { method: "POST", body: form, signal });
+}
+
+/**
+ * Imports the file: all of it or none of it. The server checks it again first, so a file that went stale since the
+ * preview comes back with `imported: false` and its errors, not an exception.
+ */
+export function importProducts(file: File, fingerprint: string | undefined): Promise<ImportOutcome> {
+  const form = new FormData();
+  form.append("file", file);
+  // What the user was shown; the server refuses to import if the catalogue no longer gives the same answer.
+  if (fingerprint) form.append("fingerprint", fingerprint);
+  return apiFetch<ImportOutcome>(`${BASE}/products/import`, { method: "POST", body: form });
 }

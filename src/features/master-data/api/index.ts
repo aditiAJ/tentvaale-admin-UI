@@ -1,6 +1,7 @@
 import { ApiError } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import * as backend from "@/features/master-data/api/backend";
+import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
 import {
   mockAddProductToWarehouse,
   mockCreateBundle,
@@ -121,6 +122,17 @@ export function exportProducts(
 ): Promise<{ blob: Blob; filename: string }> {
   if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
   return backend.exportProducts(request, signal);
+}
+
+/** Real backend only: the Excel file is read and checked by the server. */
+export function previewProductImport(file: File, signal?: AbortSignal): Promise<ImportPreview> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.previewProductImport(file, signal);
+}
+
+export function importProducts(file: File, fingerprint: string | undefined): Promise<ImportOutcome> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.importProducts(file, fingerprint);
 }
 
 export function listProducts(
