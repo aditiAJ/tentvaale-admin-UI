@@ -756,6 +756,7 @@ function OrderLines({
                     <div className="min-w-0">
                       <span className="font-medium">{name}</span>
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}
+                      {!line.productId ? <Badge className="ml-1.5 align-middle">One-time</Badge> : null}
                     </div>
                   </div>
                 </TD>

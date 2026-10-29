@@ -41,8 +41,8 @@ export function createQuotation(request: CreateQuotationRequest): Promise<Quotat
 }
 
 /**
- * Existing lines keep the rate they were priced at; new lines are priced now. Editing a SENT
- * quotation sends it back to DRAFT; 422 once it is accepted, rejected, expired or converted.
+ * Existing lines keep their saved rate unless staff overrides it; new lines use current pricing unless overridden.
+ * Editing a SENT quotation sends it back to DRAFT; 422 once it is accepted, rejected, expired or converted.
  */
 export function updateQuotation(
   quotationId: string,

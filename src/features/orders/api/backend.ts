@@ -12,7 +12,8 @@ const BASE = "/admin/orders";
 
 interface WireLine {
   id: string;
-  productId: number;
+  /** Left out for a one-time line. */
+  productId?: number | null;
   variantId?: number | null;
   productName: string;
   quantity: number;
@@ -45,7 +46,8 @@ interface WireOrder {
 function lineFromWire(line: WireLine): OrderLineView {
   return {
     id: line.id,
-    productId: String(line.productId),
+    // Empty for a one-time line copied from a quotation: it has no product.
+    productId: line.productId == null ? "" : String(line.productId),
     variantId: line.variantId == null ? null : String(line.variantId),
     productName: line.productName,
     quantity: line.quantity,

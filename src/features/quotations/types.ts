@@ -30,7 +30,10 @@ export type QuotationStatus = (typeof QUOTATION_STATUSES)[number];
 /** Mirrors com.tentvaale.quotation.api.QuotationLineView. */
 export interface QuotationLineView {
   id: string;
+  /** Empty for a one-time line, which is not a catalogue product. */
   productId: string;
+  /** A line typed in by name and rate: no product, no stock, no variant. */
+  oneTime?: boolean;
   /** Absent for the base (Standard) product. */
   variantId?: string | null;
   /** Whether the rate came from the customer's trade price list. */
@@ -108,22 +111,26 @@ export interface QuotationView {
 
 /** One requested line. Mirrors QuotationAdminController.LineRequest. */
 export interface CreateQuotationLineRequest {
+  /** Empty for a one-time line, which names itself with `oneTimeName` instead. */
   productId: string;
   /** Required by the backend for a product that has variants. */
   variantId?: string;
   quantity: number;
   rentalDays: number;
+  /** Optional staff override in INR per day; omitted to use the catalogue/trade price. Required for a one-time line. */
+  unitRatePerDay?: number;
+  /** The name of a one-time line (one not in the catalogue), and how it is charged. */
+  oneTimeName?: string;
+  oneTimeRateType?: RateType;
 }
 
 /**
  * Mirrors QuotationAdminController.CreateQuotationRequest.
  *
- * No line prices are sent. QuotationService reads each product's rate out of
- * master data at pricing time and stores the result, which is the same reason
- * QuotationView's totals are stored rather than recomputed on read. The
- * security deposit is the exception, and this UI's addition to the real
- * request: products no longer carry one, so it is set for the booking as a
- * whole and sent as a single amount.
+ * Line rates are normally read from master data at pricing time and stored;
+ * staff may send an explicit per-line override. QuotationView's totals are
+ * stored rather than recomputed on read. The security deposit is set for the
+ * booking as a whole and sent as a single amount.
  * sourceReference is not sent either — the controller stamps "admin-ui" itself,
  * so a quotation raised here is distinguishable from a storefront one without
  * the client being trusted to say so.
@@ -165,16 +172,22 @@ export interface CreateQuotationRequest {
 
 /**
  * One line of an edit. `lineId` names an existing line, which keeps the
- * per-day rate it was priced at; a line without one is new and is priced from
- * the product's current retail rate. An existing line's product cannot change —
- * that is a different line, so it is sent without a lineId.
+ * per-day rate it was priced at unless `unitRatePerDay` is supplied; a line
+ * without one is new and is priced from the current catalogue/trade rate unless
+ * an override is supplied. An existing line's product cannot change — that is
+ * a different line, so it is sent without a lineId.
  */
 export interface UpdateQuotationLineRequest {
   lineId?: string;
+  /** Empty for a one-time line, which names itself with `oneTimeName` instead. */
   productId: string;
   variantId?: string;
   quantity: number;
   rentalDays: number;
+  /** Optional staff override in INR per day. Required for a one-time line. */
+  unitRatePerDay?: number;
+  oneTimeName?: string;
+  oneTimeRateType?: RateType;
 }
 
 /**

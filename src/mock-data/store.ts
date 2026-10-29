@@ -1950,7 +1950,7 @@ export async function mockCreateQuotation(
     return pricedLine(
       `${id}-L${index + 1}`,
       product,
-      Number(product.retailRate.amount),
+      line.unitRatePerDay ?? Number(product.retailRate.amount),
       line.quantity,
       line.rentalDays,
     );
@@ -2040,7 +2040,7 @@ export async function mockUpdateQuotation(
       return pricedLine(
         stored.id,
         { id: stored.productId, name: stored.productName },
-        Number(stored.unitRatePerDay.amount),
+        line.unitRatePerDay ?? Number(stored.unitRatePerDay.amount),
         line.quantity,
         line.rentalDays,
       );
@@ -2050,7 +2050,7 @@ export async function mockUpdateQuotation(
     return pricedLine(
       `${existing.id}-L${nextLine}`,
       product,
-      Number(product.retailRate.amount),
+      line.unitRatePerDay ?? Number(product.retailRate.amount),
       line.quantity,
       line.rentalDays,
     );
