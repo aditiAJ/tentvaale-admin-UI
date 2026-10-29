@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, ImageOff, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface SearchSelectOption {
@@ -13,6 +13,23 @@ export interface SearchSelectOption {
   hint?: string;
   /** Extra words typing may match that are not shown, such as a SKU. */
   keywords?: string;
+  /** A small picture shown beside the name. Null is "has none" (a placeholder shows); leave it out to show no pictures. */
+  image?: string | null;
+}
+
+/** A square picture for a row, falling back to a neutral icon when there is none or it will not load. */
+function OptionImage({ src, className }: { src: string | null; className: string }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  return (
+    <span className={cn("flex shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground", className)}>
+      {src && src !== failedSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a storage address, which next/image has nothing to optimise
+        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(src)} className="size-full object-cover" />
+      ) : (
+        <ImageOff className="size-1/2" aria-hidden="true" />
+      )}
+    </span>
+  );
 }
 
 /**
@@ -28,6 +45,7 @@ export function SearchSelect({
   onChange,
   options,
   placeholder = "Choose…",
+  action,
   disabled,
   className,
   ...aria
@@ -37,6 +55,8 @@ export function SearchSelect({
   onChange: (value: string) => void;
   options: readonly SearchSelectOption[];
   placeholder?: string;
+  /** A row kept at the bottom of the list that does something else than pick an option, such as "Add one-time product". It is handed what was typed. */
+  action?: { label: string; onSelect: (typed: string) => void };
   disabled?: boolean;
   className?: string;
   "aria-label"?: string;
@@ -63,7 +83,9 @@ export function SearchSelect({
       })
       .sort((a, b) => Number(!a.label.toLowerCase().startsWith(text)) - Number(!b.label.toLowerCase().startsWith(text)));
   }, [options, query]);
-  const highlighted = Math.min(active, Math.max(entries.length - 1, 0));
+  // The action row, when there is one, is the last row of the list and reachable by the arrow keys like the others.
+  const rows = entries.length + (action ? 1 : 0);
+  const highlighted = Math.min(active, Math.max(rows - 1, 0));
 
   // Under the box, as wide as the box (and at least wide enough to read a long name).
   useLayoutEffect(() => {
@@ -94,6 +116,11 @@ export function SearchSelect({
   const pick = (option: SearchSelectOption) => {
     onChange(option.value);
     close();
+  };
+  const runAction = () => {
+    const typed = query.trim();
+    close();
+    action?.onSelect(typed);
   };
 
   return (
@@ -128,11 +155,12 @@ export function SearchSelect({
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
               setOpen(true);
-              if (entries.length) setActive((highlighted + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length);
+              if (rows) setActive((highlighted + (event.key === "ArrowDown" ? 1 : -1) + rows) % rows);
             } else if (event.key === "Enter") {
               // Picks the highlighted name; it must never submit the form around the box.
               event.preventDefault();
               if (open && entries[highlighted]) pick(entries[highlighted]);
+              else if (open && action && highlighted === entries.length) runAction();
             } else if (event.key === "Escape" && open) {
               event.preventDefault();
               close();
@@ -186,11 +214,13 @@ export function SearchSelect({
                       onMouseMove={() => setActive(index)}
                       className={cn(
                         "flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-2 text-sm",
+                        option.image !== undefined && "py-1.5",
                         index === highlighted ? "bg-primary/10 text-primary" : "text-foreground",
                       )}
                     >
-                      <span className="flex min-w-0 items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2.5">
                         <Check className={cn("size-3.5 shrink-0", option.value === value ? "opacity-100" : "opacity-0")} />
+                        {option.image !== undefined ? <OptionImage src={option.image} className="size-11" /> : null}
                         <span className="truncate">{option.label}</span>
                       </span>
                       {option.hint ? <span className="shrink-0 text-xs text-muted-foreground">{option.hint}</span> : null}
@@ -198,6 +228,26 @@ export function SearchSelect({
                   ))
                 )}
               </ul>
+              {action ? (
+                <div
+                  id={`${listId}-${entries.length}`}
+                  role="option"
+                  aria-selected={false}
+                  // Mouse down, not click, for the same reason as the rows above.
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    runAction();
+                  }}
+                  onMouseMove={() => setActive(entries.length)}
+                  className={cn(
+                    "flex min-h-10 cursor-pointer items-center gap-2 border-t border-border px-3.5 py-2 text-sm font-medium",
+                    highlighted === entries.length ? "bg-primary/10 text-primary" : "text-primary",
+                  )}
+                >
+                  <Plus className="size-3.5 shrink-0" />
+                  {action.label}
+                </div>
+              ) : null}
             </div>,
             document.body,
           )

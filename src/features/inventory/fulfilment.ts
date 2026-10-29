@@ -30,6 +30,8 @@ export interface OrderFulfilment {
 export function orderFulfilment(order: OrderView, movements: StockMovementView[]): OrderFulfilment {
   const byProduct = new Map<string, ProductFulfilment>();
   for (const line of order.lines) {
+    // A one-time line has no product and no stock: nothing to dispatch or take back.
+    if (!line.productId) continue;
     const entry = byProduct.get(line.productId) ?? { ordered: 0, dispatched: 0, returned: 0 };
     entry.ordered += line.quantity;
     byProduct.set(line.productId, entry);

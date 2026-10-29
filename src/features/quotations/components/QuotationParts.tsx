@@ -255,13 +255,15 @@ function groupLines(lines: QuotationLineView[]): Group[] {
   return [...groups.values()];
 }
 
-function LineRows({ lines }: { lines: QuotationLineView[] }) {
+/** `before` is how many lines sit above this table, so the numbers run on across a quotation's functions. */
+function LineRows({ lines, before = 0 }: { lines: QuotationLineView[]; before?: number }) {
   const media = useProductMedia();
   return (
     <TableWrapper>
       <Table>
         <THead>
           <tr>
+            <TH className="w-12">Sr</TH>
             <TH>Item</TH>
             <TH className="text-right">Qty</TH>
             <TH className="text-right">Days</TH>
@@ -270,16 +272,18 @@ function LineRows({ lines }: { lines: QuotationLineView[] }) {
           </tr>
         </THead>
         <TBody>
-          {lines.map((line) => {
+          {lines.map((line, index) => {
             const { name, variant } = splitVariant(line.productName);
             return (
               <TR key={line.id}>
+                <TD className="tabular text-muted-foreground">{before + index + 1}</TD>
                 <TD>
                   <div className="flex items-center gap-2.5">
                     <MediaThumb media={media.get(line.productId)} />
                     <div className="min-w-0">
                       <span className="font-medium">{name}</span>
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}
+                      {line.oneTime ? <Badge className="ml-1.5 align-middle">One-time</Badge> : null}
                       {line.categoryName ? <span className="block text-xs text-muted-foreground">{line.categoryName}</span> : null}
                     </div>
                   </div>
@@ -306,6 +310,7 @@ const sum = (lines: QuotationLineView[]) => lines.reduce((total, l) => total + N
 export function LinesByFunction({ quotation, plan }: { quotation: QuotationView; plan?: QuotationPlan }) {
   const groups = groupLines(quotation.lines);
   const named = groups.some((g) => g.name);
+  const starts = groups.map((_, i) => groups.slice(0, i).reduce((count, g) => count + g.lines.length, 0));
 
   if (!named) {
     return (
@@ -317,7 +322,7 @@ export function LinesByFunction({ quotation, plan }: { quotation: QuotationView;
 
   return (
     <div className="space-y-3">
-      {groups.map((group) => {
+      {groups.map((group, groupIndex) => {
         const se = plan?.subEvents.find((s) => s.name === group.name);
         const venue = group.venue ?? se?.venue ?? se?.venueDetail?.label ?? null;
         const time = formatTime(group.startTime ?? se?.startTime);
@@ -356,7 +361,7 @@ export function LinesByFunction({ quotation, plan }: { quotation: QuotationView;
               </span>
               <span className="tabular ml-auto text-sm font-semibold">{formatMoney({ amount: sum(group.lines), currency: "INR" })}</span>
             </div>
-            <LineRows lines={group.lines} />
+            <LineRows lines={group.lines} before={starts[groupIndex]} />
           </Card>
         );
       })}

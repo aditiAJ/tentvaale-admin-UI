@@ -230,7 +230,8 @@ function MovementFields({
   const orderProducts = useMemo(() => {
     const names = new Map<string, string>();
     for (const line of order.lines) {
-      if (!names.has(line.productId)) names.set(line.productId, line.productName);
+      // A one-time line has no product and no stock, so it is never offered for dispatch.
+      if (line.productId && !names.has(line.productId)) names.set(line.productId, line.productName);
     }
     return [...names.entries()].map(([id, name]) => ({ id, name }));
   }, [order.lines]);
@@ -240,6 +241,7 @@ function MovementFields({
   const soleVariant = useMemo(() => {
     const variants = new Map<string, Set<string>>();
     for (const line of order.lines) {
+      if (!line.productId) continue;
       const set = variants.get(line.productId) ?? new Set<string>();
       set.add(line.variantId ?? "");
       variants.set(line.productId, set);

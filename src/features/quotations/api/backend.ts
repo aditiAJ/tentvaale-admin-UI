@@ -25,7 +25,9 @@ const BASE = "/admin/quotations";
 
 interface WireLine {
   id: string;
-  productId: number;
+  /** Left out for a one-time line. */
+  productId?: number | null;
+  oneTime?: boolean;
   variantId?: number | null;
   productName: string;
   rateType?: "QTY" | "RFT" | "SQFT" | null;
@@ -78,11 +80,20 @@ interface WireQuotation {
 }
 
 const RATE_FROM_WIRE: Record<"QTY" | "RFT" | "SQFT", RateType> = { QTY: "Qty", RFT: "RFt", SQFT: "SqFt" };
+const RATE_TO_WIRE: Record<RateType, "QTY" | "RFT" | "SQFT"> = { Qty: "QTY", RFt: "RFT", SqFt: "SQFT" };
+
+/** What a line says about its product: the id of a catalogue product, or the name and rate type of a one-time line. */
+function productBody(line: { productId: string; oneTimeName?: string; oneTimeRateType?: RateType }) {
+  return line.productId
+    ? { productId: Number(line.productId) }
+    : { oneTimeName: line.oneTimeName, oneTimeRateType: line.oneTimeRateType ? RATE_TO_WIRE[line.oneTimeRateType] : undefined };
+}
 
 function lineFromWire(line: WireLine): QuotationLineView {
   return {
     id: line.id,
-    productId: String(line.productId),
+    productId: line.productId == null ? "" : String(line.productId),
+    oneTime: line.oneTime ?? false,
     variantId: line.variantId == null ? null : String(line.variantId),
     productName: line.productName,
     rateType: line.rateType ? RATE_FROM_WIRE[line.rateType] : null,
@@ -172,10 +183,11 @@ export async function createQuotation(request: CreateQuotationRequest): Promise<
       ...discountBody(request),
       validUntil: request.validUntil || undefined,
       lines: request.lines.map((line) => ({
-        productId: Number(line.productId),
+        ...productBody(line),
         variantId: line.variantId ? Number(line.variantId) : undefined,
         quantity: line.quantity,
         rentalDays: line.rentalDays,
+        unitRatePerDay: line.unitRatePerDay,
       })),
     },
   });
@@ -202,10 +214,11 @@ export async function updateQuotation(
       ...discountBody(request),
       lines: request.lines.map((line) => ({
         id: line.lineId,
-        productId: Number(line.productId),
+        ...productBody(line),
         variantId: line.variantId ? Number(line.variantId) : undefined,
         quantity: line.quantity,
         rentalDays: line.rentalDays,
+        unitRatePerDay: line.unitRatePerDay,
       })),
     },
   });
