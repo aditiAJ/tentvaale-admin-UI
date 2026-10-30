@@ -3,6 +3,7 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FloatingList, useAnchoredPosition } from "@/components/ui/floating-list";
 
 export interface ComboboxOption {
   value: string;
@@ -22,7 +23,8 @@ export interface ComboboxOption {
  * it; Enter never submits the form.
  *
  * A custom list rather than the browser's `<datalist>`, for the reasons given on TagInput: it cannot be styled,
- * sized to the box or used reliably on a touch screen.
+ * sized to the box or used reliably on a touch screen. The list is drawn by {@link FloatingList}, on the page body,
+ * so the dialog the box sits in cannot cut it off; it opens upwards when there is no room below.
  */
 export function Combobox({
   id,
@@ -45,6 +47,7 @@ export function Combobox({
   "aria-describedby"?: string;
 }) {
   const listId = useId();
+  const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -71,6 +74,7 @@ export function Combobox({
   }, [options, term, typed, exact]);
 
   const showList = open && !disabled && entries.length > 0;
+  const place = useAnchoredPosition(box, showList, { maxHeight: 240 });
   const highlighted = Math.min(active, Math.max(entries.length - 1, 0));
   const optionId = (index: number) => `${listId}-option-${index}`;
 
@@ -86,7 +90,7 @@ export function Combobox({
   };
 
   return (
-    <div className="relative">
+    <div ref={box} className="relative">
       <div
         className={cn(
           "flex h-9 w-full items-center rounded-md border border-border bg-input text-sm transition-colors",
@@ -159,9 +163,9 @@ export function Combobox({
         </button>
       </div>
 
-      {showList ? (
-        <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
-          <ul id={listId} role="listbox" className="max-h-56 overflow-y-auto p-1">
+      {place ? (
+        <FloatingList place={place}>
+          <ul id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
             {entries.map((entry, index) => (
               <li
                 key={`${entry.custom ? "new" : "o"}-${entry.value}`}
@@ -196,7 +200,7 @@ export function Combobox({
               </li>
             ))}
           </ul>
-        </div>
+        </FloatingList>
       ) : null}
     </div>
   );

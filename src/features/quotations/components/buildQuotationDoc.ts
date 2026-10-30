@@ -36,7 +36,7 @@ function statusOf(status: string): { status: string; note: string } {
 /**
  * Everything the quotation document prints, from the quotation and the company settings: the lines grouped by
  * function and category, the totals as the backend worked them out (nothing is calculated here), and the logo,
- * signature, pictures and QR codes loaded as data. Anything that cannot be loaded is simply left out.
+ * pictures and QR codes loaded as data. Anything that cannot be loaded is simply left out.
  */
 export async function buildQuotationDoc(q: QuotationView, company: CompanyProfile | undefined): Promise<QuotationDoc> {
   const groups = new Map<string, DocFunction>();
@@ -55,6 +55,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
       name,
       variant,
       quantity: line.quantity,
+      rateType: line.rateType ?? null,
       days: line.rentalDays,
       rate: amount(line.unitRatePerDay),
       amount: amount(line.lineTotal),
@@ -65,9 +66,8 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
   }
 
   const urls = [...new Set(q.lines.map((l) => l.imageUrl).filter((u): u is string => Boolean(u)))];
-  const [uploadedLogo, signature, pictures] = await Promise.all([
+  const [uploadedLogo, pictures] = await Promise.all([
     loadMarkData(company?.logoUrl),
-    loadMarkData(company?.signatureUrl),
     Promise.all(urls.map(async (url) => [url, await loadImageData(url)] as const)),
   ]);
   // The company's own logo when it has uploaded one, otherwise the Tentvaale mark (a 480px copy of logo-mark.png).
@@ -142,7 +142,6 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
       bankIfsc: company?.bankIfsc ?? null,
       upiId: company?.upiId ?? null,
       logo,
-      signature,
     },
     images,
     picturesMissing: urls.length - Object.keys(images).length,

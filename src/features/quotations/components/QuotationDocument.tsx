@@ -25,10 +25,18 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//, "").split(/[/?#]/)[0
 
 export type DocTheme = "light" | "dark";
 
+/** What a line's quantity counts, as the document prints it. */
+const UNIT = { Qty: "Nos.", RFt: "Running ft", SqFt: "Sq ft" } as const;
+const unitOf = (line: { rateType: "Qty" | "RFt" | "SqFt" | null }) => UNIT[line.rateType ?? "Qty"];
+/** What the rate is per, for a line charged by length or area; a rate per piece needs no note. */
+const RATE_PER = { RFt: "/ ft / day", SqFt: "/ sq ft / day" } as const;
+
 export interface DocLine {
   name: string;
   variant: string | null;
   quantity: number;
+  /** What `quantity` counts: pieces, running feet or square feet. Null is read as pieces. */
+  rateType: "Qty" | "RFt" | "SqFt" | null;
   days: number;
   rate: number;
   amount: number;
@@ -62,7 +70,6 @@ export interface DocCompany {
   upiId: string | null;
   /** Data URLs, already loaded; null when the company has none or it could not be fetched. */
   logo: string | null;
-  signature: string | null;
 }
 
 export interface QuotationDoc {
@@ -96,7 +103,7 @@ export interface QuotationDoc {
   company: DocCompany;
   /** Pictures as data URLs, by the key a line names. */
   images: Record<string, string>;
-  /** How many pictures on record could not be loaded (they show as plain tiles). */
+  /** How many pictures on record could not be loaded (their items show as tiles without a picture). */
   picturesMissing: number;
   /** QR codes as data URLs. */
   qr: { upi: string | null; whatsapp: string | null };
@@ -320,10 +327,10 @@ function make(theme: DocTheme) {
       catRule: { flexDirection: "row", alignItems: "center", marginTop: 8, marginBottom: 8 },
       catRuleLine: { flex: 1, height: 1, backgroundColor: c.gold, opacity: 0.5 },
       catRuleText: { color: c.gold, fontSize: 8.5, fontWeight: 600, letterSpacing: 1, marginHorizontal: 10 },
-      grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+      // Each tile keeps its own height: one with no picture is not stretched to the pictured tile beside it.
+      grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "flex-start" },
       tile: { width: 169, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, borderRadius: 3, overflow: "hidden" },
       tileImg: { width: "100%", height: 112, objectFit: "cover" },
-      tileBlank: { width: "100%", height: 112, backgroundColor: c.soft, alignItems: "center", justifyContent: "center" },
       tileCode: { position: "absolute", top: 5, left: 5, backgroundColor: "#ffffff", color: "#1c1812", fontSize: 7, fontWeight: 700, paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 2 },
       tileFoot: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6, paddingHorizontal: 8 },
       note: { marginTop: 12, borderWidth: 1, borderColor: c.border, paddingVertical: 6, paddingHorizontal: 10, color: c.muted, fontSize: 8 },
@@ -340,13 +347,12 @@ function make(theme: DocTheme) {
       termText: { color: c.text, fontSize: 8, marginTop: 1.5, lineHeight: 1.3 },
       notes: { marginTop: 6, backgroundColor: c.soft, borderWidth: 1, borderColor: c.border, padding: 7, flexDirection: "row", gap: 14 },
       confirm: { marginTop: 6, flexDirection: "row", borderWidth: 1, borderColor: c.border, backgroundColor: c.card },
-      sigLine: { flexDirection: "row", marginTop: 11 },
-      sigRule: { flex: 1, borderBottomWidth: 1, borderBottomColor: c.muted, marginLeft: 6 },
       // footer
       foot: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: HEAD, borderTopWidth: 2, borderTopColor: HEAD_GOLD, flexDirection: "row", alignItems: "center", paddingHorizontal: 28, paddingVertical: 10 },
-      // Each item takes the width its text needs (an email is never cut short); the contacts share what the brand leaves.
-      footBrand: { flexShrink: 0, marginRight: 16 },
-      footContacts: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+      // Each contact takes the width its text needs (an email is never cut short or drawn over its neighbour), so it is
+      // the name that gives way: it takes what the contacts leave and wraps onto a second line when it is long.
+      footBrand: { flex: 1, minWidth: 0, marginRight: 16 },
+      footContacts: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 14 },
       footCol: { flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 0 },
       footText: { color: HEAD_TEXT, fontSize: 7.5 },
     }),
@@ -363,8 +369,8 @@ function Brand({ s, company, small }: { s: Styles; company: DocCompany; small?: 
     return (
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         {/* eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text */}
-        <Image src={company.logo} style={{ width: 32, height: 26, objectFit: "contain" }} />
-        <Text style={[s.wordmark, { fontSize: 11, textAlign: "left" }]}>{company.name.toUpperCase()}</Text>
+        <Image src={company.logo} style={{ width: 32, height: 26, objectFit: "contain", flexShrink: 0 }} />
+        <Text style={[s.wordmark, { fontSize: 10, letterSpacing: 1.5, textAlign: "left", flex: 1 }]}>{company.name.toUpperCase()}</Text>
       </View>
     );
   }
@@ -517,8 +523,6 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
   const functionTotal = (f: DocFunction) => f.lines.reduce((sum, l) => sum + l.amount, 0);
   const colWidth = 60;
 
-  // The collection pages are part of the document whenever any item has a picture on record, loaded or not.
-  const imageLines = functions.some((f) => f.lines.some((l) => l.image));
   const codeOf = (f: DocFunction, index: number) => `${(f.name.trim()[0] ?? "S").toUpperCase()}-${String(index + 1).padStart(2, "0")}`;
   /** Item codes follow the order of the detail page (by category), so a picture and its row carry the same code. */
   const codes = new Map<DocLine, string>();
@@ -533,6 +537,11 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
     for (const l of f.lines) groups.set(l.category, [...(groups.get(l.category) ?? []), l]);
     return [...groups.entries()];
   };
+
+  // The collection pages are part of the document whenever any item has a picture on record, loaded or not. An item
+  // with no picture shows as a compact tile (code, name, quantity), not as a placeholder picture.
+  const imageLines = functions.some((f) => f.lines.some((l) => l.image));
+  const pictureOf = (l: DocLine) => (l.image ? (doc.images[l.image] ?? null) : null);
 
   return (
     <Document title={`Quotation ${doc.number}`} author={co.name} subject={`Quotation for ${doc.customerName}`}>
@@ -670,18 +679,6 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                 <Text style={{ fontSize: 9, fontWeight: 600 }}>Thank you for considering {co.name}.</Text>
                 <Text style={[s.muted, { fontSize: 8, marginTop: 2 }]}>We look forward to being a part of your special event.</Text>
               </View>
-              <View style={{ width: 150, alignItems: "center" }}>
-                <Text style={{ fontSize: 8, alignSelf: "flex-start" }}>For {co.name.toUpperCase()}</Text>
-                {co.signature ? (
-                  // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
-                  <Image src={co.signature} style={{ width: 90, height: 34, objectFit: "contain", marginVertical: 3 }} />
-                ) : (
-                  <View style={{ height: 34 }} />
-                )}
-                <Text style={[s.muted, { fontSize: 7.5, borderTopWidth: 1, borderTopColor: c.border, paddingTop: 3, alignSelf: "stretch", textAlign: "center" }]}>
-                  Authorised Signatory
-                </Text>
-              </View>
             </View>
           </View>
         </View>
@@ -737,8 +734,19 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                             <Text style={{ fontWeight: 600 }}>{l.name}</Text>
                             {l.variant ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{l.variant}</Text> : null}
                           </View>
-                          <Text style={[s.cellCenter, { width: 52 }]}>{l.quantity}</Text>
-                          <Text style={[s.cellCenter, { width: 66 }]}>{number(l.rate)}</Text>
+                          <View style={{ width: 52, alignItems: "center" }}>
+                            <Text style={s.cellCenter}>{l.quantity}</Text>
+                            {/* Pieces are what QTY means; a length or an area says what it counts. */}
+                            {l.rateType && l.rateType !== "Qty" ? (
+                              <Text style={[s.muted, { fontSize: 6.5, marginTop: 1 }]}>{unitOf(l)}</Text>
+                            ) : null}
+                          </View>
+                          <View style={{ width: 66, alignItems: "center" }}>
+                            <Text style={s.cellCenter}>{number(l.rate)}</Text>
+                            {l.rateType && l.rateType !== "Qty" ? (
+                              <Text style={[s.muted, { fontSize: 6.5, marginTop: 1 }]}>{RATE_PER[l.rateType]}</Text>
+                            ) : null}
+                          </View>
                           <Text style={[s.cellCenter, { width: 40 }]}>{l.days}</Text>
                           <Text style={[s.cellCenter, { width: 78 }]}>{number(l.amount)}</Text>
                         </View>
@@ -793,28 +801,26 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                     </View>
                     <View style={s.grid}>
                       {lines.map((l, li) => {
-                        const src = l.image ? doc.images[l.image] : null;
+                        const src = pictureOf(l);
                         return (
                           <View style={s.tile} key={`${l.name}-${li}`} wrap={false}>
-                            <View>
-                              {src ? (
-                                // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
+                            {src ? (
+                              <View>
+                                {/* eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text */}
                                 <Image src={src} style={s.tileImg} />
-                              ) : (
-                                <View style={s.tileBlank}>
-                                  <Text style={{ color: c.gold, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 26 }}>
-                                    {l.name.trim()[0]?.toUpperCase()}
-                                  </Text>
-                                </View>
-                              )}
-                              <Text style={s.tileCode}>{codes.get(l)}</Text>
-                            </View>
+                                <Text style={s.tileCode}>{codes.get(l)}</Text>
+                              </View>
+                            ) : (
+                              <View style={{ paddingHorizontal: 8, paddingTop: 7 }}>
+                                <Text style={[s.tileCode, { position: "relative", top: 0, left: 0, alignSelf: "flex-start" }]}>{codes.get(l)}</Text>
+                              </View>
+                            )}
                             <View style={s.tileFoot}>
                               <Text style={{ fontSize: 8, fontWeight: 600, flex: 1, paddingRight: 4 }}>
                                 {l.name}
                                 {l.variant ? ` · ${l.variant}` : ""}
                               </Text>
-                              <Text style={{ fontSize: 8, color: c.gold }}>{l.quantity} Nos.</Text>
+                              <Text style={{ fontSize: 8, color: c.gold }}>{l.quantity} {unitOf(l)}</Text>
                             </View>
                           </View>
                         );
@@ -946,26 +952,12 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
           </View>
 
           <View style={s.confirm} wrap={false}>
-            <View style={{ flex: 1, padding: 12, borderRightWidth: 1, borderRightColor: c.border }}>
+            <View style={{ flex: 1, padding: 12 }}>
               <Text style={{ color: c.gold, fontWeight: 700, fontSize: 9, marginBottom: 4 }}>CONFIRM YOUR SELECTION</Text>
               <Text style={s.termText}>We would love to bring your vision to life. Kindly review the selection and let us know your confirmation.</Text>
               <Text style={[s.termText, { marginTop: 4, fontWeight: 600 }]}>
                 {[co.phone, co.email].filter(Boolean).join("   ·   ")}
               </Text>
-            </View>
-            <View style={{ flex: 1, padding: 12 }}>
-              <Text style={{ color: c.gold, fontWeight: 700, fontSize: 9, marginBottom: 2 }}>AUTHORISED SIGNATORY</Text>
-              {co.signature ? (
-                // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
-                <Image src={co.signature} style={{ width: 90, height: 30, objectFit: "contain" }} />
-              ) : null}
-              {["Name:", "Signature:", "Date:"].map((label) => (
-                <View style={s.sigLine} key={label}>
-                  <Text style={s.muted}>{label}</Text>
-                  <View style={s.sigRule} />
-                </View>
-              ))}
-              <Text style={[s.muted, { fontSize: 7, marginTop: 8, textAlign: "center" }]}>{co.name}</Text>
             </View>
           </View>
         </View>

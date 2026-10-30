@@ -110,7 +110,7 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
       {current && pdf && pdf.missing > 0 ? (
         <Alert
           tone="info"
-          title={`${pdf.missing} product picture${pdf.missing === 1 ? "" : "s"} could not be loaded and show as plain tiles. Check the image address in the product, and that its host is allowed (PDF_IMAGE_HOSTS).`}
+          title={`${pdf.missing} product picture${pdf.missing === 1 ? "" : "s"} could not be loaded, so ${pdf.missing === 1 ? "its item shows" : "their items show"} without a picture. Check the image address in the product, and that its host is allowed (PDF_IMAGE_HOSTS).`}
         />
       ) : null}
 

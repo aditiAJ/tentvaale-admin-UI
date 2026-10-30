@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { FloatingList, useAnchoredPosition } from "@/components/ui/floating-list";
 import { loadPlaces, type Place, type PlaceSuggestion } from "@/lib/maps";
 
 const MIN_CHARS = 3;
@@ -23,6 +24,7 @@ export function PlaceSearch({
   onPick: (place: Place) => void | Promise<void>;
   placeholder?: string;
 }) {
+  const row = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PlaceSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -79,9 +81,12 @@ export function PlaceSearch({
   }
 
   const showList = open && results.length > 0 && query.trim().length >= MIN_CHARS;
+  // Drawn on the page body, so the dialog around the box cannot cut it off; opens upwards when there is no room below.
+  const place = useAnchoredPosition(row, showList, { maxHeight: 256 });
 
   return (
-    <div className="relative">
+    <div>
+      <div ref={row} className="relative">
       <Search className="pointer-events-none absolute top-[1.125rem] left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       <Input
         id={id}
@@ -119,13 +124,13 @@ export function PlaceSearch({
       {busy ? (
         <Loader2 className="absolute top-[1.125rem] right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" aria-hidden />
       ) : null}
-      {showList ? (
-        // onMouseDown keeps the box focused, so the click lands before the blur closes the list.
+      {place ? (
+        // The frame keeps the box focused on mouse down, so the click lands before the blur closes the list.
+        <FloatingList place={place}>
         <ul
           id={id ? `${id}-places` : undefined}
           role="listbox"
-          onMouseDown={(e) => e.preventDefault()}
-          className="absolute inset-x-0 top-full z-50 mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-card p-1 shadow-lg"
+          className="min-h-0 flex-1 overflow-y-auto p-1"
         >
           {results.map((suggestion, index) => {
             const { text, mainText, secondaryText } = suggestion.placePrediction;
@@ -147,7 +152,9 @@ export function PlaceSearch({
             );
           })}
         </ul>
+        </FloatingList>
       ) : null}
+      </div>
       {unavailable ? (
         <p className="mt-1.5 text-xs text-muted-foreground">Google search is not available right now. Type the address below instead.</p>
       ) : null}

@@ -36,7 +36,9 @@ export function QuotationVersions({ quotationId }: { quotationId: string }) {
               {version.lines.map((line, index) => (
                 <p key={index} className="flex justify-between gap-3">
                   <span>
-                    {line.productName} × {line.quantity} for {line.rentalDays} day{line.rentalDays === 1 ? "" : "s"}
+                    {line.productName} × {line.quantity}
+                    {line.rateType === "RFT" ? " running ft" : line.rateType === "SQFT" ? " sq ft" : ""} for {line.rentalDays} day
+                    {line.rentalDays === 1 ? "" : "s"}
                   </span>
                   <span className="tabular">{formatMoney(line.lineTotal)}</span>
                 </p>

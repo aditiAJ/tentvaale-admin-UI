@@ -226,7 +226,8 @@ export interface QuotationVersionView {
   discountPercent?: number | null;
   totalAmount: Money;
   securityDeposit: Money;
-  lines: { productName: string; quantity: number; rentalDays: number; lineTotal: Money }[];
+  /** `rateType` is as the backend sends it (QTY, RFT or SQFT); absent in the mock data, read as pieces. */
+  lines: { productName: string; rateType?: "QTY" | "RFT" | "SQFT" | null; quantity: number; rentalDays: number; lineTotal: Money }[];
 }
 
 export interface QuotationTax {

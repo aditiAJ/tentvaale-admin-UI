@@ -5,6 +5,7 @@ import type { QuotationLineView, QuotationPlan, QuotationStatus, QuotationVenue,
 import type { QuotationBucket } from "@/features/quotations/source";
 import { discountLabel } from "@/features/quotations/discount";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
+import { quantityLabel } from "@/features/master-data/storefront";
 import { formatMoney, type Money } from "@/lib/money";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -288,7 +289,10 @@ function LineRows({ lines, before = 0 }: { lines: QuotationLineView[]; before?: 
                     </div>
                   </div>
                 </TD>
-                <TD className="tabular text-right">{line.quantity}</TD>
+                {/* Pieces are what Qty means; a length or an area says what it counts ("30 rft"). */}
+                <TD className="tabular text-right">
+                  {line.rateType && line.rateType !== "Qty" ? quantityLabel(line.quantity, line.rateType) : line.quantity}
+                </TD>
                 <TD className="tabular text-right">{line.rentalDays}</TD>
                 <TD className="tabular text-right">{formatMoney(line.unitRatePerDay)}</TD>
                 <TD className="tabular text-right font-medium">{formatMoney(line.lineTotal)}</TD>
