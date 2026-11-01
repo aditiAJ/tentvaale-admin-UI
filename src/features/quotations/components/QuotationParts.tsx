@@ -283,7 +283,7 @@ function LineRows({
             <TH className="text-right">Days</TH>
             <TH className="text-right">Rate / day</TH>
             <TH className="text-right">Amount</TH>
-            {stocks ? <TH className="w-40">Inventory</TH> : null}
+            {stocks ? <TH className="w-56">Inventory</TH> : null}
           </tr>
         </THead>
         <TBody>
