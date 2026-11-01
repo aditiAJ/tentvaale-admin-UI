@@ -25,6 +25,9 @@ import { Input, Select } from "@/components/ui/input";
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { InventoryChip, StockSummary, type LineStock } from "@/features/quotations/components/InventoryChip";
+import { formatEventDate } from "@/features/quotations/components/QuotationParts";
+import { useDateStock } from "@/features/quotations/useDateStock";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const schema = z.object({
@@ -265,6 +268,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const watchedLines = useWatch({ control, name: "lines" });
   const watchedCustomerName = useWatch({ control, name: "customerName" });
   const watchedCustomerId = useWatch({ control, name: "customerId" });
+  const watchedEventDate = useWatch({ control, name: "eventDate" });
 
   /** The per-day rate a line is priced at, or null until it has a product. */
   const rateFor = (
@@ -344,6 +348,30 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       ? Math.round(Math.max(itemsEstimate - bundleDiscounts, 0) * Math.min(watchedDiscount, 100)) / 100
       : watchedDiscount;
   const estimate = Math.max(itemsEstimate - bundleDiscounts + watchedDelivery + watchedTransportation + watchedInstallation - discountEstimate, 0);
+
+  // The Inventory column: each line's stock on the event date, asked for once typing has paused. A one-time line has no
+  // stock and is always available; a line with no product yet, or a product with variants and none chosen, waits.
+  const stockLines = fields.flatMap((field, index) => {
+    const line = watchedLines[index];
+    const count = Number(line?.quantity);
+    const days = Number(line?.rentalDays);
+    if (!line?.productId || line.oneTime || !Number.isInteger(count) || count < 1 || !Number.isInteger(days) || days < 1) return [];
+    if (productsById.get(line.productId)?.hasVariants && !line.variantId) return [];
+    return [{ key: field.id, productId: line.productId, variantId: line.variantId || undefined, quantity: count, rentalDays: days }];
+  });
+  const stock = useDateStock({
+    eventDate: watchedEventDate || undefined,
+    excludeQuotationId: existing?.id,
+    lines: stockLines,
+  });
+  const lineStocks: LineStock[] = fields.map((field, index) => ({
+    oneTime: Boolean(watchedLines[index]?.oneTime),
+    checkable: stockLines.some((candidate) => candidate.key === field.id),
+    result: stock.results.get(field.id),
+    needsDate: !watchedEventDate,
+    pending: stock.pending,
+    failed: stock.failed,
+  }));
 
   // The name is typed, but a quotation still belongs to a customer record by
   // id — its order, deposit and credit notes all hang off that id — so the
@@ -651,6 +679,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                 <TH className="w-28 text-right">Days</TH>
                 <TH className="w-32 text-right">Rate/day</TH>
                 <TH className="w-36 text-right">Line total</TH>
+                <TH className="w-40">Inventory</TH>
                 <TH className="w-9" aria-label="Remove" />
               </tr>
             </THead>
@@ -906,6 +935,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                       {priced !== null ? formatMoney({ amount: priced, currency: "INR" }) : "—"}
                     </TD>
 
+                    <TD className="pt-3.5 align-top">
+                      <InventoryChip stock={lineStocks[index]} />
+                    </TD>
+
                     <TD className="align-top">
                       <Button
                         type="button"
@@ -929,6 +962,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             </TBody>
           </Table>
         </TableWrapper>
+
+        <StockSummary stocks={lineStocks} dateLabel={watchedEventDate ? formatEventDate(watchedEventDate) : undefined} />
 
         {linesError ? (
           <CardContent className="border-t border-border">
