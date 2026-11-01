@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FloatingList, useAnchoredPosition } from "@/components/ui/floating-list";
 
 /** A list longer than this (placeholder not counted) gets a type-to-search box instead of the browser's menu. */
 const SEARCH_ABOVE = 6;
@@ -165,14 +165,6 @@ interface PickerProps {
   "aria-invalid"?: React.AriaAttributes["aria-invalid"];
 }
 
-interface Place {
-  left: number;
-  width: number;
-  top?: number;
-  bottom?: number;
-  maxHeight: number;
-}
-
 function SearchPicker({ id, className, entries, value, disabled, title, onPick, onBlur, ...aria }: PickerProps) {
   const listId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -180,7 +172,8 @@ function SearchPicker({ id, className, entries, value, disabled, title, onPick, 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [place, setPlace] = useState<Place | null>(null);
+  // Fixed to the window and rendered on the page body, so a table or dialog that scrolls cannot clip the list.
+  const place = useAnchoredPosition(box, open && !disabled);
 
   const selected = entries.find((entry) => entry.value === value);
   const selectedLabel = selected?.label ?? "";
@@ -213,31 +206,6 @@ function SearchPicker({ id, className, entries, value, disabled, title, onPick, 
     close();
     input.current?.focus();
   };
-
-  // Fixed to the viewport and rendered on the page body, so a table or dialog that scrolls cannot clip the list.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      const rect = box.current?.getBoundingClientRect();
-      if (!rect) return;
-      const below = window.innerHeight - rect.bottom - 8;
-      const above = rect.top - 8;
-      const flip = below < 200 && above > below;
-      setPlace({
-        left: rect.left,
-        width: rect.width,
-        maxHeight: Math.max(Math.min(flip ? above : below, 288), 120),
-        ...(flip ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
-      });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
-    };
-  }, [open]);
 
   useEffect(() => {
     if (open) document.getElementById(optionId(highlighted))?.scrollIntoView({ block: "nearest" });
@@ -327,13 +295,10 @@ function SearchPicker({ id, className, entries, value, disabled, title, onPick, 
       </div>
 
       {showList
-        ? createPortal(
-            <div
-              style={{ position: "fixed", left: place.left, width: place.width, top: place.top, bottom: place.bottom }}
-              className="z-[70] overflow-hidden rounded-lg border border-border bg-card shadow-lg"
-            >
+        ? (
+            <FloatingList place={place}>
               {shown.length ? (
-                <ul id={listId} role="listbox" style={{ maxHeight: place.maxHeight }} className="overflow-y-auto p-1">
+                <ul id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
                   {shown.map((entry, index) => (
                     <li
                       key={entry.value}
@@ -364,8 +329,7 @@ function SearchPicker({ id, className, entries, value, disabled, title, onPick, 
                   No matching options
                 </p>
               )}
-            </div>,
-            document.body,
+            </FloatingList>
           )
         : null}
     </div>

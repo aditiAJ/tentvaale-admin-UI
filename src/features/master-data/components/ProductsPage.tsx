@@ -30,6 +30,7 @@ import { ProductImageCarousel } from "@/features/master-data/components/ProductI
 import { ProductVariantsDialog } from "@/features/master-data/components/ProductVariantsDialog";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
 import { ProductExportButton } from "@/features/master-data/components/ProductExportButton";
+import { ProductImportButton } from "@/features/master-data/components/ProductImportButton";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
@@ -136,6 +137,7 @@ export function ProductsPage({
         description="The rental catalogue for this company."
         actions={
           <>
+            {canWrite ? <ProductImportButton /> : null}
             <ProductExportButton shownIds={visible.map((product) => product.id)} categories={categories.data ?? []} />
             {canWrite ? (
               <Button onClick={() => setCreating(true)}>

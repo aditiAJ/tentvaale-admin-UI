@@ -3,6 +3,7 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FloatingList, useAnchoredPosition } from "@/components/ui/floating-list";
 
 /**
  * A short list of words — colours, materials, occasions — edited as chips.
@@ -15,7 +16,8 @@ import { cn } from "@/lib/utils";
  * list, Enter or a click adds the highlighted one, Escape closes it. Typing a
  * word that is not offered adds it as typed ("Add “Teal”"), so nothing outside
  * the list is ever refused. It is a custom list rather than the browser's own
- * `<datalist>`, which cannot be styled, sized to the box or navigated reliably.
+ * `<datalist>`, which cannot be styled, sized to the box or navigated reliably. The list is drawn by
+ * {@link FloatingList} on the page body, so a dialog around the box cannot cut it off.
  */
 export function TagInput({
   id,
@@ -37,6 +39,7 @@ export function TagInput({
   "aria-label"?: string;
 }) {
   const listId = useId();
+  const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
@@ -83,6 +86,7 @@ export function TagInput({
   }, [suggestions, value, term, draft]);
 
   const showList = open && !disabled && options.length > 0;
+  const place = useAnchoredPosition(box, showList, { maxHeight: 280 });
   const highlighted = Math.min(active, Math.max(options.length - 1, 0));
   const optionId = (index: number) => `${listId}-option-${index}`;
 
@@ -93,7 +97,7 @@ export function TagInput({
   };
 
   return (
-    <div className="relative">
+    <div ref={box} className="relative">
       <div
         onClick={() => input.current?.focus()}
         className={cn(
@@ -177,9 +181,9 @@ export function TagInput({
         />
       </div>
 
-      {showList ? (
-        <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
-          <ul id={listId} role="listbox" className="max-h-56 overflow-y-auto p-1">
+      {place ? (
+        <FloatingList place={place}>
+          <ul id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
             {options.map((option, index) => (
               <li
                 key={`${option.custom ? "new" : "s"}-${option.label}`}
@@ -210,10 +214,10 @@ export function TagInput({
               </li>
             ))}
           </ul>
-          <p className="border-t border-border bg-muted/40 px-2.5 py-1 text-[0.7rem] text-muted-foreground">
+          <p className="shrink-0 border-t border-border bg-muted/40 px-2.5 py-1 text-[0.7rem] text-muted-foreground">
             ↑ ↓ to move · Enter to add · Esc to close
           </p>
-        </div>
+        </FloatingList>
       ) : null}
     </div>
   );

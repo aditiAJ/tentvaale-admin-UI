@@ -313,7 +313,7 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
             </div>
           </Section>
 
-          <Section title="Logo and signature" shownOn="the quotation, invoice and receipt PDFs">
+          <Section title="Logo and signature" shownOn="the invoice and receipt PDFs (the logo also on the quotation)">
             <div className="grid gap-5 sm:grid-cols-2">
               <ImageUploadField label="Logo" hint="PNG or JPEG. A wide logo on a transparent background looks best." value={draft.logoUrl} onChange={set("logoUrl")} disabled={!canWrite} />
               <ImageUploadField label="Authorised signature" hint="PNG or JPEG of the signature on a plain background." value={draft.signatureUrl} onChange={set("signatureUrl")} disabled={!canWrite} />

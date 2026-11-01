@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ImageOff, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FloatingList, useAnchoredPosition } from "@/components/ui/floating-list";
 
 export interface SearchSelectOption {
   value: string;
@@ -37,7 +37,8 @@ function OptionImage({ src, className }: { src: string | null; className: string
  * click, Enter or the arrow keys. Unlike the plain `<select>` it copes with a catalogue of hundreds, and unlike
  * {@link Combobox} the value is always one of the options (an id), never free text.
  *
- * The list is drawn on the page itself, not inside the box's parent, so a table's scroll area cannot cut it off.
+ * The list is drawn on the page itself, not inside the box's parent, so a table's scroll area cannot cut it off. It
+ * opens upwards when the window is short of room below, and stays inside the window (see {@link FloatingList}).
  */
 export function SearchSelect({
   id,
@@ -68,7 +69,8 @@ export function SearchSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null);
+  // As wide as the box (and at least wide enough to read a long name).
+  const place = useAnchoredPosition(box, open, { minWidth: 320, maxHeight: 320 });
 
   const chosen = options.find((option) => option.value === value);
 
@@ -86,22 +88,6 @@ export function SearchSelect({
   // The action row, when there is one, is the last row of the list and reachable by the arrow keys like the others.
   const rows = entries.length + (action ? 1 : 0);
   const highlighted = Math.min(active, Math.max(rows - 1, 0));
-
-  // Under the box, as wide as the box (and at least wide enough to read a long name).
-  useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      const rect = box.current?.getBoundingClientRect();
-      if (rect) setPlace({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 320) });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
-    };
-  }, [open]);
 
   // Keep the highlighted row in view while the arrow keys move it.
   useEffect(() => {
@@ -191,12 +177,9 @@ export function SearchSelect({
       </div>
 
       {open && place
-        ? createPortal(
-            <div
-              style={{ position: "fixed", top: place.top, left: place.left, width: place.width }}
-              className="z-50 overflow-hidden rounded-lg border border-border bg-card shadow-lg"
-            >
-              <ul id={listId} role="listbox" className="max-h-64 overflow-y-auto p-1">
+        ? (
+            <FloatingList place={place}>
+              <ul id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
                 {entries.length === 0 ? (
                   <li className="px-2.5 py-3 text-sm text-muted-foreground">Nothing matches “{query.trim()}”</li>
                 ) : (
@@ -240,7 +223,7 @@ export function SearchSelect({
                   }}
                   onMouseMove={() => setActive(entries.length)}
                   className={cn(
-                    "flex min-h-10 cursor-pointer items-center gap-2 border-t border-border px-3.5 py-2 text-sm font-medium",
+                    "flex min-h-10 shrink-0 cursor-pointer items-center gap-2 border-t border-border px-3.5 py-2 text-sm font-medium",
                     highlighted === entries.length ? "bg-primary/10 text-primary" : "text-primary",
                   )}
                 >
@@ -248,8 +231,7 @@ export function SearchSelect({
                   {action.label}
                 </div>
               ) : null}
-            </div>,
-            document.body,
+            </FloatingList>
           )
         : null}
     </div>
