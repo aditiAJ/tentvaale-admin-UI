@@ -357,8 +357,11 @@ export interface CustomerView {
   storefrontAccountId?: string | null;
   /** Present once the customer, an event planner, has applied for trade pricing. */
   plannerProfile?: PlannerProfileView | null;
-  /** The price list this planner is on. Managed with price lists (a later module). */
-  priceListId?: string | null;
+  /**
+   * For an event planner: the percentage taken off retail wherever they are priced (back-office quotations, and the storefront
+   * when they are signed in). 20 unless staff set another.
+   */
+  plannerDiscountPercent?: number | null;
 }
 
 /**
@@ -750,6 +753,8 @@ export interface CreateCustomerRequest {
   state?: string;
   addressLine?: string;
   postalCode?: string;
+  /** Event planners only: percentage off retail, 0 to 100. Left out, the backend keeps it (20 for a new planner). */
+  plannerDiscountPercent?: number;
 }
 
 export interface PlannerApplicationRequest {
@@ -761,38 +766,8 @@ export interface PlannerApplicationRequest {
 export type UpdateCustomerRequest = CreateCustomerRequest;
 
 // ---------------------------------------------------------------------------
-// Price lists and payment setup (real backend only).
+// Payment setup (real backend only).
 // ---------------------------------------------------------------------------
-
-/** One explicit trade rate on a price list: a product, or one variant of it. */
-export interface PriceListItemView {
-  productId: string;
-  productName: string;
-  variantId: string | null;
-  variantName: string | null;
-  dailyRate: number;
-}
-
-/**
- * Trade pricing for verified event planners. An explicit rate here wins; otherwise the default
- * discount comes off the standard rate. Only an approved planner on an active list gets it.
- */
-export interface PriceListView {
-  id: string;
-  name: string;
-  /** Percentage off the standard rate for products with no explicit rate, 0 to 100. */
-  defaultDiscountPercent: number;
-  active: boolean;
-  items: PriceListItemView[];
-}
-
-export interface PriceListRequest {
-  name: string;
-  defaultDiscountPercent: number;
-  active?: boolean;
-  /** The complete set of explicit rates; one per product (or variant). */
-  items: { productId: string; variantId?: string; dailyRate: number }[];
-}
 
 /** A way a customer can pay: Cash, UPI, Bank transfer. Switched off rather than deleted. */
 export interface PaymentModeView {

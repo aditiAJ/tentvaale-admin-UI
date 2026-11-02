@@ -73,7 +73,7 @@ export function PlannerApplicationDialog({
       open
       onClose={onClose}
       title={previous ? "Resubmit planner application" : "Planner application"}
-      description={`Trade pricing for ${customer.fullName}.`}
+      description={`Planner application for ${customer.fullName}.`}
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>

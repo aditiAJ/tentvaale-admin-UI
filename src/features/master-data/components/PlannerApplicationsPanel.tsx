@@ -82,7 +82,7 @@ export function PlannerApplicationsPanel({ canWrite }: { canWrite: boolean }) {
       {approving ? (
         <ConfirmDialog
           title="Approve planner application"
-          description={`${approving.businessName} becomes a verified planner and can be put on a price list.`}
+          description={`${approving.businessName} becomes a verified planner.`}
           confirmLabel="Approve"
           destructive={false}
           fallbackError="Could not approve the application."

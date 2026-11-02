@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,10 +11,14 @@ import { toast } from "sonner";
 import { createQuotation, quotationKeys, updateQuotation } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { listCustomers, listProducts, masterDataKeys } from "@/features/master-data/api";
+import type { ProductVariantView, ProductView } from "@/features/master-data/types";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
+import { plannerRate, quotedMoney } from "@/lib/rate";
+import { gstOn } from "@/lib/gst";
+import { getCompany, settingsKeys } from "@/features/settings/api";
 import { areaOf, bestFit } from "@/lib/area";
 import { RATE_TYPES, RATE_TYPE_LABEL, ratePerDayLabel, unitLabel, type RateType } from "@/features/master-data/storefront";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
@@ -26,7 +30,7 @@ import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-se
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { InventoryChip, StockSummary, type LineStock } from "@/features/quotations/components/InventoryChip";
-import { ProductPickerDialog, pictureOf, type ChosenProduct } from "@/features/quotations/components/ProductPickerDialog";
+import { ProductPickerPanel, pictureOf, type ChosenProduct } from "@/features/quotations/components/ProductPickerPanel";
 import { formatEventDate } from "@/features/quotations/components/QuotationParts";
 import { useDateStock } from "@/features/quotations/useDateStock";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -140,6 +144,15 @@ const discountRequest = (values: { discountType: "FLAT" | "PERCENT"; discountAmo
 const normaliseName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 const sameName = (a: string, b: string) => normaliseName(a) === normaliseName(b);
 
+function EstimateRow({ label, amount }: { label: string; amount: number }) {
+  return (
+    <div className="flex justify-between gap-6">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tabular">{formatMoney({ amount, currency: "INR" })}</span>
+    </div>
+  );
+}
+
 /**
  * Raises a quotation, or edits one that has not been converted.
  *
@@ -164,36 +177,14 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     queryFn: ({ signal }) => listCustomers(signal),
   });
 
+  // The company's GST rate and state, for the running GST in the estimate; the server works out the saved figure.
+  const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal) });
+
   const productsById = useMemo(
     () => new Map((products.data ?? []).map((product) => [product.id, product])),
     [products.data],
   );
 
-  // Match the Admin Products search fields so staff can find products by SKU,
-  // generic name, category, sub-category or storefront facets.
-  const productOptions = useMemo<SearchSelectOption[]>(
-    () =>
-      (products.data ?? []).map((product) => ({
-        value: product.id,
-        label: product.name,
-        hint: `${formatMoney(product.retailRate)} ${ratePerDayLabel(product.rateType)}`,
-        // The small picture where there is one: a list of fifty full-size photos would be slow to open.
-        image: pictureOf(product.media),
-        keywords: [
-          product.sku,
-          product.skuOwner,
-          product.genericName,
-          product.categoryName ?? "",
-          product.subCategoryName ?? "",
-          ...(product.colours ?? []),
-          ...(product.materials ?? []),
-          ...(product.fabrics ?? []),
-          ...(product.moods ?? []),
-          ...(product.themes ?? []),
-        ].join(" "),
-      })),
-    [products.data],
-  );
   const storedLines = useMemo(
     () => new Map((existing?.lines ?? []).map((line) => [line.id, line])),
     [existing],
@@ -259,26 +250,6 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
   const [picking, setPicking] = useState(false);
 
-  /**
-   * Products chosen in the picker become lines, each priced afresh as the dropdown does. A line still empty (nothing
-   * chosen on it yet) makes way for them, so picking into a new quotation does not leave a blank first row.
-   */
-  const addChosen = (chosen: ChosenProduct[]) => {
-    const kept = getValues("lines").filter((line) => line.productId || line.oneTime);
-    const added = chosen.map(({ productId, variantId, quantity }) => {
-      const product = productsById.get(productId);
-      const variant = variantId ? product?.variants?.find((candidate) => candidate.id === variantId) : undefined;
-      return {
-        ...emptyLine(),
-        productId,
-        variantId: variantId ?? "",
-        quantity: String(quantity),
-        unitRatePerDay: String(Number((variant ?? product)?.retailRate.amount ?? 0)),
-      };
-    });
-    replace([...kept, ...added]);
-  };
-
   // Watched rather than read on submit, because the running estimate is the
   // only feedback there is while the quotation is being built. useWatch rather
   // than form.watch: watch() hands back a function the React Compiler cannot
@@ -287,6 +258,37 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const watchedCustomerName = useWatch({ control, name: "customerName" });
   const watchedCustomerId = useWatch({ control, name: "customerId" });
   const watchedEventDate = useWatch({ control, name: "eventDate" });
+
+  // The name is typed, but a quotation still belongs to a customer record by
+  // id — its order, deposit and credit notes all hang off that id — so the
+  // name is resolved to an existing customer rather than stored on its own.
+  // Names are not unique (emails are), so several matches ask which one.
+  // Editing keeps the quotation's customer while its name is left as it was,
+  // even if the customer has since been renamed.
+  const keepsExistingCustomer = Boolean(
+    existing?.customerId &&
+      sameName(watchedCustomerName ?? "", existing.customerName),
+  );
+  const nameMatches = (customers.data ?? []).filter((customer) =>
+    sameName(customer.fullName, watchedCustomerName ?? ""),
+  );
+  const selectedCustomer = keepsExistingCustomer
+    ? customers.data?.find((customer) => customer.id === existing?.customerId)
+    : nameMatches.length === 1
+      ? nameMatches[0]
+      : nameMatches.find((customer) => customer.id === watchedCustomerId);
+
+  // An event planner is quoted the product's wholesale rate, moved by their own discount (20 unless staff set another, and 20
+  // is the wholesale rate itself); anyone else, retail.
+  const plannerPercent =
+    selectedCustomer?.accountType === "EVENT_PLANNER" ? (selectedCustomer.plannerDiscountPercent ?? 20) : 0;
+
+  /** What this customer is quoted for a product (or one of its variants): retail, or an event planner's wholesale-based rate. */
+  const quotedFor = (product: ProductView, variant?: ProductVariantView): number => {
+    const source = variant ?? product;
+    const retail = Number(source.retailRate.amount);
+    return plannerPercent ? plannerRate(retail, Number(source.wholesaleRate.amount), plannerPercent) : retail;
+  };
 
   /** The per-day rate a line is priced at, or null until it has a product. */
   const rateFor = (
@@ -306,10 +308,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     if (stored && stored.productId === line.productId) return Number(stored.unitRatePerDay.amount);
     const product = productsById.get(line.productId);
     if (!product) return null;
-    // An estimate: the server prices the line (a variant's own rate, or a trade price for a
-    // verified planner) and the saved quotation shows the final figure.
+    // An estimate: the server prices the line (a variant's own rate, less an event planner's discount) and the
+    // saved quotation shows the final figure.
     const variant = line.variantId ? product.variants?.find((v) => v.id === line.variantId) : undefined;
-    return Number((variant ?? product).retailRate.amount);
+    return quotedFor(product, variant);
   };
 
   /** How a line is charged: what it was priced at when saved, else the chosen product's own setting. */
@@ -365,7 +367,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     watchedDiscountType === "PERCENT"
       ? Math.round(Math.max(itemsEstimate - bundleDiscounts, 0) * Math.min(watchedDiscount, 100)) / 100
       : watchedDiscount;
-  const estimate = Math.max(itemsEstimate - bundleDiscounts + watchedDelivery + watchedTransportation + watchedInstallation - discountEstimate, 0);
+  // GST is charged on the items after discounts; delivery, transportation and installation are added after it and carry none.
+  const taxable = Math.max(itemsEstimate - bundleDiscounts - discountEstimate, 0);
+  const gst = gstOn(taxable, company.data?.gstRate, company.data?.state, selectedCustomer?.state);
+  const estimate = taxable + (gst?.total ?? 0) + watchedDelivery + watchedTransportation + watchedInstallation;
 
   // The Inventory column: each line's stock on the event date, asked for once typing has paused. A one-time line has no
   // stock and is always available; a line with no product yet, or a product with variants and none chosen, waits.
@@ -391,24 +396,63 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     failed: stock.failed,
   }));
 
-  // The name is typed, but a quotation still belongs to a customer record by
-  // id — its order, deposit and credit notes all hang off that id — so the
-  // name is resolved to an existing customer rather than stored on its own.
-  // Names are not unique (emails are), so several matches ask which one.
-  // Editing keeps the quotation's customer while its name is left as it was,
-  // even if the customer has since been renamed.
-  const keepsExistingCustomer = Boolean(
-    existing?.customerId &&
-      sameName(watchedCustomerName ?? "", existing.customerName),
-  );
-  const nameMatches = (customers.data ?? []).filter((customer) =>
-    sameName(customer.fullName, watchedCustomerName ?? ""),
-  );
-  const selectedCustomer = keepsExistingCustomer
-    ? customers.data?.find((customer) => customer.id === existing?.customerId)
-    : nameMatches.length === 1
-      ? nameMatches[0]
-      : nameMatches.find((customer) => customer.id === watchedCustomerId);
+  // Match the Admin Products search fields so staff can find products by SKU,
+  // generic name, category, sub-category or storefront facets.
+  // Left to the React Compiler to memoize: the hint follows the chosen customer, which is not a stable dependency.
+  const productOptions: SearchSelectOption[] = (products.data ?? []).map((product) => ({
+      value: product.id,
+      label: product.name,
+      hint: `${formatMoney(quotedMoney(product.retailRate, product.wholesaleRate, plannerPercent))} ${ratePerDayLabel(product.rateType)}`,
+      // The small picture where there is one: a list of fifty full-size photos would be slow to open.
+      image: pictureOf(product.media),
+      keywords: [
+        product.sku,
+        product.skuOwner,
+        product.genericName,
+        product.categoryName ?? "",
+        product.subCategoryName ?? "",
+        ...(product.colours ?? []),
+        ...(product.materials ?? []),
+        ...(product.fabrics ?? []),
+        ...(product.moods ?? []),
+        ...(product.themes ?? []),
+      ].join(" "),
+  }));
+  /**
+   * Products chosen in the picker become lines, each priced afresh as the dropdown does. A line still empty (nothing
+   * chosen on it yet) makes way for them, so picking into a new quotation does not leave a blank first row.
+   */
+  const addChosen = (chosen: ChosenProduct[]) => {
+    const kept = getValues("lines").filter((line) => line.productId || line.oneTime);
+    const added = chosen.map(({ productId, variantId, quantity }) => {
+      const product = productsById.get(productId);
+      const variant = variantId ? product?.variants?.find((candidate) => candidate.id === variantId) : undefined;
+      return {
+        ...emptyLine(),
+        productId,
+        variantId: variantId ?? "",
+        quantity: String(quantity),
+        unitRatePerDay: product ? String(quotedFor(product, variant)) : "0",
+      };
+    });
+    replace([...kept, ...added]);
+  };
+
+  // A new line is prefilled with the rate it will be priced at, so choosing a different customer (a planner, or back to a
+  // plain customer) re-prefills the lines nobody has typed a rate on. Lines already saved keep their saved rate.
+  useEffect(() => {
+    getValues("lines").forEach((line, index) => {
+      if (line.oneTime || line.rateOverride || line.lineId || !line.productId) return;
+      const product = productsById.get(line.productId);
+      if (!product) return;
+      const variant = line.variantId ? product.variants?.find((candidate) => candidate.id === line.variantId) : undefined;
+      const source = variant ?? product;
+      const retail = Number(source.retailRate.amount);
+      const rate = plannerPercent ? plannerRate(retail, Number(source.wholesaleRate.amount), plannerPercent) : retail;
+      setValue(`lines.${index}.unitRatePerDay`, String(rate));
+    });
+  }, [plannerPercent, productsById, getValues, setValue]);
+
 
   const mutation = useMutation({
     mutationFn: ({ values, customerId }: { values: FormOutput; customerId: string }) => {
@@ -667,6 +711,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
               {selectedCustomer.accountType === "EVENT_PLANNER" ? "Event planner" : "Customer"}
               {selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""} ·{" "}
               <span className="font-mono">{selectedCustomer.id}</span>
+              {plannerPercent ? (
+                <span className="ml-1 font-medium text-foreground"> · quoted at the wholesale rate ({plannerPercent}% planner discount)</span>
+              ) : null}
             </p>
           ) : null}
         </CardContent>
@@ -700,10 +747,11 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         </CardHeader>
 
         {picking ? (
-          <ProductPickerDialog
+          <ProductPickerPanel
             products={products.data ?? []}
             loading={products.isPending}
             onAdd={addChosen}
+            shownRate={(retail, wholesale) => quotedMoney(retail, wholesale, plannerPercent)}
             onClose={() => setPicking(false)}
             onQuotation={new Set(watchedLines.map((line) => line.productId).filter(Boolean))}
           />
@@ -811,7 +859,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                               setValue(
                                 `lines.${index}.unitRatePerDay`,
                                 productsById.get(productId)
-                                  ? String(Number(productsById.get(productId)?.retailRate.amount))
+                                  ? String(quotedFor(productsById.get(productId)!))
                                   : "",
                                 { shouldValidate: true },
                               );
@@ -849,10 +897,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                             {...register(`lines.${index}.variantId`, {
                               onChange: (event) => {
                                 setValue(`lines.${index}.lineId`, "");
-                                setValue(`lines.${index}.unitRatePerDay`, String(Number(
-                                  productsById.get(line.productId)?.variants?.find(
-                                    (variant) => variant.id === event.target.value,
-                                  )?.retailRate.amount ?? productsById.get(line.productId)?.retailRate.amount ?? "",
+                                setValue(`lines.${index}.unitRatePerDay`, String(quotedFor(
+                                  productsById.get(line.productId)!,
+                                  productsById.get(line.productId)?.variants?.find((variant) => variant.id === event.target.value),
                                 )), { shouldValidate: true });
                                 setValue(`lines.${index}.rateOverride`, false);
                               },
@@ -868,7 +915,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                               .filter((variant) => variant.active !== false || variant.id === line.variantId)
                               .map((variant) => (
                               <option key={variant.id} value={variant.id}>
-                                {variant.name} — {formatMoney(variant.retailRate)} {ratePerDayLabel(productsById.get(line.productId)?.rateType)}
+                                {variant.name} — {formatMoney(quotedMoney(variant.retailRate, variant.wholesaleRate, plannerPercent))} {ratePerDayLabel(productsById.get(line.productId)?.rateType)}
                               </option>
                             ))}
                           </Select>
@@ -1125,11 +1172,35 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
               </div>
             )}
           </Field>
-          <div className="mt-6 shrink-0 rounded-lg border border-border bg-muted/40 px-4 py-1.5 text-right">
-            <p className="text-xs text-muted-foreground">Estimated total</p>
-            <p className="tabular text-lg font-semibold">
-              {formatMoney({ amount: estimate, currency: "INR" })}
-            </p>
+          <div className="mt-6 min-w-56 shrink-0 space-y-0.5 rounded-lg border border-border bg-muted/40 px-4 py-2 text-xs">
+            <EstimateRow label="Taxable amount" amount={taxable} />
+            {gst ? (
+              gst.intraState ? (
+                <>
+                  <EstimateRow label={`CGST (${(company.data?.gstRate ?? 0) / 2}%)`} amount={gst.cgst} />
+                  <EstimateRow label={`SGST (${(company.data?.gstRate ?? 0) / 2}%)`} amount={gst.sgst} />
+                </>
+              ) : (
+                <EstimateRow label={`IGST (${company.data?.gstRate ?? 0}%)`} amount={gst.igst} />
+              )
+            ) : (
+              <p className="text-muted-foreground">
+                {company.data?.gstRate == null
+                  ? "GST not set in company settings"
+                  : !company.data.state?.trim()
+                    ? "Set your state in company settings for GST"
+                    : selectedCustomer
+                      ? "Set this customer's state for GST"
+                      : "Choose a customer for GST"}
+              </p>
+            )}
+            {watchedDelivery + watchedTransportation + watchedInstallation > 0 ? (
+              <EstimateRow label="Delivery & installation (no GST)" amount={watchedDelivery + watchedTransportation + watchedInstallation} />
+            ) : null}
+            <div className="flex items-baseline justify-between gap-6 border-t border-border pt-1">
+              <span className="text-muted-foreground">Estimated total</span>
+              <span className="tabular text-lg font-semibold">{formatMoney({ amount: estimate, currency: "INR" })}</span>
+            </div>
           </div>
         </CardContent>
       </Card>

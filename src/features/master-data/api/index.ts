@@ -68,8 +68,6 @@ import type {
   PaymentTermsView,
   PlannerApplicationRequest,
   PlannerProfileView,
-  PriceListRequest,
-  PriceListView,
   SetSupplierStockRequest,
   SupplierRequest,
   SupplierStockView,
@@ -480,7 +478,7 @@ export function updateCustomer(
 
 /**
  * Only a customer nothing refers to: 422 with the reason when quotations, orders or credit notes do (deactivate the
- * account instead). Their planner application and price-list assignment go with them.
+ * account instead). Their planner application goes with them.
  */
 export function deleteCustomer(customerId: string): Promise<void> {
   if (IS_MOCK) return Promise.reject(new ApiError("Deleting a customer needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
@@ -557,32 +555,9 @@ export function rejectPlannerApplication(
   return backend.rejectPlannerApplication(customerId, reason);
 }
 
-// Price lists and payment setup exist only on the real backend; the demo data has none.
+// Payment setup exists only on the real backend; the demo data has none.
 const SETUP_NEEDS_BACKEND = "This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
 const needsBackend = <T>() => Promise.reject<T>(new ApiError(SETUP_NEEDS_BACKEND, 422));
-
-/** Trade pricing for verified event planners. Every list, active or not, by name. */
-export function listPriceLists(signal?: AbortSignal): Promise<PriceListView[]> {
-  if (IS_MOCK) return Promise.resolve([]);
-  return backend.listPriceLists(signal);
-}
-
-/** 422 for a name already used, a rate repeated for one product, or a variant of another product. */
-export function createPriceList(request: PriceListRequest): Promise<PriceListView> {
-  if (IS_MOCK) return needsBackend();
-  return backend.createPriceList(request);
-}
-
-export function updatePriceList(priceListId: string, request: PriceListRequest): Promise<PriceListView> {
-  if (IS_MOCK) return needsBackend();
-  return backend.updatePriceList(priceListId, request);
-}
-
-/** Takes effect once the planner's application is approved. null takes them off every list. */
-export function assignPriceList(customerId: string, priceListId: string | null): Promise<void> {
-  if (IS_MOCK) return needsBackend();
-  return backend.assignPriceList(customerId, priceListId);
-}
 
 export function listPaymentModes(signal?: AbortSignal): Promise<PaymentModeView[]> {
   if (IS_MOCK) return Promise.resolve([]);
@@ -636,7 +611,6 @@ export const masterDataKeys = {
     ["master-data", "warehouses", warehouseId, "products"] as const,
   trucks: ["master-data", "trucks"] as const,
   suppliers: ["master-data", "suppliers"] as const,
-  priceLists: ["master-data", "price-lists"] as const,
   paymentModes: ["master-data", "payment-modes"] as const,
   paymentTerms: ["master-data", "payment-terms"] as const,
   // Nested under `suppliers`, so refreshing the list refreshes every supplier's stock too.

@@ -42,8 +42,6 @@ import type {
   PaymentModeView,
   PaymentTermsRequest,
   PaymentTermsView,
-  PriceListRequest,
-  PriceListView,
 } from "@/features/master-data/types";
 import type {
   BundleOccasionView,
@@ -733,7 +731,7 @@ interface WireCustomer {
   active: boolean;
   storefrontAccountId?: string | null;
   plannerProfile?: WirePlannerProfile | null;
-  priceListId?: number | null;
+  plannerDiscountPercent?: number | null;
 }
 
 function plannerFromWire(profile: WirePlannerProfile): PlannerProfileView {
@@ -765,7 +763,7 @@ function customerFromWire(customer: WireCustomer): CustomerView {
     active: customer.active,
     storefrontAccountId: customer.storefrontAccountId ?? null,
     plannerProfile: customer.plannerProfile ? plannerFromWire(customer.plannerProfile) : null,
-    priceListId: customer.priceListId == null ? null : String(customer.priceListId),
+    plannerDiscountPercent: customer.plannerDiscountPercent == null ? null : Number(customer.plannerDiscountPercent),
   };
 }
 
@@ -781,6 +779,8 @@ function customerBody(request: CreateCustomerRequest | UpdateCustomerRequest) {
     state: request.state ?? "",
     addressLine: request.addressLine ?? "",
     postalCode: request.postalCode ?? "",
+    // Sent only when set: left out, the backend keeps the planner's discount (20 for a new planner).
+    plannerDiscountPercent: request.plannerDiscountPercent ?? undefined,
   };
 }
 
@@ -1439,23 +1439,7 @@ export async function setFeaturedCollectionActive(
   return collectionFromWire(changed, occasionsById(await fetchOccasions()));
 }
 
-// ------------------------------------------ price lists, payment setup, company
-
-interface WirePriceListItem {
-  productId: number;
-  productName: string;
-  variantId?: number | null;
-  variantName?: string | null;
-  dailyRate: number;
-}
-
-interface WirePriceList {
-  id: number;
-  name: string;
-  defaultDiscountPercent: number;
-  active: boolean;
-  items: WirePriceListItem[];
-}
+// ------------------------------------------ payment setup, company
 
 interface WirePaymentTerms {
   id: number;
@@ -1463,75 +1447,6 @@ interface WirePaymentTerms {
   description?: string | null;
   active: boolean;
   details: { description: string; percentage: number }[];
-}
-
-function priceListFromWire(list: WirePriceList): PriceListView {
-  return {
-    id: String(list.id),
-    name: list.name,
-    defaultDiscountPercent: Number(list.defaultDiscountPercent),
-    active: list.active,
-    items: list.items.map((item) => ({
-      productId: String(item.productId),
-      productName: item.productName,
-      variantId: item.variantId == null ? null : String(item.variantId),
-      variantName: item.variantName ?? null,
-      dailyRate: Number(item.dailyRate),
-    })),
-  };
-}
-
-function priceListItemsBody(request: PriceListRequest) {
-  return request.items.map((item) => ({
-    productId: Number(item.productId),
-    variantId: item.variantId ? Number(item.variantId) : undefined,
-    dailyRate: item.dailyRate,
-  }));
-}
-
-export async function listPriceLists(signal?: AbortSignal): Promise<PriceListView[]> {
-  const rows = await apiFetch<WirePriceList[]>(`${BASE}/price-lists`, { signal });
-  return rows.map(priceListFromWire);
-}
-
-/** Two calls: the list itself, then its explicit rates. A failure in the second leaves the list saved without rates. */
-export async function createPriceList(request: PriceListRequest): Promise<PriceListView> {
-  const created = await apiFetch<WirePriceList>(`${BASE}/price-lists`, {
-    method: "POST",
-    body: { name: request.name, defaultDiscountPercent: request.defaultDiscountPercent },
-  });
-  const withItems = await apiFetch<WirePriceList>(`${BASE}/price-lists/${created.id}/items`, {
-    method: "PUT",
-    body: priceListItemsBody(request),
-  });
-  return priceListFromWire(withItems);
-}
-
-export async function updatePriceList(
-  priceListId: string,
-  request: PriceListRequest,
-): Promise<PriceListView> {
-  await apiFetch<WirePriceList>(`${BASE}/price-lists/${priceListId}`, {
-    method: "PUT",
-    body: {
-      name: request.name,
-      defaultDiscountPercent: request.defaultDiscountPercent,
-      active: request.active,
-    },
-  });
-  const withItems = await apiFetch<WirePriceList>(`${BASE}/price-lists/${priceListId}/items`, {
-    method: "PUT",
-    body: priceListItemsBody(request),
-  });
-  return priceListFromWire(withItems);
-}
-
-/** Puts an event planner on a price list, or off every list with null. 422 for a plain customer. */
-export async function assignPriceList(customerId: string, priceListId: string | null): Promise<void> {
-  await apiFetch<unknown>(`${BASE}/customers/${customerId}/price-list`, {
-    method: "PUT",
-    body: { priceListId: priceListId === null ? null : Number(priceListId) },
-  });
 }
 
 export function listPaymentModes(signal?: AbortSignal): Promise<PaymentModeView[]> {

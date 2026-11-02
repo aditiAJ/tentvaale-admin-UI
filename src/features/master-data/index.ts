@@ -46,10 +46,6 @@ export {
   createTruck,
   updateTruck,
   deleteTruck,
-  listPriceLists,
-  createPriceList,
-  updatePriceList,
-  assignPriceList,
   listPaymentModes,
   createPaymentMode,
   updatePaymentMode,
@@ -72,7 +68,6 @@ export { FeaturedCollectionsPage } from "./components/FeaturedCollectionsPage";
 export { WarehousesPage } from "./components/WarehousesPage";
 export { TrucksPage } from "./components/TrucksPage";
 export { SuppliersPage } from "./components/SuppliersPage";
-export { PriceListsPage } from "./components/PriceListsPage";
 export { PaymentSetupPage } from "./components/PaymentSetupPage";
 export { ProductDialog } from "./components/ProductDialog";
 export { CategoryDialog } from "./components/CategoryDialog";
