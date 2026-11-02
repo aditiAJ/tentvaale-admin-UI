@@ -3,9 +3,10 @@
 import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { LayoutGrid, List, Plus, Search, SearchX, Tags, X } from "lucide-react";
+import { Archive, ArrowLeft, LayoutGrid, List, Plus, Search, SearchX, Tags, X } from "lucide-react";
 import {
   activateCategory,
+  archiveItem,
   deactivateCategory,
   listCategories,
   listProducts,
@@ -14,6 +15,7 @@ import {
 } from "@/features/master-data/api";
 import type { CategoryView, SubCategoryView } from "@/features/master-data/types";
 import { CategoryCard, NO_COUNTS, type CategoryCounts } from "@/features/master-data/components/CategoryCard";
+import { ArchivePanel } from "@/features/master-data/components/ArchivePanel";
 import { CategoryDialog } from "@/features/master-data/components/CategoryDialog";
 import { useCan } from "@/features/auth";
 import { cn } from "@/lib/utils";
@@ -41,6 +43,10 @@ export function CategoriesPage() {
   const [activating, setActivating] = useState<CategoryView | null>(null);
   // The sub-category whose storefront switch was clicked, with its category for the wording.
   const [switching, setSwitching] = useState<{ category: CategoryView; sub: SubCategoryView } | null>(null);
+  // Something being put in the Archive: a category or one of its sub-categories, with how many products go with it.
+  const [archiving, setArchiving] = useState<{ kind: "categories" | "sub-categories"; id: string; name: string; products: number | null; subs: number } | null>(null);
+  // The Archive tab: the archived categories and sub-categories, in place of the list.
+  const [showArchive, setShowArchive] = useState(false);
   const queryClient = useQueryClient();
 
   const deferredSearch = useDeferredValue(search);
@@ -105,9 +111,21 @@ export function CategoriesPage() {
       <PageHeader
         title="Categories"
         description="Groupings used to organise the product catalogue."
-        actions={newButton}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowArchive((open) => !open)} aria-pressed={showArchive}>
+              {showArchive ? <ArrowLeft /> : <Archive />}
+              {showArchive ? "Back to categories" : "Archive"}
+            </Button>
+            {newButton}
+          </>
+        }
       />
 
+      {showArchive ? (
+        <ArchivePanel scope="categories" />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="relative w-full sm:max-w-md">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -251,10 +269,36 @@ export function CategoriesPage() {
                 canWrite && !category.active ? () => setActivating(category) : undefined
               }
               onToggleSub={canWrite ? (sub) => setSwitching({ category, sub }) : undefined}
+              onArchive={
+                canWrite
+                  ? () =>
+                      setArchiving({
+                        kind: "categories",
+                        id: category.id,
+                        name: category.name,
+                        products: counts ? (counts.get(category.id)?.total ?? 0) : null,
+                        subs: category.subCategories.length,
+                      })
+                  : undefined
+              }
+              onArchiveSub={
+                canWrite
+                  ? (sub) =>
+                      setArchiving({
+                        kind: "sub-categories",
+                        id: sub.id,
+                        name: sub.name,
+                        products: counts ? (counts.get(category.id)?.bySub.get(sub.id) ?? 0) : null,
+                        subs: 0,
+                      })
+                  : undefined
+              }
             />
           ))}
         </div>
       ) : null}
+        </>
+      )}
 
       {creating ? <CategoryDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <CategoryDialog existing={editing} onClose={() => setEditing(null)} /> : null}
@@ -285,6 +329,28 @@ export function CategoriesPage() {
             setDeactivating(null);
           }}
           onClose={() => setDeactivating(null)}
+        />
+      ) : null}
+      {archiving ? (
+        <ConfirmDialog
+          title={`Archive ${archiving.name}?`}
+          description={`It moves to the Archive and leaves the lists, the pickers and the storefront${
+            archiving.kind === "categories"
+              ? `, along with its ${archiving.subs} ${archiving.subs === 1 ? "sub-category" : "sub-categories"} and ${productsPhrase(archiving.products)}`
+              : archiving.products
+                ? `, along with ${productsPhrase(archiving.products)}`
+                : ""
+          }. Nothing is deleted: quotations and orders keep them, and you can restore them, or delete them for good, from the Archive button on this page.`}
+          confirmLabel={archiving.kind === "categories" ? "Archive category" : "Archive sub-category"}
+          destructive={false}
+          fallbackError="Could not archive it."
+          action={() => archiveItem(archiving.kind, archiving.id)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: ["master-data"] });
+            toast.success(`${archiving.name} was archived`);
+            setArchiving(null);
+          }}
+          onClose={() => setArchiving(null)}
         />
       ) : null}
       {switching ? (

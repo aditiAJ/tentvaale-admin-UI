@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Eye, EyeOff, Info, Layers, Plus } from "lucide-react";
+import { Archive, ChevronRight, Eye, EyeOff, Info, Layers, Plus } from "lucide-react";
 import type { CategoryView, MediaAsset, SubCategoryView } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,8 @@ export function CategoryCard({
   onDeactivate,
   onActivate,
   onToggleSub,
+  onArchive,
+  onArchiveSub,
 }: {
   category: CategoryView;
   term: string;
@@ -61,6 +63,10 @@ export function CategoryCard({
   onActivate?: () => void;
   /** Switches one sub-category on or off. Absent for a user who cannot write master data. */
   onToggleSub?: (sub: SubCategoryView) => void;
+  /** Puts the category (and what is under it) in the Archive. Absent for a user who cannot write master data. */
+  onArchive?: () => void;
+  /** Puts one sub-category (and its products) in the Archive. */
+  onArchiveSub?: (sub: SubCategoryView) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -114,7 +120,7 @@ export function CategoryCard({
   );
 
   const actions =
-    onEdit || onDeactivate || onActivate ? (
+    onEdit || onDeactivate || onActivate || onArchive ? (
       <>
         {onDeactivate ? (
           <Button
@@ -141,6 +147,18 @@ export function CategoryCard({
         ) : (
           <span />
         )}
+        {onArchive ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={onArchive}
+            aria-label={`Archive ${category.name}`}
+          >
+            <Archive />
+            Archive
+          </Button>
+        ) : null}
         {onEdit ? (
           <Button variant="outline" size="sm" onClick={onEdit} aria-label={`Edit ${category.name}`}>
             Edit
@@ -185,6 +203,7 @@ export function CategoryCard({
                   highlight={matches(sub.name)}
                   on={isOn(sub)}
                   onToggle={onToggleSub ? () => onToggleSub(sub) : undefined}
+                  onArchive={onArchiveSub ? () => onArchiveSub(sub) : undefined}
                 />
               </li>
             ))
@@ -249,6 +268,7 @@ export function CategoryCard({
                   highlight={matches(sub.name)}
                   on={isOn(sub)}
                   onToggle={onToggleSub ? () => onToggleSub(sub) : undefined}
+                  onArchive={onArchiveSub ? () => onArchiveSub(sub) : undefined}
                 />
               </li>
             ))}
@@ -345,6 +365,7 @@ function SubRow({
   highlight,
   on,
   onToggle,
+  onArchive,
 }: {
   href?: string;
   name: string;
@@ -353,6 +374,7 @@ function SubRow({
   highlight: boolean;
   on: boolean;
   onToggle?: () => void;
+  onArchive?: () => void;
 }) {
   const body = (
     <>
@@ -402,9 +424,10 @@ function SubRow({
       ) : (
         <div className={inner}>{body}</div>
       )}
-      {onToggle ? (
-        <div className="flex shrink-0 items-center self-stretch border-l border-border py-1 pr-1.5 pl-1">
-          <StorefrontSwitch name={name} on={on} onToggle={onToggle} />
+      {onToggle || onArchive ? (
+        <div className="flex shrink-0 items-center gap-0.5 self-stretch border-l border-border py-1 pr-1.5 pl-1">
+          {onToggle ? <StorefrontSwitch name={name} on={on} onToggle={onToggle} /> : null}
+          {onArchive ? <ArchiveButton name={name} onArchive={onArchive} /> : null}
         </div>
       ) : null}
     </div>
@@ -419,6 +442,7 @@ function SubChip({
   highlight,
   on,
   onToggle,
+  onArchive,
 }: {
   href?: string;
   name: string;
@@ -426,6 +450,7 @@ function SubChip({
   highlight: boolean;
   on: boolean;
   onToggle?: () => void;
+  onArchive?: () => void;
 }) {
   const chip = cn(
     "inline-flex items-center rounded-full border text-xs",
@@ -442,7 +467,7 @@ function SubChip({
       {count !== undefined ? <span className="tabular opacity-70">{count}</span> : null}
     </>
   );
-  const pad = cn("inline-flex items-center gap-1.5 py-1 pl-2.5", onToggle ? "pr-1" : "pr-2.5");
+  const pad = cn("inline-flex items-center gap-1.5 py-1 pl-2.5", onToggle || onArchive ? "pr-1" : "pr-2.5");
   return (
     <span className={chip}>
       {href ? (
@@ -455,12 +480,30 @@ function SubChip({
       ) : (
         <span className={pad}>{body}</span>
       )}
-      {onToggle ? (
-        <span className="flex items-center pr-1.5">
-          <StorefrontSwitch name={name} on={on} onToggle={onToggle} compact />
+      {onToggle || onArchive ? (
+        <span className="flex items-center gap-0.5 pr-1.5">
+          {onToggle ? <StorefrontSwitch name={name} on={on} onToggle={onToggle} compact /> : null}
+          {onArchive ? <ArchiveButton name={name} onArchive={onArchive} compact /> : null}
         </span>
       ) : null}
     </span>
   );
 }
 
+/** Puts a sub-category in the Archive. It sits beside the row link, never inside it, so a click archives rather than navigates. */
+function ArchiveButton({ name, onArchive, compact = false }: { name: string; onArchive: () => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onArchive}
+      aria-label={`Archive ${name}`}
+      title={`Archive ${name}`}
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+        compact ? "size-5" : "size-7",
+      )}
+    >
+      <Archive className={compact ? "size-3" : "size-3.5"} aria-hidden="true" />
+    </button>
+  );
+}

@@ -827,3 +827,54 @@ export interface PaymentTermsRequest {
   active?: boolean;
   details: PaymentTermsLine[];
 }
+
+// ---- the archive -------------------------------------------------------------------------------
+
+/** Mirrors ArchiveService.ArchivedCategory. Ids are the backend's own numbers. */
+export interface ArchivedCategory {
+  id: number;
+  name: string;
+  archivedAt: string | null;
+  /** Its sub-categories, however they were archived. */
+  subCategories: number;
+  /** Archived products filed under them. */
+  products: number;
+}
+
+export interface ArchivedSubCategory {
+  id: number;
+  name: string;
+  categoryId: number;
+  categoryName: string;
+  /** Its category is archived too, so this cannot be restored until that is. */
+  categoryArchived: boolean;
+  archivedAt: string | null;
+  /** Archived only because its category was; restoring the category brings it back. */
+  archivedWithParent: boolean;
+  products: number;
+}
+
+export interface ArchivedProduct {
+  id: number;
+  sku: string;
+  name: string;
+  subCategoryId: number;
+  subCategoryName: string;
+  categoryName: string;
+  /** Its sub-category or category is archived too, so this cannot be restored until that is. */
+  parentArchived: boolean;
+  archivedAt: string | null;
+  archivedWithParent: boolean;
+  imageUrl: string | null;
+}
+
+/** Everything put away, from the backend's GET /archive. `productTotal` can be more than the products listed. */
+export interface ArchiveView {
+  categories: ArchivedCategory[];
+  subCategories: ArchivedSubCategory[];
+  products: ArchivedProduct[];
+  productTotal: number;
+}
+
+/** What an archive action applies to; the segment the backend puts it under. */
+export type ArchiveKind = "products" | "categories" | "sub-categories";
