@@ -1,6 +1,7 @@
 import { ApiError } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import * as backend from "@/features/master-data/api/backend";
+import type { ArchiveKind, ArchiveView } from "@/features/master-data/types";
 import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
 import type { WarehouseImportOutcome, WarehouseImportPreview } from "@/features/master-data/warehouseImport";
 import {
@@ -671,6 +672,8 @@ export function updatePaymentTerms(termsId: string, request: PaymentTermsRequest
 
 /** Query keys kept beside the calls they invalidate, so the two cannot drift. */
 export const masterDataKeys = {
+  /** Everything put away; refreshed whenever something is archived, restored or deleted for good. */
+  archive: ["master-data", "archive"] as const,
   products: ["master-data", "products"] as const,
   categories: ["master-data", "categories"] as const,
   customers: ["master-data", "customers"] as const,
@@ -697,3 +700,32 @@ export const masterDataKeys = {
   // Nested under `suppliers`, so refreshing the list refreshes every supplier's stock too.
   supplierStock: (supplierId: string) => ["master-data", "suppliers", supplierId, "stock"] as const,
 };
+
+// ---- the archive ----------------------------------------------------------------------------
+
+const ARCHIVE_NEEDS_BACKEND = "This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
+
+
+/** Products, categories and sub-categories that were put away. `query` matches a name or SKU. Real backend only. */
+export function getArchive(query: string, signal?: AbortSignal): Promise<ArchiveView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(ARCHIVE_NEEDS_BACKEND, 422));
+  return backend.getArchive(query, signal);
+}
+
+/** Hides it everywhere and moves it to the Archive. A category or sub-category takes what is under it. Real backend only. */
+export function archiveItem(kind: ArchiveKind, id: number | string): Promise<void> {
+  if (IS_MOCK) return Promise.reject(new ApiError(ARCHIVE_NEEDS_BACKEND, 422));
+  return backend.archiveItem(kind, id);
+}
+
+/** Brings it back live. 422 when its parent is still archived. Real backend only. */
+export function restoreItem(kind: ArchiveKind, id: number | string): Promise<void> {
+  if (IS_MOCK) return Promise.reject(new ApiError(ARCHIVE_NEEDS_BACKEND, 422));
+  return backend.restoreItem(kind, id);
+}
+
+/** Removes an archived item for good. 422 with the reason when a product is still on a quotation, order or plan. Real backend only. */
+export function deleteArchivedItem(kind: ArchiveKind, id: number | string): Promise<void> {
+  if (IS_MOCK) return Promise.reject(new ApiError(ARCHIVE_NEEDS_BACKEND, 422));
+  return backend.deleteArchivedItem(kind, id);
+}

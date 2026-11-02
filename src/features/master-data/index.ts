@@ -65,6 +65,7 @@ export {
 } from "./api";
 export { ProductsPage } from "./components/ProductsPage";
 export { CategoriesPage } from "./components/CategoriesPage";
+export { ArchivePanel } from "./components/ArchivePanel";
 export { CustomersPage } from "./components/CustomersPage";
 export { BundlesPage } from "./components/BundlesPage";
 export { FeaturedCollectionsPage } from "./components/FeaturedCollectionsPage";

@@ -6,7 +6,7 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { ListPlus, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createQuotation, quotationKeys, updateQuotation } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
@@ -25,6 +25,10 @@ import { Input, Select } from "@/components/ui/input";
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { InventoryChip, StockSummary, type LineStock } from "@/features/quotations/components/InventoryChip";
+import { ProductPickerDialog, pictureOf, type ChosenProduct } from "@/features/quotations/components/ProductPickerDialog";
+import { formatEventDate } from "@/features/quotations/components/QuotationParts";
+import { useDateStock } from "@/features/quotations/useDateStock";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const schema = z.object({
@@ -105,12 +109,6 @@ const schema = z.object({
 
 type FormInput = z.input<typeof schema>;
 type FormOutput = z.output<typeof schema>;
-
-/** A product's first image, as its thumbnail when it has one; null when it has no picture. */
-const pictureOf = (media: { kind: string; url: string | null; thumbnailUrl?: string | null }[] | undefined) => {
-  const image = media?.find((item) => item.kind === "IMAGE" && (item.thumbnailUrl || item.url));
-  return image ? (image.thumbnailUrl ?? image.url) : null;
-};
 
 const emptyLine = () => ({
   lineId: "",
@@ -205,6 +203,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     control,
     register,
     handleSubmit,
+    getValues,
     setValue,
     setError,
     formState: { errors },
@@ -256,7 +255,29 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: "lines" });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: "lines" });
+
+  const [picking, setPicking] = useState(false);
+
+  /**
+   * Products chosen in the picker become lines, each priced afresh as the dropdown does. A line still empty (nothing
+   * chosen on it yet) makes way for them, so picking into a new quotation does not leave a blank first row.
+   */
+  const addChosen = (chosen: ChosenProduct[]) => {
+    const kept = getValues("lines").filter((line) => line.productId || line.oneTime);
+    const added = chosen.map(({ productId, variantId, quantity }) => {
+      const product = productsById.get(productId);
+      const variant = variantId ? product?.variants?.find((candidate) => candidate.id === variantId) : undefined;
+      return {
+        ...emptyLine(),
+        productId,
+        variantId: variantId ?? "",
+        quantity: String(quantity),
+        unitRatePerDay: String(Number((variant ?? product)?.retailRate.amount ?? 0)),
+      };
+    });
+    replace([...kept, ...added]);
+  };
 
   // Watched rather than read on submit, because the running estimate is the
   // only feedback there is while the quotation is being built. useWatch rather
@@ -265,6 +286,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const watchedLines = useWatch({ control, name: "lines" });
   const watchedCustomerName = useWatch({ control, name: "customerName" });
   const watchedCustomerId = useWatch({ control, name: "customerId" });
+  const watchedEventDate = useWatch({ control, name: "eventDate" });
 
   /** The per-day rate a line is priced at, or null until it has a product. */
   const rateFor = (
@@ -344,6 +366,30 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       ? Math.round(Math.max(itemsEstimate - bundleDiscounts, 0) * Math.min(watchedDiscount, 100)) / 100
       : watchedDiscount;
   const estimate = Math.max(itemsEstimate - bundleDiscounts + watchedDelivery + watchedTransportation + watchedInstallation - discountEstimate, 0);
+
+  // The Inventory column: each line's stock on the event date, asked for once typing has paused. A one-time line has no
+  // stock and is always available; a line with no product yet, or a product with variants and none chosen, waits.
+  const stockLines = fields.flatMap((field, index) => {
+    const line = watchedLines[index];
+    const count = Number(line?.quantity);
+    const days = Number(line?.rentalDays);
+    if (!line?.productId || line.oneTime || !Number.isInteger(count) || count < 1 || !Number.isInteger(days) || days < 1) return [];
+    if (productsById.get(line.productId)?.hasVariants && !line.variantId) return [];
+    return [{ key: field.id, productId: line.productId, variantId: line.variantId || undefined, quantity: count, rentalDays: days }];
+  });
+  const stock = useDateStock({
+    eventDate: watchedEventDate || undefined,
+    excludeQuotationId: existing?.id,
+    lines: stockLines,
+  });
+  const lineStocks: LineStock[] = fields.map((field, index) => ({
+    oneTime: Boolean(watchedLines[index]?.oneTime),
+    checkable: stockLines.some((candidate) => candidate.key === field.id),
+    result: stock.results.get(field.id),
+    needsDate: !watchedEventDate,
+    pending: stock.pending,
+    failed: stock.failed,
+  }));
 
   // The name is typed, but a quotation still belongs to a customer record by
   // id — its order, deposit and credit notes all hang off that id — so the
@@ -629,17 +675,39 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3">
           <CardTitle>Lines</CardTitle>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => append(emptyLine())}
-            disabled={mutation.isPending}
-          >
-            <Plus />
-            Add line
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPicking(true)}
+              disabled={mutation.isPending || products.isPending}
+            >
+              <ListPlus />
+              Choose products
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => append(emptyLine())}
+              disabled={mutation.isPending}
+            >
+              <Plus />
+              Add line
+            </Button>
+          </div>
         </CardHeader>
+
+        {picking ? (
+          <ProductPickerDialog
+            products={products.data ?? []}
+            loading={products.isPending}
+            onAdd={addChosen}
+            onClose={() => setPicking(false)}
+            onQuotation={new Set(watchedLines.map((line) => line.productId).filter(Boolean))}
+          />
+        ) : null}
 
         <TableWrapper>
           <Table>
@@ -651,6 +719,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                 <TH className="w-28 text-right">Days</TH>
                 <TH className="w-32 text-right">Rate/day</TH>
                 <TH className="w-36 text-right">Line total</TH>
+                <TH className="w-56">Inventory</TH>
                 <TH className="w-9" aria-label="Remove" />
               </tr>
             </THead>
@@ -906,6 +975,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                       {priced !== null ? formatMoney({ amount: priced, currency: "INR" }) : "—"}
                     </TD>
 
+                    <TD className="pt-3.5 align-top">
+                      <InventoryChip stock={lineStocks[index]} />
+                    </TD>
+
                     <TD className="align-top">
                       <Button
                         type="button"
@@ -929,6 +1002,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             </TBody>
           </Table>
         </TableWrapper>
+
+        <StockSummary stocks={lineStocks} dateLabel={watchedEventDate ? formatEventDate(watchedEventDate) : undefined} />
 
         {linesError ? (
           <CardContent className="border-t border-border">

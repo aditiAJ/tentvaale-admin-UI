@@ -7,6 +7,8 @@ import { discountLabel } from "@/features/quotations/discount";
 import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { quantityLabel } from "@/features/master-data/storefront";
 import { formatMoney, type Money } from "@/lib/money";
+import { InventoryChip, StockSummary, type LineStock } from "@/features/quotations/components/InventoryChip";
+import { useDateStock } from "@/features/quotations/useDateStock";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -256,8 +258,19 @@ function groupLines(lines: QuotationLineView[]): Group[] {
   return [...groups.values()];
 }
 
-/** `before` is how many lines sit above this table, so the numbers run on across a quotation's functions. */
-function LineRows({ lines, before = 0 }: { lines: QuotationLineView[]; before?: number }) {
+/**
+ * `before` is how many lines sit above this table, so the numbers run on across a quotation's functions. `stocks`, when
+ * given, adds the Inventory column: each line's stock on its date.
+ */
+function LineRows({
+  lines,
+  before = 0,
+  stocks,
+}: {
+  lines: QuotationLineView[];
+  before?: number;
+  stocks?: Map<string, LineStock>;
+}) {
   const media = useProductMedia();
   return (
     <TableWrapper>
@@ -270,6 +283,7 @@ function LineRows({ lines, before = 0 }: { lines: QuotationLineView[]; before?: 
             <TH className="text-right">Days</TH>
             <TH className="text-right">Rate / day</TH>
             <TH className="text-right">Amount</TH>
+            {stocks ? <TH className="w-56">Inventory</TH> : null}
           </tr>
         </THead>
         <TBody>
@@ -296,6 +310,13 @@ function LineRows({ lines, before = 0 }: { lines: QuotationLineView[]; before?: 
                 <TD className="tabular text-right">{line.rentalDays}</TD>
                 <TD className="tabular text-right">{formatMoney(line.unitRatePerDay)}</TD>
                 <TD className="tabular text-right font-medium">{formatMoney(line.lineTotal)}</TD>
+                {stocks ? (
+                  <TD>
+                    <InventoryChip
+                      stock={stocks.get(line.id) ?? { checkable: false, needsDate: false, pending: false, failed: false }}
+                    />
+                  </TD>
+                ) : null}
               </TR>
             );
           })}
@@ -304,6 +325,9 @@ function LineRows({ lines, before = 0 }: { lines: QuotationLineView[]; before?: 
     </TableWrapper>
   );
 }
+
+/** The quotation stages in which the stock on its date is still worth checking. */
+const STOCK_CHECKED: readonly QuotationStatus[] = ["DRAFT", "SENT", "ACCEPTED"];
 
 const sum = (lines: QuotationLineView[]) => lines.reduce((total, l) => total + Number(l.lineTotal.amount), 0);
 
@@ -316,10 +340,50 @@ export function LinesByFunction({ quotation, plan }: { quotation: QuotationView;
   const named = groups.some((g) => g.name);
   const starts = groups.map((_, i) => groups.slice(0, i).reduce((count, g) => count + g.lines.length, 0));
 
+  // The Inventory column: what is free on each line's date. Shown while the quotation can still be acted on; once it is
+  // converted, rejected or expired the stock is either held by its own order or no longer wanted, so it is left out.
+  const showStock = STOCK_CHECKED.includes(quotation.status);
+  const checked = quotation.lines.filter((line) => line.productId && !line.oneTime);
+  const stock = useDateStock({
+    eventDate: quotation.eventDate ?? undefined,
+    excludeQuotationId: quotation.id,
+    enabled: showStock,
+    lines: checked.map((line) => ({
+      key: line.id,
+      productId: line.productId,
+      variantId: line.variantId ?? undefined,
+      quantity: line.quantity,
+      rentalDays: line.rentalDays,
+      functionDate: line.functionDate ?? undefined,
+    })),
+  });
+  const stocks = showStock
+    ? new Map<string, LineStock>(
+        quotation.lines.map((line) => [
+          line.id,
+          {
+            oneTime: Boolean(line.oneTime),
+            checkable: Boolean(line.productId),
+            result: stock.results.get(line.id),
+            needsDate: !(line.functionDate || quotation.eventDate),
+            pending: stock.pending,
+            failed: stock.failed,
+          },
+        ]),
+      )
+    : undefined;
+  const summary = stocks ? (
+    <StockSummary
+      stocks={[...stocks.values()]}
+      dateLabel={quotation.eventDate ? formatEventDate(quotation.eventDate) : undefined}
+    />
+  ) : null;
+
   if (!named) {
     return (
       <Card className="overflow-hidden">
-        <LineRows lines={quotation.lines} />
+        <LineRows lines={quotation.lines} stocks={stocks} />
+        {summary}
       </Card>
     );
   }
@@ -365,10 +429,11 @@ export function LinesByFunction({ quotation, plan }: { quotation: QuotationView;
               </span>
               <span className="tabular ml-auto text-sm font-semibold">{formatMoney({ amount: sum(group.lines), currency: "INR" })}</span>
             </div>
-            <LineRows lines={group.lines} before={starts[groupIndex]} />
+            <LineRows lines={group.lines} before={starts[groupIndex]} stocks={stocks} />
           </Card>
         );
       })}
+      {summary}
     </div>
   );
 }

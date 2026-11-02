@@ -104,3 +104,49 @@ export interface RecordStockMovementRequest {
   remarks?: string;
   lines: RecordMovementLineRequest[];
 }
+
+// ---- stock on a date (the Inventory column on a quotation) -------------------------------------
+
+/** How a line stands against the stock free on its date. NO_DATE: there is no date to check against. */
+export type DateStockStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE" | "NO_DATE";
+
+export interface DateStockLineRequest {
+  /** Handed back unchanged on the result, so the caller can match results to lines. */
+  key: string;
+  productId: string;
+  variantId?: string;
+  quantity: number;
+  rentalDays: number;
+  /** yyyy-MM-dd. A line that serves a function starts on that day instead of the event date. */
+  functionDate?: string;
+}
+
+export interface DateStockRequest {
+  /** yyyy-MM-dd. */
+  eventDate?: string;
+  /** The quotation being looked at, so an order raised from it does not count as blocking it. */
+  excludeQuotationId?: string;
+  lines: DateStockLineRequest[];
+}
+
+/** A live order holding some of the goods, and the days it holds them. */
+export interface DateStockBlocker {
+  orderNumber: string;
+  quantity: number;
+  from: string;
+  to: string;
+}
+
+export interface DateStockResult {
+  key: string;
+  status: DateStockStatus;
+  needed: number;
+  /** What is left for this line: after live orders and the lines above it, the smallest over its days. */
+  free: number;
+  /** Owned stock in active warehouses. */
+  total: number;
+  /** The most live orders hold on any one of the line's days. */
+  blocked: number;
+  note?: string | null;
+  blockedBy: DateStockBlocker[];
+}

@@ -1,6 +1,7 @@
 import { apiDownload, apiFetch, ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
+import type { ArchiveKind, ArchiveView } from "@/features/master-data/types";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
 import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
 import type { WarehouseImportOutcome, WarehouseImportPreview } from "@/features/master-data/warehouseImport";
@@ -1674,6 +1675,29 @@ export function importProducts(file: File, fingerprint: string | undefined): Pro
   // What the user was shown; the server refuses to import if the catalogue no longer gives the same answer.
   if (fingerprint) form.append("fingerprint", fingerprint);
   return apiFetch<ImportOutcome>(`${BASE}/products/import`, { method: "POST", body: form });
+}
+
+// ---- the archive ----------------------------------------------------------------------------
+
+/** Everything that was archived: categories, sub-categories and products. `query` matches a name or SKU. */
+export function getArchive(query: string, signal?: AbortSignal): Promise<ArchiveView> {
+  const q = query.trim();
+  return apiFetch<ArchiveView>(`${BASE}/archive${q ? `?q=${encodeURIComponent(q)}` : ""}`, { signal });
+}
+
+/** 204. Archiving a category or sub-category archives what is under it; see ArchiveService. */
+export function archiveItem(kind: ArchiveKind, id: number | string): Promise<void> {
+  return apiFetch<void>(`${BASE}/${kind}/${encodeURIComponent(String(id))}/archive`, { method: "POST" });
+}
+
+/** 204; 422 with the reason when its parent is still archived. */
+export function restoreItem(kind: ArchiveKind, id: number | string): Promise<void> {
+  return apiFetch<void>(`${BASE}/${kind}/${encodeURIComponent(String(id))}/restore`, { method: "POST" });
+}
+
+/** 204; 422 with the reason when something still refers to a product. Only an archived item can be deleted this way. */
+export function deleteArchivedItem(kind: ArchiveKind, id: number | string): Promise<void> {
+  return apiFetch<void>(`${BASE}/${kind}/${encodeURIComponent(String(id))}`, { method: "DELETE" });
 }
 
 // ------------------------------------------------- warehouse layout and stock placement

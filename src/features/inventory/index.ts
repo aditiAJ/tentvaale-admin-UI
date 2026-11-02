@@ -3,6 +3,7 @@ export {
   listStockMovementsByOrder,
   recordStockMovement,
   deriveAvailability,
+  checkDateAvailability,
   inventoryKeys,
 } from "./api";
 export { StockMovementsPage } from "./components/StockMovementsPage";
@@ -17,4 +18,9 @@ export type {
   RecordStockMovementRequest,
   RecordMovementLineRequest,
   AvailabilityRow,
+  DateStockStatus,
+  DateStockRequest,
+  DateStockLineRequest,
+  DateStockResult,
+  DateStockBlocker,
 } from "./types";

@@ -8,6 +8,8 @@ import {
 } from "@/mock-data/store";
 import type {
   AvailabilityRow,
+  DateStockRequest,
+  DateStockResult,
   RecordStockMovementRequest,
   StockMovementFilters,
   StockMovementRow,
@@ -65,6 +67,15 @@ export function recordStockMovement(
 export function deriveAvailability(signal?: AbortSignal): Promise<AvailabilityRow[]> {
   if (IS_MOCK) return mockDeriveAvailability();
   return backend.deriveAvailability(signal);
+}
+
+/**
+ * How much of each product is free on a date. The real backend only: in the demo data there is no order history to
+ * hold stock back, so it answers with nothing and the quotation shows no stock column.
+ */
+export function checkDateAvailability(request: DateStockRequest, signal?: AbortSignal): Promise<DateStockResult[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.checkDateAvailability(request, signal);
 }
 
 export const inventoryKeys = {

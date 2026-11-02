@@ -1,6 +1,8 @@
 import { apiFetch } from "@/services/api-client";
 import type {
   AvailabilityRow,
+  DateStockRequest,
+  DateStockResult,
   MovedLineView,
   RecordStockMovementRequest,
   StockMovementFilters,
@@ -122,6 +124,32 @@ export async function recordStockMovement(
     },
   });
   return movementFromWire(created);
+}
+
+/**
+ * How much of each product is free on a date, for the Inventory column on a quotation: owned stock in active
+ * warehouses less what live orders already hold on each day the goods are needed. Read only.
+ */
+export async function checkDateAvailability(
+  request: DateStockRequest,
+  signal?: AbortSignal,
+): Promise<DateStockResult[]> {
+  return apiFetch<DateStockResult[]>(`${BASE}/date-availability`, {
+    method: "POST",
+    signal,
+    body: {
+      eventDate: request.eventDate || undefined,
+      excludeQuotationId: request.excludeQuotationId || undefined,
+      lines: request.lines.map((line) => ({
+        key: line.key,
+        productId: Number(line.productId),
+        variantId: line.variantId ? Number(line.variantId) : undefined,
+        quantity: line.quantity,
+        rentalDays: line.rentalDays,
+        functionDate: line.functionDate || undefined,
+      })),
+    },
+  });
 }
 
 /** Current counts per product: on the shelf now, and out on rent. Not date-based (PRD §9). */

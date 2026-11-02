@@ -2,7 +2,10 @@
 
 import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
+  Archive,
+  ArrowLeft,
   Eye,
   EyeOff,
   Layers,
@@ -12,6 +15,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import {
+  archiveItem,
   listCategories,
   listProducts,
   masterDataKeys,
@@ -31,6 +35,7 @@ import { ProductVariantsDialog } from "@/features/master-data/components/Product
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
 import { ProductExportButton } from "@/features/master-data/components/ProductExportButton";
 import { ProductImportButton } from "@/features/master-data/components/ProductImportButton";
+import { ArchivePanel } from "@/features/master-data/components/ArchivePanel";
 import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
@@ -85,6 +90,9 @@ export function ProductsPage({
   const [editing, setEditing] = useState<ProductView | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [switching, setSwitching] = useState<ProductView | null>(null);
+  const [archiving, setArchiving] = useState<ProductView | null>(null);
+  // The Archive tab: the archived products, in place of the list.
+  const [showArchive, setShowArchive] = useState(false);
   const [viewing, setViewing] = useState<ProductView | null>(null);
   const queryClient = useQueryClient();
 
@@ -137,8 +145,16 @@ export function ProductsPage({
         description="The rental catalogue for this company."
         actions={
           <>
-            {canWrite ? <ProductImportButton /> : null}
-            <ProductExportButton shownIds={visible.map((product) => product.id)} categories={categories.data ?? []} />
+            {showArchive ? null : (
+              <>
+                {canWrite ? <ProductImportButton /> : null}
+                <ProductExportButton shownIds={visible.map((product) => product.id)} categories={categories.data ?? []} />
+              </>
+            )}
+            <Button variant="outline" onClick={() => setShowArchive((open) => !open)} aria-pressed={showArchive}>
+              {showArchive ? <ArrowLeft /> : <Archive />}
+              {showArchive ? "Back to products" : "Archive"}
+            </Button>
             {canWrite ? (
               <Button onClick={() => setCreating(true)}>
                 <Plus />
@@ -149,6 +165,10 @@ export function ProductsPage({
         }
       />
 
+      {showArchive ? (
+        <ArchivePanel scope="products" />
+      ) : (
+        <>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
@@ -326,6 +346,17 @@ export function ProductsPage({
                             {inactive ? <Eye /> : <EyeOff />}
                           </Button>
                         ) : null}
+                        {canWrite ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setArchiving(product)}
+                            aria-label={`Archive ${product.name}`}
+                            title="Archive"
+                          >
+                            <Archive />
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </article>
@@ -373,6 +404,8 @@ export function ProductsPage({
           </Card>
         </div>
       </div>
+        </>
+      )}
 
       {viewing ? (
         <ProductVariantsDialog
@@ -417,6 +450,22 @@ export function ProductsPage({
             setSwitching(null);
           }}
           onClose={() => setSwitching(null)}
+        />
+      ) : null}
+      {archiving ? (
+        <ConfirmDialog
+          title={`Archive ${archiving.name}?`}
+          description="It moves to the Archive and leaves the product list, the pickers and the storefront. Nothing is deleted: quotations and orders keep it, and you can restore it, or delete it for good, from the Archive button on this page."
+          confirmLabel="Archive product"
+          destructive={false}
+          fallbackError="Could not archive the product."
+          action={() => archiveItem("products", archiving.id)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: ["master-data"] });
+            toast.success(`${archiving.name} was archived`);
+            setArchiving(null);
+          }}
+          onClose={() => setArchiving(null)}
         />
       ) : null}
     </div>
