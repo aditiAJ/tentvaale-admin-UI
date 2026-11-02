@@ -551,6 +551,14 @@ export interface WarehouseView {
   city: string;
   /** An inactive warehouse takes no new stock. */
   active?: boolean;
+  /** Short upper-case code, unique per company; the start of every location code inside. Real backend only. */
+  code?: string;
+  contactPerson?: string;
+  contactNumber?: string;
+  description?: string;
+  /** What the layout holds now; 0 for a warehouse with no layout. */
+  zoneCount?: number;
+  locationCount?: number;
 }
 
 /**
@@ -576,6 +584,10 @@ export interface WarehouseProductView {
   productName: string;
   variantName: string | null;
   quantity: number;
+  /** How many of `quantity` are assigned to storage locations. Owned stock only. */
+  placed?: number;
+  /** The variant's SKU, or the product's when the line has no variant. Real backend only. */
+  sku?: string;
 }
 
 /** A rental supplier. Admin-only: supplier identity is never shown on the storefront. */
@@ -653,6 +665,11 @@ export interface CreateWarehouseRequest {
   /** Required, like every other field a warehouse carries — see WarehouseView. */
   address: string;
   city: string;
+  /** Left out: a new warehouse gets the next WHnnn and an edit keeps its code. Real backend only. */
+  code?: string;
+  contactPerson?: string;
+  contactNumber?: string;
+  description?: string;
 }
 
 export type UpdateWarehouseRequest = CreateWarehouseRequest;
@@ -853,3 +870,133 @@ export interface ArchiveView {
 
 /** What an archive action applies to; the segment the backend puts it under. */
 export type ArchiveKind = "products" | "categories" | "sub-categories";
+
+// ---------------------------------------------------------------------------
+// Warehouse layout and stock placement (real backend only; mock mode has no layout)
+// ---------------------------------------------------------------------------
+
+/** The levels below a warehouse. A level may be skipped, e.g. a rack straight under a zone. */
+export type LocationType = "ZONE" | "BAY" | "RACK" | "LEVEL";
+
+export const LOCATION_TYPE_LABEL: Record<LocationType, string> = {
+  ZONE: "Zone",
+  BAY: "Bay / aisle",
+  RACK: "Rack",
+  LEVEL: "Level / bin",
+};
+
+/** Which types a new location may be created as under a parent of the given type (null: the warehouse). */
+export const CHILD_TYPES: Record<LocationType | "WAREHOUSE", LocationType[]> = {
+  WAREHOUSE: ["ZONE"],
+  ZONE: ["BAY", "RACK", "LEVEL"],
+  BAY: ["RACK", "LEVEL"],
+  RACK: ["LEVEL"],
+  LEVEL: [],
+};
+
+export interface StorageLocationView {
+  id: string;
+  warehouseId: string;
+  parentId: string | null;
+  type: LocationType;
+  /** This node's own segment, e.g. R3. */
+  code: string;
+  name: string;
+  /** Server-built path, e.g. WH001-A-01-R3-L2. */
+  fullCode: string;
+  active: boolean;
+  childCount: number;
+  /** Units placed at exactly this node, not below it. */
+  units: number;
+  /** Units placed at this node and everything below it: a zone of full racks is not empty. */
+  unitsInside: number;
+}
+
+export interface LocationCrumb {
+  id: string;
+  type: LocationType;
+  code: string;
+  name: string;
+  fullCode: string;
+}
+
+export interface LayoutSummary {
+  zones: number;
+  bays: number;
+  racks: number;
+  levels: number;
+  total: number;
+  unitsPlaced: number;
+  unitsUnplaced: number;
+}
+
+/** Some units of a product or variant kept at one location. */
+export interface StockAllocationView {
+  id: string;
+  warehouseId: string;
+  warehouseName: string;
+  locationId: string;
+  locationCode: string;
+  locationName: string;
+  locationType: LocationType;
+  locationActive: boolean;
+  /** Zone down to the location itself. */
+  trail: LocationCrumb[];
+  productId: string;
+  productName: string;
+  sku: string;
+  variantId: string | null;
+  variantName: string | null;
+  variantSku: string | null;
+  quantity: number;
+}
+
+export interface ListLocationsQuery {
+  /** Children of this location; the zones when left out. */
+  parentId?: string;
+  /** Search the whole warehouse, whatever the level. Implied by `q` and `type`. */
+  flat?: boolean;
+  q?: string;
+  type?: LocationType;
+  active?: boolean;
+  size?: number;
+}
+
+export interface CreateLocationRequest {
+  type: LocationType;
+  parentId?: string;
+  code: string;
+  name: string;
+}
+
+export interface UpdateLocationRequest {
+  name: string;
+  /** Left out keeps the code; the server refuses a change once the location has children or held stock. */
+  code?: string;
+  active?: boolean;
+}
+
+export interface PlaceStockRequest {
+  productId: string;
+  variantId?: string;
+  locationId: string;
+  /** The number kept at the location: a set, not an add. 0 removes the placement. */
+  quantity: number;
+}
+
+export interface MoveStockRequest {
+  productId: string;
+  variantId?: string;
+  fromLocationId: string;
+  toLocationId: string;
+  quantity: number;
+}
+
+export interface AllocationQuery {
+  locationId?: string;
+  /** With a location: include everything below it (default true). */
+  subtree?: boolean;
+  productId?: string;
+  variantId?: string;
+  q?: string;
+}

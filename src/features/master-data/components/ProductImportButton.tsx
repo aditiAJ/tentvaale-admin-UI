@@ -9,9 +9,9 @@ import {
   importFileProblem,
   importWillChange,
   type ImportAction,
-  type ImportIssue,
   type ImportOutcome,
   type ImportPreview,
+  type ImportStockLine,
 } from "@/features/master-data/productImport";
 import { NETWORK_ERROR_STATUS, ApiError } from "@/services/api-client";
 import { cn } from "@/lib/utils";
@@ -20,22 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { ACTION, IssueList, MAX_ROWS, messageOf, type Step } from "@/features/master-data/components/importParts";
 
-/** A preview can hold thousands of rows; the table shows this many and says how many more there are. */
-const MAX_ROWS = 200;
-
-type Step = "pick" | "checking" | "preview" | "importing" | "done";
-
-const ACTION: Record<ImportAction, { label: string; className: string }> = {
-  CREATE: { label: "Create", className: "border-transparent bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-[var(--success)]" },
-  UPDATE: { label: "Update", className: "border-transparent bg-sky-500/15 text-sky-700 dark:text-sky-300" },
-  UNCHANGED: { label: "Unchanged", className: "border-border bg-muted text-muted-foreground" },
-  INVALID: { label: "Error", className: "border-transparent bg-[color-mix(in_srgb,var(--destructive)_12%,transparent)] text-destructive" },
-};
-
-function messageOf(error: unknown): string {
-  return error instanceof ApiError ? error.message : "Something went wrong. Please try again.";
-}
 
 /**
  * Import of the catalogue from the Excel file the Export button makes. Three real calls to the backend, no guessing
@@ -117,6 +103,8 @@ export function ProductImportButton() {
       setStep("done");
       toast.success("Import finished");
       void queryClient.invalidateQueries({ queryKey: masterDataKeys.products });
+      // Warehouse quantities may have changed too: refresh the screens that show them.
+      void queryClient.invalidateQueries({ queryKey: masterDataKeys.warehouses });
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === NETWORK_ERROR_STATUS) {
         // The request may have reached the server and finished. Importing the same file again blindly could add
@@ -236,6 +224,11 @@ export function ProductImportButton() {
                 <Badge className={ACTION.UPDATE.className}>
                   {summary.productsToUpdate + summary.variantsToUpdate} to update
                 </Badge>
+                {summary.stockToChange ? (
+                  <Badge className={ACTION.UPDATE.className}>
+                    {summary.stockToChange} warehouse {summary.stockToChange === 1 ? "quantity" : "quantities"} to set
+                  </Badge>
+                ) : null}
                 <Badge className={ACTION.UNCHANGED.className}>
                   {summary.productsUnchanged + summary.variantsUnchanged} unchanged
                 </Badge>
@@ -254,7 +247,7 @@ export function ProductImportButton() {
               ) : null}
 
               {warnings.length ? (
-                <Alert tone="warning" title="Worth a look (these do not stop the import)">
+                <Alert tone="warning" title="Worth a look (these do not stop the import, but the changes listed here are NOT applied)">
                   <IssueList issues={warnings} />
                 </Alert>
               ) : null}
@@ -280,6 +273,15 @@ export function ProductImportButton() {
                   lines={preview.variants.map((line) => ({ key: `v${line.row}`, row: line.row, sku: line.sku, name: line.name, context: line.productSku ? `of ${line.productSku}` : undefined, action: line.action, changes: line.changes }))}
                   showUnchanged={showUnchanged}
                 />
+              ) : null}
+
+              {preview.stock.length ? <StockTable lines={preview.stock} /> : null}
+
+              {summary.stockToChange || summary.stockUnchanged ? (
+                <p className="text-xs text-muted-foreground">
+                  Warehouse columns set the quantity each warehouse owns, as on the Warehouses screen ({summary.stockToChange} to
+                  change, {summary.stockUnchanged} already match). A blank cell leaves the stock alone.
+                </p>
               ) : null}
 
               {preview.notImportedColumns.length ? (
@@ -356,19 +358,47 @@ function LineTable({ title, lines, showUnchanged }: { title: string; lines: Line
   );
 }
 
-function IssueList({ issues }: { issues: ImportIssue[] }) {
+function StockTable({ lines }: { lines: ImportStockLine[] }) {
   return (
-    <ul className="max-h-48 space-y-1 overflow-y-auto">
-      {issues.map((issue, index) => (
-        <li key={`${issue.sheet}-${issue.row}-${issue.column ?? ""}-${index}`}>
-          <span className="font-medium">
-            {issue.row > 0 ? `${issue.sheet}, row ${issue.row}` : issue.sheet}
-            {issue.column ? `, ${issue.column}` : ""}:
-          </span>{" "}
-          {issue.message}
-        </li>
-      ))}
-    </ul>
+    <section className="space-y-1.5" aria-label="Warehouse quantities in the file">
+      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        Warehouse quantities ({lines.length})
+      </h3>
+      <TableWrapper className="max-h-72 overflow-y-auto rounded-md border border-border">
+        <Table>
+          <THead className="sticky top-0 bg-card">
+            <TR className="hover:bg-transparent">
+              <TH>Row</TH>
+              <TH>SKU</TH>
+              <TH>Name</TH>
+              <TH>Warehouse</TH>
+              <TH>Now</TH>
+              <TH>Becomes</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {lines.slice(0, MAX_ROWS).map((line, index) => (
+              <TR key={`${line.sheet}-${line.row}-${line.warehouse}-${index}`}>
+                <TD className="tabular text-muted-foreground">{line.row}</TD>
+                <TD className="text-xs">{line.variantSku ?? line.productSku ?? "—"}</TD>
+                <TD>
+                  {line.name ?? line.variantName ?? "—"}
+                  {line.variantName && line.name && line.variantName !== line.name ? (
+                    <span className="block text-xs text-muted-foreground">{line.variantName}</span>
+                  ) : null}
+                </TD>
+                <TD>{line.warehouse}</TD>
+                <TD className="tabular text-muted-foreground">{line.oldQuantity ?? "none"}</TD>
+                <TD className="tabular font-medium">{line.newQuantity}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </TableWrapper>
+      {lines.length > MAX_ROWS ? (
+        <p className="text-xs text-muted-foreground">Showing the first {MAX_ROWS} of {lines.length} quantities.</p>
+      ) : null}
+    </section>
   );
 }
 
@@ -386,6 +416,7 @@ function DoneSummary({ outcome }: { outcome: ImportOutcome }) {
         <li>Products updated: <strong>{s.productsToUpdate}</strong></li>
         <li>Variants created: <strong>{s.variantsToCreate}</strong></li>
         <li>Variants updated: <strong>{s.variantsToUpdate}</strong></li>
+        <li>Warehouse quantities set: <strong>{s.stockToChange}</strong></li>
         <li className="text-muted-foreground">Left as they were: {s.productsUnchanged + s.variantsUnchanged}</li>
       </ul>
       {warnings.length ? (

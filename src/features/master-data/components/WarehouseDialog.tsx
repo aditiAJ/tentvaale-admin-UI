@@ -29,6 +29,15 @@ const schema = z.object({
   // rather than being stored as whitespace.
   address: z.string().trim().min(1, "Address is required").max(250, "Maximum 250 characters"),
   city: z.string().trim().min(1, "City is required").max(100, "Maximum 100 characters"),
+  // Optional: left blank, a new warehouse gets the next WHnnn and an edit keeps its code.
+  code: z
+    .string()
+    .trim()
+    .max(10, "Maximum 10 characters")
+    .regex(/^[A-Za-z0-9]*$/, "Letters and digits only, no spaces or dashes"),
+  contactPerson: z.string().trim().max(150, "Maximum 150 characters"),
+  contactNumber: z.string().trim().max(30, "Maximum 30 characters"),
+  description: z.string().trim().max(500, "Maximum 500 characters"),
   active: z.boolean(),
 });
 
@@ -51,6 +60,8 @@ export function WarehouseDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  // Every location code starts with the warehouse code, so the server fixes it once a layout exists.
+  const codeLocked = Boolean(existing && (existing.locationCount ?? 0) > 0);
 
   // What Google resolved for the picked place; saved with the warehouse, never shown.
   const pickedRef = useRef<WarehouseLocationRequest | undefined>(undefined);
@@ -66,6 +77,10 @@ export function WarehouseDialog({
       name: existing?.name ?? "",
       address: existing?.address ?? "",
       city: existing?.city ?? "",
+      code: existing?.code ?? "",
+      contactPerson: existing?.contactPerson ?? "",
+      contactNumber: existing?.contactNumber ?? "",
+      description: existing?.description ?? "",
       active: existing?.active ?? true,
     },
   });
@@ -81,10 +96,13 @@ export function WarehouseDialog({
   }
 
   const mutation = useMutation({
-    mutationFn: (values: FormValues) =>
-      existing
-        ? updateWarehouse(existing.id, { ...values, location: pickedRef.current })
-        : createWarehouse({ ...values, location: pickedRef.current }),
+    mutationFn: (values: FormValues) => {
+      // A disabled code input still sits in the form values; do not send an unchanged, locked one.
+      const request = { ...values, code: codeLocked || !values.code ? undefined : values.code };
+      return existing
+        ? updateWarehouse(existing.id, { ...request, location: pickedRef.current })
+        : createWarehouse({ ...request, location: pickedRef.current });
+    },
     onSuccess: (warehouse) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.warehouses });
       toast.success(existing ? `${warehouse.name} updated` : `${warehouse.name} added`, {
@@ -153,6 +171,39 @@ export function WarehouseDialog({
 
         <Field label="City" required error={errors.city?.message}>
           {(props) => <Input {...props} {...register("city")} placeholder="Mumbai" />}
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Code"
+            error={errors.code?.message}
+            hint={
+              codeLocked
+                ? "Fixed once the warehouse has storage locations."
+                : existing
+                  ? "Starts every storage location code in this warehouse."
+                  : "Leave blank to use the next one (WH001, WH002 …)."
+            }
+          >
+            {(props) => (
+              <Input
+                {...props}
+                {...register("code")}
+                placeholder="WH001"
+                disabled={codeLocked}
+                className="uppercase"
+              />
+            )}
+          </Field>
+          <Field label="Contact person" error={errors.contactPerson?.message}>
+            {(props) => <Input {...props} {...register("contactPerson")} />}
+          </Field>
+        </div>
+        <Field label="Contact number" error={errors.contactNumber?.message}>
+          {(props) => <Input {...props} {...register("contactNumber")} inputMode="tel" />}
+        </Field>
+        <Field label="Description" error={errors.description?.message}>
+          {(props) => <Textarea {...props} {...register("description")} />}
         </Field>
 
         {existing ? (
