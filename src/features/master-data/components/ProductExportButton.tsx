@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { exportProducts } from "@/features/master-data/api";
 import type { CategoryView } from "@/features/master-data/types";
 import { ApiError } from "@/services/api-client";
+import { saveFile } from "@/lib/download";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
@@ -15,17 +16,6 @@ import { Select } from "@/components/ui/input";
 const MAX_SHOWN = 800;
 
 type Scope = "all" | "shown" | "category";
-
-function saveFile(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 
 /**
  * Excel export of the catalogue. Pressing **Export** downloads every product at once; the arrow beside it opens the

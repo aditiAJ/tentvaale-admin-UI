@@ -2,6 +2,7 @@ import { ApiError } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import * as backend from "@/features/master-data/api/backend";
 import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
+import type { WarehouseImportOutcome, WarehouseImportPreview } from "@/features/master-data/warehouseImport";
 import {
   mockAddProductToWarehouse,
   mockCreateBundle,
@@ -43,6 +44,16 @@ import {
 } from "@/mock-data/store";
 import type {
   AddWarehouseProductRequest,
+  AllocationQuery,
+  CreateLocationRequest,
+  LayoutSummary,
+  ListLocationsQuery,
+  LocationCrumb,
+  MoveStockRequest,
+  PlaceStockRequest,
+  StockAllocationView,
+  StorageLocationView,
+  UpdateLocationRequest,
   FacetOption,
   StockGrid,
   VariantCombination,
@@ -115,6 +126,34 @@ export const saveStockGrid = (
   cells: { variantId: string; warehouseId: string; quantity: number }[],
 ) => (IS_MOCK ? variantsNeedBackend<StockGrid>() : backend.saveStockGrid(productId, cells));
 
+/**
+ * Warehouse layout (zone, bay, rack, level) and stock placement. Real backend only: the mock store
+ * has no layout, so in mock mode these reject the way the variant and stock-grid calls above do.
+ */
+const LAYOUT_NEEDS_BACKEND = "Warehouse layouts need the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
+const layoutNeedsBackend = <T>() => Promise.reject<T>(new ApiError(LAYOUT_NEEDS_BACKEND, 422));
+
+export const listLocations = (warehouseId: string, filter?: ListLocationsQuery, signal?: AbortSignal) =>
+  IS_MOCK ? layoutNeedsBackend<StorageLocationView[]>() : backend.listLocations(warehouseId, filter, signal);
+export const getLocation = (warehouseId: string, locationId: string, signal?: AbortSignal) =>
+  IS_MOCK
+    ? layoutNeedsBackend<{ location: StorageLocationView; ancestors: LocationCrumb[] }>()
+    : backend.getLocation(warehouseId, locationId, signal);
+export const getLayoutSummary = (warehouseId: string, signal?: AbortSignal) =>
+  IS_MOCK ? layoutNeedsBackend<LayoutSummary>() : backend.getLayoutSummary(warehouseId, signal);
+export const createLocation = (warehouseId: string, request: CreateLocationRequest) =>
+  IS_MOCK ? layoutNeedsBackend<StorageLocationView>() : backend.createLocation(warehouseId, request);
+export const updateLocation = (warehouseId: string, locationId: string, request: UpdateLocationRequest) =>
+  IS_MOCK ? layoutNeedsBackend<StorageLocationView>() : backend.updateLocation(warehouseId, locationId, request);
+export const deleteLocation = (warehouseId: string, locationId: string) =>
+  IS_MOCK ? layoutNeedsBackend<void>() : backend.deleteLocation(warehouseId, locationId);
+export const listAllocations = (warehouseId: string, filter?: AllocationQuery, signal?: AbortSignal) =>
+  IS_MOCK ? layoutNeedsBackend<StockAllocationView[]>() : backend.listAllocations(warehouseId, filter, signal);
+export const placeStock = (warehouseId: string, request: PlaceStockRequest) =>
+  IS_MOCK ? layoutNeedsBackend<StockAllocationView | null>() : backend.placeStock(warehouseId, request);
+export const moveStock = (warehouseId: string, request: MoveStockRequest) =>
+  IS_MOCK ? layoutNeedsBackend<StockAllocationView>() : backend.moveStock(warehouseId, request);
+
 /** Real backend only: the Excel file is built by the server. */
 export function exportProducts(
   request: backend.ProductExportRequest,
@@ -128,6 +167,22 @@ export function exportProducts(
 export function previewProductImport(file: File, signal?: AbortSignal): Promise<ImportPreview> {
   if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
   return backend.previewProductImport(file, signal);
+}
+
+/** Real backend only: the warehouse and stock workbook is made and read by the server. */
+export function downloadWarehouseImportTemplate(signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.downloadWarehouseImportTemplate(signal);
+}
+
+export function previewWarehouseImport(file: File, signal?: AbortSignal): Promise<WarehouseImportPreview> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.previewWarehouseImport(file, signal);
+}
+
+export function importWarehouses(file: File, fingerprint: string | undefined): Promise<WarehouseImportOutcome> {
+  if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
+  return backend.importWarehouses(file, fingerprint);
 }
 
 export function importProducts(file: File, fingerprint: string | undefined): Promise<ImportOutcome> {
@@ -629,6 +684,9 @@ export const masterDataKeys = {
   warehouses: ["master-data", "warehouses"] as const,
   // Nested under `warehouses`, so invalidating the warehouse list refreshes
   // every warehouse's products too.
+  warehouseLayout: (warehouseId: string) => ["master-data", "warehouses", warehouseId, "layout"] as const,
+  warehouseAllocations: (warehouseId: string) =>
+    ["master-data", "warehouses", warehouseId, "allocations"] as const,
   warehouseProducts: (warehouseId: string) =>
     ["master-data", "warehouses", warehouseId, "products"] as const,
   trucks: ["master-data", "trucks"] as const,

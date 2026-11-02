@@ -3,8 +3,19 @@ import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
 import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
+import type { WarehouseImportOutcome, WarehouseImportPreview } from "@/features/master-data/warehouseImport";
 import type {
   AddWarehouseProductRequest,
+  AllocationQuery,
+  CreateLocationRequest,
+  LayoutSummary,
+  ListLocationsQuery,
+  LocationCrumb,
+  MoveStockRequest,
+  PlaceStockRequest,
+  StockAllocationView,
+  StorageLocationView,
+  UpdateLocationRequest,
   CategoryView,
   CreateCategoryRequest,
   CreateCustomerRequest,
@@ -872,6 +883,12 @@ interface WireWarehouse {
   addressLine?: string | null;
   city?: string | null;
   active: boolean;
+  code?: string;
+  contactPerson?: string | null;
+  contactNumber?: string | null;
+  description?: string | null;
+  zoneCount?: number;
+  locationCount?: number;
 }
 
 interface WireStockLine {
@@ -882,6 +899,8 @@ interface WireStockLine {
   variantId?: number | null;
   variantName?: string | null;
   quantity: number;
+  placed?: number | null;
+  sku?: string | null;
 }
 
 interface WireSupplier {
@@ -910,6 +929,12 @@ function warehouseFromWire(warehouse: WireWarehouse): WarehouseView {
     address: warehouse.addressLine ?? "",
     city: warehouse.city ?? "",
     active: warehouse.active,
+    code: warehouse.code,
+    contactPerson: warehouse.contactPerson ?? undefined,
+    contactNumber: warehouse.contactNumber ?? undefined,
+    description: warehouse.description ?? undefined,
+    zoneCount: warehouse.zoneCount ?? 0,
+    locationCount: warehouse.locationCount ?? 0,
   };
 }
 
@@ -922,6 +947,8 @@ function stockFromWire(line: WireStockLine): WarehouseProductView {
     productName: line.productName ?? "",
     variantName: line.variantName ?? null,
     quantity: line.quantity,
+    placed: line.placed ?? undefined,
+    sku: line.sku ?? undefined,
   };
 }
 
@@ -956,7 +983,16 @@ export async function listWarehouses(signal?: AbortSignal): Promise<WarehouseVie
 export async function createWarehouse(request: CreateWarehouseRequest): Promise<WarehouseView> {
   const created = await apiFetch<WireWarehouse>(`${BASE}/warehouses`, {
     method: "POST",
-    body: { name: request.name, addressLine: request.address, city: request.city, location: request.location },
+    body: {
+      name: request.name,
+      addressLine: request.address,
+      city: request.city,
+      location: request.location,
+      code: request.code,
+      contactPerson: request.contactPerson,
+      contactNumber: request.contactNumber,
+      description: request.description,
+    },
   });
   return warehouseFromWire(created);
 }
@@ -973,6 +1009,10 @@ export async function updateWarehouse(
       city: request.city,
       active: request.active,
       location: request.location,
+      code: request.code,
+      contactPerson: request.contactPerson,
+      contactNumber: request.contactNumber,
+      description: request.description,
     },
   });
   return warehouseFromWire(updated);
@@ -1634,4 +1674,212 @@ export function importProducts(file: File, fingerprint: string | undefined): Pro
   // What the user was shown; the server refuses to import if the catalogue no longer gives the same answer.
   if (fingerprint) form.append("fingerprint", fingerprint);
   return apiFetch<ImportOutcome>(`${BASE}/products/import`, { method: "POST", body: form });
+}
+
+// ------------------------------------------------- warehouse layout and stock placement
+
+interface WireLocation {
+  id: number;
+  warehouseId: number;
+  parentId?: number | null;
+  type: StorageLocationView["type"];
+  code: string;
+  name: string;
+  fullCode: string;
+  active: boolean;
+  childCount: number;
+  units: number;
+  unitsInside?: number;
+}
+
+interface WireCrumb {
+  id: number;
+  type: LocationCrumb["type"];
+  code: string;
+  name: string;
+  fullCode: string;
+}
+
+interface WireAllocation {
+  id: number;
+  warehouseId: number;
+  warehouseName: string;
+  locationId: number;
+  locationCode: string;
+  locationName: string;
+  locationType: StockAllocationView["locationType"];
+  locationActive: boolean;
+  trail: WireCrumb[];
+  productId: number;
+  productName: string;
+  sku: string;
+  variantId?: number | null;
+  variantName?: string | null;
+  variantSku?: string | null;
+  quantity: number;
+}
+
+const locationFromWire = (l: WireLocation): StorageLocationView => ({
+  id: String(l.id),
+  warehouseId: String(l.warehouseId),
+  parentId: l.parentId == null ? null : String(l.parentId),
+  type: l.type,
+  code: l.code,
+  name: l.name,
+  fullCode: l.fullCode,
+  active: l.active,
+  childCount: l.childCount,
+  units: l.units,
+  unitsInside: l.unitsInside ?? l.units,
+});
+
+const crumbFromWire = (c: WireCrumb): LocationCrumb => ({ ...c, id: String(c.id) });
+
+const allocationFromWire = (a: WireAllocation): StockAllocationView => ({
+  id: String(a.id),
+  warehouseId: String(a.warehouseId),
+  warehouseName: a.warehouseName,
+  locationId: String(a.locationId),
+  locationCode: a.locationCode,
+  locationName: a.locationName,
+  locationType: a.locationType,
+  locationActive: a.locationActive,
+  trail: a.trail.map(crumbFromWire),
+  productId: String(a.productId),
+  productName: a.productName,
+  sku: a.sku,
+  variantId: a.variantId == null ? null : String(a.variantId),
+  variantName: a.variantName ?? null,
+  variantSku: a.variantSku ?? null,
+  quantity: a.quantity,
+});
+
+function queryString(params: Record<string, string | number | boolean | undefined>): string {
+  const parts = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== "")
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
+export async function listLocations(
+  warehouseId: string,
+  filter: ListLocationsQuery = {},
+  signal?: AbortSignal,
+): Promise<StorageLocationView[]> {
+  const rows = await apiFetch<WireLocation[]>(
+    `${BASE}/warehouses/${warehouseId}/locations${queryString({ ...filter })}`,
+    { signal },
+  );
+  return rows.map(locationFromWire);
+}
+
+export async function getLocation(
+  warehouseId: string,
+  locationId: string,
+  signal?: AbortSignal,
+): Promise<{ location: StorageLocationView; ancestors: LocationCrumb[] }> {
+  const detail = await apiFetch<{ location: WireLocation; ancestors: WireCrumb[] }>(
+    `${BASE}/warehouses/${warehouseId}/locations/${locationId}`,
+    { signal },
+  );
+  return { location: locationFromWire(detail.location), ancestors: detail.ancestors.map(crumbFromWire) };
+}
+
+export function getLayoutSummary(warehouseId: string, signal?: AbortSignal): Promise<LayoutSummary> {
+  return apiFetch<LayoutSummary>(`${BASE}/warehouses/${warehouseId}/layout-summary`, { signal });
+}
+
+export async function createLocation(
+  warehouseId: string,
+  request: CreateLocationRequest,
+): Promise<StorageLocationView> {
+  const created = await apiFetch<WireLocation>(`${BASE}/warehouses/${warehouseId}/locations`, {
+    method: "POST",
+    body: {
+      type: request.type,
+      parentId: request.parentId ? Number(request.parentId) : undefined,
+      code: request.code,
+      name: request.name,
+    },
+  });
+  return locationFromWire(created);
+}
+
+export async function updateLocation(
+  warehouseId: string,
+  locationId: string,
+  request: UpdateLocationRequest,
+): Promise<StorageLocationView> {
+  const updated = await apiFetch<WireLocation>(`${BASE}/warehouses/${warehouseId}/locations/${locationId}`, {
+    method: "PUT",
+    body: request,
+  });
+  return locationFromWire(updated);
+}
+
+export function deleteLocation(warehouseId: string, locationId: string): Promise<void> {
+  return apiFetch<void>(`${BASE}/warehouses/${warehouseId}/locations/${locationId}`, { method: "DELETE" });
+}
+
+export async function listAllocations(
+  warehouseId: string,
+  filter: AllocationQuery = {},
+  signal?: AbortSignal,
+): Promise<StockAllocationView[]> {
+  const rows = await apiFetch<WireAllocation[]>(
+    `${BASE}/warehouses/${warehouseId}/allocations${queryString({ ...filter })}`,
+    { signal },
+  );
+  return rows.map(allocationFromWire);
+}
+
+/** Resolves to null when quantity 0 removed the placement. */
+export async function placeStock(
+  warehouseId: string,
+  request: PlaceStockRequest,
+): Promise<StockAllocationView | null> {
+  const row = await apiFetch<WireAllocation | undefined>(`${BASE}/warehouses/${warehouseId}/allocations`, {
+    method: "PUT",
+    body: {
+      productId: Number(request.productId),
+      variantId: request.variantId ? Number(request.variantId) : undefined,
+      locationId: Number(request.locationId),
+      quantity: request.quantity,
+    },
+  });
+  return row ? allocationFromWire(row) : null;
+}
+
+export async function moveStock(warehouseId: string, request: MoveStockRequest): Promise<StockAllocationView> {
+  const row = await apiFetch<WireAllocation>(`${BASE}/warehouses/${warehouseId}/allocations/move`, {
+    method: "POST",
+    body: {
+      productId: Number(request.productId),
+      variantId: request.variantId ? Number(request.variantId) : undefined,
+      fromLocationId: Number(request.fromLocationId),
+      toLocationId: Number(request.toLocationId),
+      quantity: request.quantity,
+    },
+  });
+  return allocationFromWire(row);
+}
+
+/** The warehouses and their stock as the workbook the warehouse import reads: a template and a copy in one. */
+export function downloadWarehouseImportTemplate(signal?: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  return apiDownload(`${BASE}/warehouses/import/template`, signal);
+}
+
+/** Checks a warehouse and stock file and says what importing it would do. Writes nothing. */
+export function previewWarehouseImport(file: File, signal?: AbortSignal): Promise<WarehouseImportPreview> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<WarehouseImportPreview>(`${BASE}/warehouses/import/preview`, { method: "POST", body: form, signal });
+}
+
+/** Imports the file, all or nothing, and only if it still gives the answer the preview gave (the fingerprint). */
+export function importWarehouses(file: File, fingerprint: string | undefined): Promise<WarehouseImportOutcome> {
+  const form = new FormData();
+  form.append("file", file);
+  if (fingerprint) form.append("fingerprint", fingerprint);
+  return apiFetch<WarehouseImportOutcome>(`${BASE}/warehouses/import`, { method: "POST", body: form });
 }

@@ -25,6 +25,23 @@ export interface ImportSummary {
   variantsUnchanged: number;
   errors: number;
   warnings: number;
+  /** Warehouse quantities that differ from what is held now, and those that already match. */
+  stockToChange: number;
+  stockUnchanged: number;
+}
+
+/** One warehouse quantity the file would change. `oldQuantity` is absent when the warehouse held none yet. */
+export interface ImportStockLine {
+  row: number;
+  sheet: string;
+  productSku?: string;
+  variantSku?: string;
+  name?: string;
+  variantName?: string;
+  warehouse: string;
+  oldQuantity?: number;
+  newQuantity: number;
+  action: ImportAction;
 }
 
 export interface ImportProductLine {
@@ -50,8 +67,10 @@ export interface ImportPreview {
   summary: ImportSummary;
   products: ImportProductLine[];
   variants: ImportVariantLine[];
+  /** Only the warehouse quantities that differ; the ones that already match are counted in the summary. */
+  stock: ImportStockLine[];
   issues: ImportIssue[];
-  /** Columns in the file that import does not read (stock, photos, counts…). */
+  /** Columns in the file that import does not read (photos, counts, the derived "Maximum orderable"…). */
   notImportedColumns: string[];
   canImport: boolean;
   /** Identifies what this preview promised; the import must send it back. Absent when the file has errors. */
@@ -81,5 +100,11 @@ export function importFileProblem(file: File): string | null {
 
 /** Rows that would change something. An import of a file with none is pointless, so the button stays off. */
 export function importWillChange(summary: ImportSummary): number {
-  return summary.productsToCreate + summary.productsToUpdate + summary.variantsToCreate + summary.variantsToUpdate;
+  return (
+    summary.productsToCreate +
+    summary.productsToUpdate +
+    summary.variantsToCreate +
+    summary.variantsToUpdate +
+    summary.stockToChange
+  );
 }
