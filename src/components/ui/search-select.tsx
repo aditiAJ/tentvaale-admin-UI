@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ImageOff, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FadeImg } from "@/components/ui/fade-img";
 import { FloatingList, useAnchoredPosition } from "@/components/ui/floating-list";
 
 export interface SearchSelectOption {
@@ -21,10 +22,9 @@ export interface SearchSelectOption {
 function OptionImage({ src, className }: { src: string | null; className: string }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   return (
-    <span className={cn("flex shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground", className)}>
+    <span className={cn("relative flex shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground", className)}>
       {src && src !== failedSrc ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a storage address, which next/image has nothing to optimise
-        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(src)} className="size-full object-cover" />
+        <FadeImg src={src} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(src)} className="size-full object-cover" />
       ) : (
         <ImageOff className="size-1/2" aria-hidden="true" />
       )}

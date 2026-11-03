@@ -96,6 +96,8 @@ const schema = z.object({
         oneTime: z.boolean(),
         oneTimeName: z.string().trim().max(200, "Maximum 200 characters"),
         oneTimeRateType: z.enum(RATE_TYPES),
+        // What the line is for; optional.
+        remark: z.string().trim().max(300, "Maximum 300 characters"),
       }).superRefine((line, context) => {
         if (line.oneTime) {
           if (!line.oneTimeName) context.addIssue({ code: "custom", path: ["oneTimeName"], message: "Give the product a name" });
@@ -125,6 +127,7 @@ const emptyLine = () => ({
   oneTime: false,
   oneTimeName: "",
   oneTimeRateType: "Qty" as const,
+  remark: "",
 });
 
 /** Today plus the backend's default validity, as yyyy-MM-dd, shown so staff can see and change it. */
@@ -229,6 +232,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             oneTime: Boolean(line.oneTime),
             oneTimeName: line.oneTime ? line.productName : "",
             oneTimeRateType: line.rateType ?? "Qty",
+            remark: line.remark ?? "",
           })),
         }
       : {
@@ -475,6 +479,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             unitRatePerDay: line.oneTime || line.rateOverride ? line.unitRatePerDay : undefined,
             oneTimeName: line.oneTime ? line.oneTimeName : undefined,
             oneTimeRateType: line.oneTime ? line.oneTimeRateType : undefined,
+            remark: line.remark,
           })),
         });
       }
@@ -492,7 +497,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         installationCharge: values.installationCharge,
         ...discountRequest(values),
         validUntil: values.validUntil,
-        lines: values.lines.map(({ productId, variantId, quantity, rentalDays, unitRatePerDay, rateOverride, oneTime, oneTimeName, oneTimeRateType }) => ({
+        lines: values.lines.map(({ productId, variantId, quantity, rentalDays, unitRatePerDay, rateOverride, oneTime, oneTimeName, oneTimeRateType, remark }) => ({
           productId: oneTime ? "" : productId,
           variantId: oneTime ? undefined : variantId || undefined,
           quantity,
@@ -500,6 +505,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           unitRatePerDay: oneTime || rateOverride ? unitRatePerDay : undefined,
           oneTimeName: oneTime ? oneTimeName : undefined,
           oneTimeRateType: oneTime ? oneTimeRateType : undefined,
+          remark,
         })),
       });
     },
@@ -926,6 +932,16 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                           ) : null}
                         </>
                       ) : null}
+                      <Input
+                        {...register(`lines.${index}.remark`)}
+                        placeholder="Purpose or remark (optional)"
+                        aria-label={`Purpose or remark for line ${index + 1}`}
+                        aria-invalid={Boolean(rowErrors?.remark)}
+                        maxLength={300}
+                        disabled={mutation.isPending}
+                        className="mt-1.5 h-8 text-xs"
+                      />
+                      {rowErrors?.remark ? <p className="mt-1 text-xs text-destructive">{rowErrors.remark.message}</p> : null}
                     </TD>
 
                     <TD className="align-top">

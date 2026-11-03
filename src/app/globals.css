@@ -71,6 +71,29 @@
   --viz-stage-4: #184f95;
 }
 
+/* A sliding sheen for "a picture is arriving"; see FadeImg. Still for people who ask for less motion. */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@utility shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) 9%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -124,3 +147,94 @@
   }
 }
 
+
+/* ---- LogoLoader: the Tentvaale mark as the page loading state ---- */
+@keyframes logo-breathe {
+  0%,
+  100% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1);
+  }
+}
+@keyframes logo-sweep {
+  from {
+    background-position: 170% 0;
+  }
+  to {
+    background-position: -70% 0;
+  }
+}
+@keyframes logo-glow {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.05);
+  }
+}
+@keyframes logo-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+.logo-loader-mark {
+  animation: logo-breathe 2.2s ease-in-out infinite;
+}
+.logo-loader-glow {
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--primary) 45%, transparent), transparent);
+  animation: logo-glow 2.2s ease-in-out infinite;
+}
+/* The logo is the stencil (set inline, see LOGO_MASK), so the light only falls on its own pixels. */
+.logo-loader-sheen {
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-image: linear-gradient(
+    105deg,
+    transparent 30%,
+    color-mix(in oklab, var(--primary) 35%, white) 50%,
+    transparent 70%
+  );
+  background-size: 250% 100%;
+  animation: logo-sweep 1.8s ease-in-out infinite;
+}
+.logo-loader-bar {
+  position: relative;
+  display: block;
+  width: 7rem;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.logo-loader-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--primary);
+  animation: logo-bar 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-loader-mark,
+  .logo-loader-glow,
+  .logo-loader-sheen,
+  .logo-loader-bar::after {
+    animation: none;
+  }
+  .logo-loader-sheen {
+    display: none;
+  }
+}

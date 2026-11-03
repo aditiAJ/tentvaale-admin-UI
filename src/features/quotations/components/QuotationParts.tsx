@@ -300,6 +300,7 @@ function LineRows({
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}
                       {line.oneTime ? <Badge className="ml-1.5 align-middle">One-time</Badge> : null}
                       {line.categoryName ? <span className="block text-xs text-muted-foreground">{line.categoryName}</span> : null}
+                      {line.remark ? <span className="block text-xs italic text-muted-foreground">{line.remark}</span> : null}
                     </div>
                   </div>
                 </TD>

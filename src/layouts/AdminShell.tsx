@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Loader2, ChevronsLeft, ChevronsRight, X } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, X } from "lucide-react";
+import { LogoLoader } from "@/components/ui/logo-loader";
 import { Sidebar } from "@/layouts/Sidebar";
 import { useSidebarCollapsed } from "@/layouts/useSidebarCollapsed";
 import { Topbar } from "@/layouts/Topbar";
@@ -39,10 +40,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   if (loading || !session) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        <span className="sr-only">Checking your session</span>
-      </div>
+      <LogoLoader label="Checking your session" />
     );
   }
 

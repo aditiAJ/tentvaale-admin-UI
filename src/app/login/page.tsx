@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { LogoLoader } from "@/components/ui/logo-loader";
 import { LoginForm, useSession } from "@/features/auth";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -42,11 +42,7 @@ export default function LoginPage() {
   // subtree into client rendering, which needs a Suspense boundary above it.
   return (
     <Suspense
-      fallback={
-        <div className="flex min-h-dvh items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        </div>
-      }
+      fallback={<LogoLoader />}
     >
       <LoginPanel />
     </Suspense>

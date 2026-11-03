@@ -39,6 +39,8 @@ export interface OrderLineView {
   quantity: number;
   rentalDays: number;
   lineTotal: Money;
+  /** What the line is for, as written on the quotation. */
+  remark?: string | null;
 }
 
 /** Mirrors com.tentvaale.ordermgmt.api.OrderView. The entity is SalesOrder

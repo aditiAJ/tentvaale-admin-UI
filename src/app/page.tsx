@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { LogoLoader } from "@/components/ui/logo-loader";
 import { useSession } from "@/features/auth";
 import { firstAvailableRoute } from "@/layouts/navigation";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -46,9 +46,6 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center">
-      <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      <span className="sr-only">Loading</span>
-    </div>
+    <LogoLoader />
   );
 }

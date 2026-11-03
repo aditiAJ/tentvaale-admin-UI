@@ -1,5 +1,6 @@
 "use client";
 
+import { FadeImg } from "@/components/ui/fade-img";
 import { useQuery } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { getProduct } from "@/features/master-data/api";
@@ -136,13 +137,13 @@ export function ProductVariantsDialog({
         {images.length || video ? (
           <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Product media">
             {images.map((image) => (
-              // eslint-disable-next-line @next/next/no-img-element -- the stored thumbnail or image address
-              <img
-                key={image.id}
-                src={image.thumbnailUrl ?? image.url ?? undefined}
-                alt={image.fileName}
-                className="size-24 shrink-0 rounded-lg border border-border bg-muted object-cover"
-              />
+              <span key={image.id} className="relative size-24 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+                <FadeImg
+                  src={image.thumbnailUrl ?? image.url ?? undefined}
+                  alt={image.fileName}
+                  className="size-full object-cover"
+                />
+              </span>
             ))}
             {video ? (
               <video

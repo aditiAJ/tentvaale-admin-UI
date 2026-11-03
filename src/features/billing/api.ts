@@ -83,7 +83,7 @@ export interface DocumentBody {
     signatureUrl?: string | null;
   };
   buyer?: { name?: string; email?: string | null; gstin?: string | null; state?: string | null; phone?: string | null };
-  lines?: { description: string; quantity: number; days: number; amount: number }[];
+  lines?: { description: string; remark?: string; quantity: number; days: number; amount: number }[];
   itemsTotal?: number;
   discounts?: number;
   delivery?: number;

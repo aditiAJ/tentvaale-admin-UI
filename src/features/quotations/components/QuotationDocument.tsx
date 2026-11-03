@@ -34,6 +34,8 @@ const RATE_PER = { RFt: "/ ft / day", SqFt: "/ sq ft / day" } as const;
 export interface DocLine {
   name: string;
   variant: string | null;
+  /** What the line is for, as the vendor wrote it; null when none. */
+  remark?: string | null;
   quantity: number;
   /** What `quantity` counts: pieces, running feet or square feet. Null is read as pieces. */
   rateType: "Qty" | "RFt" | "SqFt" | null;
@@ -733,6 +735,7 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                           <View style={{ flex: 1, paddingHorizontal: 6 }}>
                             <Text style={{ fontWeight: 600 }}>{l.name}</Text>
                             {l.variant ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{l.variant}</Text> : null}
+                            {l.remark ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1, fontStyle: "italic" }]}>{l.remark}</Text> : null}
                           </View>
                           <View style={{ width: 52, alignItems: "center" }}>
                             <Text style={s.cellCenter}>{l.quantity}</Text>
