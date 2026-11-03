@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
+import { FadeImg } from "@/components/ui/fade-img";
 
 /** One product picked in the dialog, ready to become a quotation line. */
 export interface ChosenProduct {
@@ -35,10 +36,9 @@ const activeVariants = (product: ProductView) => choosableVariants(product);
 function Thumb({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);
   return (
-    <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground">
+    <span className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground">
       {src && src !== failed ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a storage address, which next/image has nothing to optimise
-        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} className="size-full object-cover" />
+        <FadeImg src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} className="size-full object-cover" />
       ) : (
         <ImageOff className="size-5" aria-hidden="true" />
       )}

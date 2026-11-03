@@ -19,6 +19,7 @@ interface WireLine {
   quantity: number;
   rentalDays: number;
   lineTotal: Money;
+  remark?: string | null;
 }
 
 interface WireOrder {
@@ -53,6 +54,7 @@ function lineFromWire(line: WireLine): OrderLineView {
     quantity: line.quantity,
     rentalDays: line.rentalDays,
     lineTotal: line.lineTotal,
+    remark: line.remark,
   };
 }
 

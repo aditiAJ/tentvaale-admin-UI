@@ -750,6 +750,7 @@ function OrderLines({
                       <span className="font-medium">{name}</span>
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}
                       {!line.productId ? <Badge className="ml-1.5 align-middle">One-time</Badge> : null}
+                      {line.remark ? <span className="block text-xs italic text-muted-foreground">{line.remark}</span> : null}
                     </div>
                   </div>
                 </TD>

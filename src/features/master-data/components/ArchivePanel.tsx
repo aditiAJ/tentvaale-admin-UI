@@ -1,5 +1,6 @@
 "use client";
 
+import { FadeImg } from "@/components/ui/fade-img";
 import { useDeferredValue, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ImageOff, Layers, Loader2, RotateCcw, Search, Tags, Trash2 } from "lucide-react";
@@ -37,10 +38,9 @@ interface Doomed {
 function Thumb({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);
   return (
-    <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted text-muted-foreground">
+    <span className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted text-muted-foreground">
       {src && src !== failed ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a storage address, which next/image has nothing to optimise
-        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} className="size-full object-cover" />
+        <FadeImg src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} className="size-full object-cover" />
       ) : (
         <ImageOff className="size-5" aria-hidden="true" />
       )}

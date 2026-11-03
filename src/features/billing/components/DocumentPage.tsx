@@ -92,7 +92,10 @@ export function DocumentPage({ documentId }: { documentId: string }) {
             <tbody>
               {b.lines.map((l, i) => (
                 <tr key={i} className="border-b border-border">
-                  <td className="py-2">{l.description}</td>
+                  <td className="py-2">
+                    {l.description}
+                    {l.remark ? <span className="block text-xs italic text-muted-foreground">{l.remark}</span> : null}
+                  </td>
                   <td className="tabular py-2 text-right">{l.quantity}</td>
                   <td className="tabular py-2 text-right">{l.days}</td>
                   <td className="tabular py-2 text-right">{inr(l.amount)}</td>

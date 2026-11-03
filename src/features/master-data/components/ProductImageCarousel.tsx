@@ -6,6 +6,7 @@ import { FALLBACK_IMAGE, type MediaAsset } from "@/features/master-data/types";
 import { MediaThumb } from "@/features/master-data/components/MediaThumb";
 import { ProductVideoButton } from "@/features/master-data/components/ProductVideoButton";
 import { cn } from "@/lib/utils";
+import { FadeImg } from "@/components/ui/fade-img";
 
 /**
  * A product card's picture. One image (or none, or only a video) is exactly what MediaThumb shows. Two or more get
@@ -61,8 +62,7 @@ function ImageCarousel({
         if (event.key === "ArrowRight") go(1);
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- a local or data URL; nothing to optimise */}
-      <img
+      <FadeImg
         src={failed.has(url) ? FALLBACK_IMAGE : url}
         alt={`${alt}, picture ${current + 1} of ${images.length}`}
         className="size-full object-cover"

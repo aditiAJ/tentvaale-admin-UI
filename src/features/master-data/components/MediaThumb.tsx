@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Film } from "lucide-react";
 import { FALLBACK_IMAGE, type MediaAsset } from "@/features/master-data/types";
 import { cn } from "@/lib/utils";
+import { FadeImg } from "@/components/ui/fade-img";
 
 /**
  * A catalogue record's first image, cropped to the box. A record with only a
@@ -26,15 +27,14 @@ export function MediaThumb({
   return (
     <div
       className={cn(
-        "flex size-9 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground",
+        "relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-muted text-muted-foreground",
         className,
       )}
     >
       {onlyVideo ? (
         <Film className="size-4" aria-hidden="true" />
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element -- a local or data URL; nothing to optimise
-        <img
+        <FadeImg
           src={src}
           alt=""
           className="size-full object-cover"

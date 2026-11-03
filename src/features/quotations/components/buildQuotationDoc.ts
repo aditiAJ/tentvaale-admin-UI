@@ -54,6 +54,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
     const row: DocLine = {
       name,
       variant,
+      remark: line.remark ?? null,
       quantity: line.quantity,
       rateType: line.rateType ?? null,
       days: line.rentalDays,

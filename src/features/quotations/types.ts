@@ -54,6 +54,8 @@ export interface QuotationLineView {
   /** HH:mm */
   functionStartTime?: string | null;
   functionVenue?: string | null;
+  /** What the line is for, in staff's words. */
+  remark?: string | null;
 }
 
 /**
@@ -122,6 +124,8 @@ export interface CreateQuotationLineRequest {
   /** The name of a one-time line (one not in the catalogue), and how it is charged. */
   oneTimeName?: string;
   oneTimeRateType?: RateType;
+  /** What the line is for (a purpose or remark), up to 300 characters. */
+  remark?: string;
 }
 
 /**
@@ -188,6 +192,7 @@ export interface UpdateQuotationLineRequest {
   unitRatePerDay?: number;
   oneTimeName?: string;
   oneTimeRateType?: RateType;
+  remark?: string;
 }
 
 /**
