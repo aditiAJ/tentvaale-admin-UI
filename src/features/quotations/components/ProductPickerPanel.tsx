@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ImageOff, Minus, Plus, Search, X } from "lucide-react";
 import type { ProductView } from "@/features/master-data";
 import { ratePerDayLabel, unitLabel } from "@/features/master-data/storefront";
+import { choosableVariants } from "@/features/master-data/variants";
 import { formatMoney, type Money } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +29,8 @@ export function pictureOf(media: { kind: string; url: string | null; thumbnailUr
 /** The most rows drawn at once, so a catalogue of tens of thousands stays quick; typing narrows it. */
 const LIMIT = 80;
 
-const activeVariants = (product: ProductView) => product.variants.filter((variant) => variant.active !== false);
+// The variants on offer: the plain "Standard" only when it is the only one or holds stock of its own.
+const activeVariants = (product: ProductView) => choosableVariants(product);
 
 function Thumb({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);

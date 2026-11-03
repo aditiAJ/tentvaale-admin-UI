@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +12,9 @@ import { toast } from "sonner";
 import { createQuotation, quotationKeys, updateQuotation } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { listCustomers, listProducts, masterDataKeys } from "@/features/master-data/api";
+import { ProductDialog } from "@/features/master-data/components/ProductDialog";
+import { choosableVariants } from "@/features/master-data/variants";
+import { useCan } from "@/features/auth";
 import type { ProductVariantView, ProductView } from "@/features/master-data/types";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
@@ -171,6 +175,10 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const [sides, setSides] = useState<Record<string, { length: string; width: string }>>({});
   // Back or Cancel with unsaved changes asks first; this holds the step to take once the user says to discard them.
   const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  // "Add new product" from a line: which line, and what had been typed in its box (the new product's name to start with).
+  const [newProductFor, setNewProductFor] = useState<{ index: number; name: string } | null>(null);
+  // Creating a product needs master-data rights; someone who can only write quotations is not offered it.
+  const canCreateProducts = useCan("MASTER_DATA_WRITE");
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -201,6 +209,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     getValues,
     setValue,
     setError,
+    setFocus,
     formState: { errors, isDirty },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
@@ -575,6 +584,18 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const linesError = errors.lines?.root?.message ?? errors.lines?.message;
   const loadError = products.error ?? customers.error;
 
+  /** Puts a product just added to the catalogue on the line it was added from, priced as a catalogue product is. */
+  const fillWithNewProduct = (index: number, product: ProductView) => {
+    setValue(`lines.${index}.oneTime`, false);
+    setValue(`lines.${index}.productId`, product.id, { shouldDirty: true, shouldValidate: true });
+    setValue(`lines.${index}.lineId`, "");
+    setValue(`lines.${index}.variantId`, "");
+    setValue(`lines.${index}.unitRatePerDay`, String(quotedFor(product)), { shouldValidate: true });
+    setValue(`lines.${index}.rateOverride`, false);
+    // On to the line's quantity, the next thing to fill, once the dialog has gone.
+    setTimeout(() => setFocus(`lines.${index}.quantity`), 0);
+  };
+
   /** Leaves at once when nothing has changed; otherwise asks before throwing the changes away. */
   const leaveGuard = (leave: () => void) => (isDirty ? setLeaving(() => leave) : leave());
   const parentHref = existing ? `/quotations?id=${existing.id}` : "/quotations";
@@ -601,6 +622,21 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           onClose={() => setLeaving(null)}
         />
       ) : null}
+      {/* The Products module's own dialog, over this page, so nothing typed into the quotation is lost. It is put on
+          the page body because it has a form of its own, which must not sit inside this one; and its submit is
+          stopped at its edge, because React passes events up through a portal to this form too. */}
+      {newProductFor
+        ? createPortal(
+            <div onSubmit={(event) => event.stopPropagation()}>
+              <ProductDialog
+                initialName={newProductFor.name || undefined}
+                onClose={() => setNewProductFor(null)}
+                onClosedAfterSave={(product) => fillWithNewProduct(newProductFor.index, product)}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
       <PageHeader
         title={existing ? `Edit ${existing.quotationNumber}` : "New quotation"}
         description={
@@ -868,18 +904,35 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                           <SearchSelect
                             value={productField.value}
                             // Something that is not in the catalogue is typed in by name and rate instead.
-                            action={{
-                              label: "Add one-time product",
-                              onSelect: (typed) => {
-                                setValue(`lines.${index}.oneTime`, true);
-                                setValue(`lines.${index}.oneTimeName`, typed);
-                                setValue(`lines.${index}.productId`, "");
-                                setValue(`lines.${index}.variantId`, "");
-                                setValue(`lines.${index}.lineId`, "");
-                                setValue(`lines.${index}.unitRatePerDay`, "");
-                                setValue(`lines.${index}.rateOverride`, false);
+                            // Something missing from the catalogue can also be added to it from here, for anyone
+                            // allowed to create products; the line takes it once the product dialog is closed.
+                            actions={[
+                              {
+                                label: "Add one-time product",
+                                onSelect: (typed) => {
+                                  setValue(`lines.${index}.oneTime`, true);
+                                  setValue(`lines.${index}.oneTimeName`, typed);
+                                  setValue(`lines.${index}.productId`, "");
+                                  setValue(`lines.${index}.variantId`, "");
+                                  setValue(`lines.${index}.lineId`, "");
+                                  setValue(`lines.${index}.unitRatePerDay`, "");
+                                  setValue(`lines.${index}.rateOverride`, false);
+                                },
                               },
-                            }}
+                              ...(canCreateProducts
+                                ? [
+                                    {
+                                      label: "Add new product",
+                                      onSelect: (typed: string) => {
+                                        // Let go of the box first: the dialog hands focus back to what had it when it
+                                        // closes, and focusing this box opens its list over the product just chosen.
+                                        (document.activeElement as HTMLElement | null)?.blur();
+                                        setNewProductFor({ index, name: typed });
+                                      },
+                                    },
+                                  ]
+                                : []),
+                            ]}
                             // A different product is a different line: it is priced afresh rather than
                             // inheriting this line's stored rate.
                             onChange={(productId) => {
@@ -940,9 +993,11 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                             className="mt-1.5 min-w-52"
                           >
                             <option value="">Choose a variant</option>
-                            {/* An inactive variant cannot be priced, so it is not offered; one already on the line stays so it still shows. */}
-                            {(productsById.get(line.productId)?.variants ?? [])
-                              .filter((variant) => variant.active !== false || variant.id === line.variantId)
+                            {/* An inactive variant cannot be priced, and a "Standard" with no stock beside real variants is
+                                not a choice, so neither is offered; one already on the line stays so it still shows. */}
+                            {(productsById.get(line.productId)
+                              ? choosableVariants(productsById.get(line.productId)!, line.variantId || undefined)
+                              : [])
                               .map((variant) => (
                               <option key={variant.id} value={variant.id}>
                                 {variant.name} — {formatMoney(quotedMoney(variant.retailRate, variant.wholesaleRate, plannerPercent))} {ratePerDayLabel(productsById.get(line.productId)?.rateType)}
