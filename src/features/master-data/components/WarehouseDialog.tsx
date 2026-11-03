@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +17,9 @@ import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { ActiveToggle } from "@/features/master-data/components/ActiveToggle";
 import { PlaceSearch } from "@/components/ui/place-search";
+import { StateSelect, initialState } from "@/components/ui/state-select";
 import { MAPS_KEY, cityOf, detailsOf, type Place } from "@/lib/maps";
+import { matchState } from "@/lib/indian-states";
 
 const FORM_ID = "warehouse-form";
 
@@ -29,6 +31,9 @@ const schema = z.object({
   // rather than being stored as whitespace.
   address: z.string().trim().min(1, "Address is required").max(250, "Maximum 250 characters"),
   city: z.string().trim().min(1, "City is required").max(100, "Maximum 100 characters"),
+  // Optional. Only ever set from the list (or by a map pick), so it is a canonical name or empty; an old saved value
+  // nobody can read is shown with a note and left alone unless it is changed or cleared.
+  state: z.string().trim(),
   // Optional: left blank, a new warehouse gets the next WHnnn and an edit keeps its code.
   code: z
     .string()
@@ -68,15 +73,17 @@ export function WarehouseDialog({
 
   const {
     register,
+    control,
     handleSubmit,
     setValue,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: existing?.name ?? "",
       address: existing?.address ?? "",
       city: existing?.city ?? "",
+      state: initialState(existing?.location?.state),
       code: existing?.code ?? "",
       contactPerson: existing?.contactPerson ?? "",
       contactNumber: existing?.contactNumber ?? "",
@@ -91,17 +98,24 @@ export function WarehouseDialog({
     if (!address) return;
     pickedRef.current = detailsOf(place);
     setValue("address", address.slice(0, 250), { shouldValidate: true, shouldDirty: true });
+    // Google's name for the state, in the list's spelling; one that is not a state of India leaves the selector empty to be chosen.
+    setValue("state", matchState(pickedRef.current.state)?.name ?? "", { shouldValidate: true, shouldDirty: true });
     const city = cityOf(place);
     if (city) setValue("city", city.slice(0, 100), { shouldValidate: true, shouldDirty: true });
   }
 
   const mutation = useMutation({
-    mutationFn: (values: FormValues) => {
+    mutationFn: ({ values, stateChanged }: { values: FormValues; stateChanged: boolean }) => {
+      const { state, ...fields } = values;
       // A disabled code input still sits in the form values; do not send an unchanged, locked one.
-      const request = { ...values, code: codeLocked || !values.code ? undefined : values.code };
-      return existing
-        ? updateWarehouse(existing.id, { ...request, location: pickedRef.current })
-        : createWarehouse({ ...request, location: pickedRef.current });
+      const request = { ...fields, code: codeLocked || !values.code ? undefined : values.code };
+      // A location is sent only when something about it changed (a picked place, or the state), and it replaces the
+      // stored one whole: so it starts from the picked place, else the stored one, with the state as chosen.
+      const location: WarehouseLocationRequest | undefined =
+        pickedRef.current || stateChanged || (!existing && state)
+          ? { ...(pickedRef.current ?? existing?.location), state: state || undefined }
+          : undefined;
+      return existing ? updateWarehouse(existing.id, { ...request, location }) : createWarehouse({ ...request, location });
     },
     onSuccess: (warehouse) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.warehouses });
@@ -138,7 +152,7 @@ export function WarehouseDialog({
         noValidate
         onSubmit={handleSubmit((values) => {
           setFormError(null);
-          mutation.mutate(values);
+          mutation.mutate({ values, stateChanged: Boolean(dirtyFields.state) });
         })}
       >
         {formError ? <Alert tone="error" title={formError} /> : null}
@@ -169,9 +183,22 @@ export function WarehouseDialog({
           )}
         </Field>
 
-        <Field label="City" required error={errors.city?.message}>
-          {(props) => <Input {...props} {...register("city")} placeholder="Mumbai" />}
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="City" required error={errors.city?.message}>
+            {(props) => <Input {...props} {...register("city")} placeholder="Mumbai" />}
+          </Field>
+          <Field label="State" error={errors.state?.message}>
+            {(props) => (
+              <Controller
+                control={control}
+                name="state"
+                render={({ field }) => (
+                  <StateSelect id={props.id} aria-invalid={props["aria-invalid"]} value={field.value} onChange={field.onChange} clearable />
+                )}
+              />
+            )}
+          </Field>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field

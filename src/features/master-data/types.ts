@@ -556,6 +556,8 @@ export interface WarehouseView {
   /** What the layout holds now; 0 for a warehouse with no layout. */
   zoneCount?: number;
   locationCount?: number;
+  /** What is stored about where it is: the picked place and, above all, its state. Real backend only. */
+  location?: WarehouseLocationRequest;
 }
 
 /**

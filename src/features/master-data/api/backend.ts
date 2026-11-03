@@ -890,6 +890,14 @@ interface WireWarehouse {
   description?: string | null;
   zoneCount?: number;
   locationCount?: number;
+  location?: {
+    placeId?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    postalCode?: string | null;
+    state?: string | null;
+    country?: string | null;
+  } | null;
 }
 
 interface WireStockLine {
@@ -936,6 +944,16 @@ function warehouseFromWire(warehouse: WireWarehouse): WarehouseView {
     description: warehouse.description ?? undefined,
     zoneCount: warehouse.zoneCount ?? 0,
     locationCount: warehouse.locationCount ?? 0,
+    location: warehouse.location
+      ? {
+          placeId: warehouse.location.placeId ?? undefined,
+          latitude: warehouse.location.latitude ?? undefined,
+          longitude: warehouse.location.longitude ?? undefined,
+          postalCode: warehouse.location.postalCode ?? undefined,
+          state: warehouse.location.state ?? undefined,
+          country: warehouse.location.country ?? undefined,
+        }
+      : undefined,
   };
 }
 
