@@ -27,7 +27,6 @@ import type {
   CustomerView,
   DimensionUnit,
   MediaAsset,
-  PlannerApplicationRequest,
   PlannerProfileView,
   ProductDimensions,
   ProductVariantView,
@@ -743,6 +742,7 @@ interface WireCustomer {
   storefrontAccountId?: string | null;
   plannerProfile?: WirePlannerProfile | null;
   plannerDiscountPercent?: number | null;
+  customerDiscountPercent?: number | null;
 }
 
 function plannerFromWire(profile: WirePlannerProfile): PlannerProfileView {
@@ -775,6 +775,7 @@ function customerFromWire(customer: WireCustomer): CustomerView {
     storefrontAccountId: customer.storefrontAccountId ?? null,
     plannerProfile: customer.plannerProfile ? plannerFromWire(customer.plannerProfile) : null,
     plannerDiscountPercent: customer.plannerDiscountPercent == null ? null : Number(customer.plannerDiscountPercent),
+    customerDiscountPercent: customer.customerDiscountPercent == null ? null : Number(customer.customerDiscountPercent),
   };
 }
 
@@ -792,6 +793,7 @@ function customerBody(request: CreateCustomerRequest | UpdateCustomerRequest) {
     postalCode: request.postalCode ?? "",
     // Sent only when set: left out, the backend keeps the planner's discount (20 for a new planner).
     plannerDiscountPercent: request.plannerDiscountPercent ?? undefined,
+    customerDiscountPercent: request.customerDiscountPercent ?? undefined,
   };
 }
 
@@ -837,25 +839,6 @@ export async function listPlannerApplications(signal?: AbortSignal): Promise<Pla
   return rows.map(plannerFromWire);
 }
 
-/** Staff applying for trade pricing on a planner's behalf. 422 unless the customer is an event planner. */
-export async function applyAsPlanner(
-  customerId: string,
-  request: PlannerApplicationRequest,
-): Promise<PlannerProfileView> {
-  const profile = await apiFetch<WirePlannerProfile>(
-    `${BASE}/customers/${customerId}/planner-profile`,
-    {
-      method: "PUT",
-      body: {
-        businessName: request.businessName,
-        yearsInBusiness: request.yearsInBusiness || undefined,
-        about: request.about || undefined,
-      },
-    },
-  );
-  return plannerFromWire(profile);
-}
-
 export async function approvePlannerApplication(customerId: string): Promise<PlannerProfileView> {
   const profile = await apiFetch<WirePlannerProfile>(
     `${BASE}/planner-applications/${customerId}/approve`,
@@ -890,6 +873,14 @@ interface WireWarehouse {
   description?: string | null;
   zoneCount?: number;
   locationCount?: number;
+  location?: {
+    placeId?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    postalCode?: string | null;
+    state?: string | null;
+    country?: string | null;
+  } | null;
 }
 
 interface WireStockLine {
@@ -936,6 +927,16 @@ function warehouseFromWire(warehouse: WireWarehouse): WarehouseView {
     description: warehouse.description ?? undefined,
     zoneCount: warehouse.zoneCount ?? 0,
     locationCount: warehouse.locationCount ?? 0,
+    location: warehouse.location
+      ? {
+          placeId: warehouse.location.placeId ?? undefined,
+          latitude: warehouse.location.latitude ?? undefined,
+          longitude: warehouse.location.longitude ?? undefined,
+          postalCode: warehouse.location.postalCode ?? undefined,
+          state: warehouse.location.state ?? undefined,
+          country: warehouse.location.country ?? undefined,
+        }
+      : undefined,
   };
 }
 

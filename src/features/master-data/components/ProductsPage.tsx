@@ -40,6 +40,7 @@ import { useCan } from "@/features/auth";
 import { formatMoney } from "@/lib/money";
 import { RATE_TYPE_LABEL } from "@/features/master-data/storefront";
 import { PageHeader } from "@/components/page-header";
+import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -140,6 +141,8 @@ export function ProductsPage({
 
   return (
     <div className="space-y-4">
+      {/* Opened filtered from a Categories card: a way back to it. Products opened from the sidebar has none. */}
+      {initialCategoryId || initialSubCategoryId ? <BackButton fallback="/master-data/categories" /> : null}
       <PageHeader
         title="Products"
         description="The rental catalogue for this company."

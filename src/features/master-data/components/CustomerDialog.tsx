@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
+import { StateSelect, initialState } from "@/components/ui/state-select";
+import { isStateName } from "@/lib/indian-states";
 
 const FORM_ID = "customer-form";
 
@@ -43,10 +45,12 @@ const schema = z.object({
     .trim()
     .max(20, "Maximum 20 characters")
     .transform((value) => (value === "" ? undefined : value)),
+  // Optional, but never free text: a state from the list, or empty. An old saved value nobody can read blocks the save
+  // until it is corrected or cleared, so nothing is dropped unseen (and the server would refuse it anyway).
   state: z
     .string()
     .trim()
-    .max(100, "Maximum 100 characters")
+    .refine((value) => value === "" || isStateName(value), "Choose a state from the list, or clear it")
     .transform((value) => (value === "" ? undefined : value)),
   addressLine: z
     .string()
@@ -60,6 +64,12 @@ const schema = z.object({
     .transform((value) => (value === "" ? undefined : value)),
   // An event planner's percentage off retail. Blank is left out, so the backend keeps what is set (20 for a new planner).
   plannerDiscountPercent: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || (/^\d{1,3}(\.\d{1,2})?$/.test(value) && Number(value) <= 100), "Enter a percentage from 0 to 100")
+    .transform((value) => (value === "" ? undefined : Number(value))),
+  // A regular customer's percentage off retail. Blank is left out, so the backend keeps what is set (0 for a new customer).
+  customerDiscountPercent: z
     .string()
     .trim()
     .refine((value) => value === "" || (/^\d{1,3}(\.\d{1,2})?$/.test(value) && Number(value) <= 100), "Enter a percentage from 0 to 100")
@@ -87,8 +97,8 @@ export function CustomerDialog({
 
   const {
     register,
-    handleSubmit,
     control,
+    handleSubmit,
     formState: { errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
@@ -98,10 +108,11 @@ export function CustomerDialog({
       phone: existing?.phone ?? "",
       accountType: existing?.accountType ?? "CUSTOMER",
       gstin: existing?.gstin ?? "",
-      state: existing?.state ?? "",
+      state: initialState(existing?.state),
       addressLine: existing?.addressLine ?? "",
       postalCode: existing?.postalCode ?? "",
       plannerDiscountPercent: String(existing?.plannerDiscountPercent ?? 20),
+      customerDiscountPercent: String(existing?.customerDiscountPercent ?? 0),
     },
   });
   const accountType = useWatch({ control, name: "accountType" });
@@ -146,10 +157,12 @@ export function CustomerDialog({
         noValidate
         onSubmit={handleSubmit((values) => {
           setFormError(null);
-          // Only an event planner has a discount; for anyone else it is not sent.
+          // A planner and a regular customer each have their own discount; only the one that applies is sent.
+          const isPlanner = values.accountType === "EVENT_PLANNER";
           mutation.mutate({
             ...values,
-            plannerDiscountPercent: values.accountType === "EVENT_PLANNER" ? values.plannerDiscountPercent : undefined,
+            plannerDiscountPercent: isPlanner ? values.plannerDiscountPercent : undefined,
+            customerDiscountPercent: isPlanner ? undefined : values.customerDiscountPercent,
           });
         })}
       >
@@ -202,14 +215,32 @@ export function CustomerDialog({
                 <Input {...props} {...register("plannerDiscountPercent")} inputMode="decimal" placeholder="20" />
               )}
             </Field>
-          ) : null}
+          ) : (
+            <Field
+              label="Customer discount (%)"
+              error={errors.customerDiscountPercent?.message}
+              hint="Percentage off the retail rate for this customer. 0 (the default) means they pay retail."
+            >
+              {(props) => (
+                <Input {...props} {...register("customerDiscountPercent")} inputMode="decimal" placeholder="0" />
+              )}
+            </Field>
+          )}
 
           <Field label="GSTIN" error={errors.gstin?.message}>
             {(props) => <Input {...props} {...register("gstin")} placeholder="Optional" />}
           </Field>
 
           <Field label="State" error={errors.state?.message} hint="Decides CGST + SGST or IGST. Needed before a quotation is sent.">
-            {(props) => <Input {...props} {...register("state")} placeholder="Gujarat" />}
+            {(props) => (
+              <Controller
+                control={control}
+                name="state"
+                render={({ field }) => (
+                  <StateSelect id={props.id} aria-invalid={props["aria-invalid"]} value={field.value ?? ""} onChange={field.onChange} clearable />
+                )}
+              />
+            )}
           </Field>
         </div>
 

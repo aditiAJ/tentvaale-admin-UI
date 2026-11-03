@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, ChevronRight, FileText, Inbox, MapPin, Plus, SearchX } from "lucide-react";
+import { CalendarDays, ChevronRight, FileText, Inbox, MapPin, Plus, SearchX } from "lucide-react";
 import { getQuotation, listQuotations, quotationKeys } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { bucketOf, isFromStorefront, type QuotationBucket } from "@/features/quotations/source";
@@ -29,6 +29,7 @@ import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { WorkspaceListSkeleton, WorkspaceSearch } from "@/components/workspace";
+import { BackButton } from "@/components/back-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -129,7 +130,6 @@ export function QuotationsPage({ quotationId, status }: { quotationId: string; s
               key={quotationId}
               quotationId={quotationId}
               backHref={hrefFor(tabKey)}
-              backLabel={tab === "received" ? "Received requests" : `${chip.label} quotations`}
             />
           ) : list.error ? (
             <Card>
@@ -352,7 +352,8 @@ function QuotationList({
 }
 
 /** One quotation, opened. A request nobody has priced yet gets the request view; everything else the quotation view. */
-function QuotationDetail({ quotationId, backHref, backLabel }: { quotationId: string; backHref: string; backLabel: string }) {
+/** `backHref` is where Back goes when there is no screen of ours behind this one: the list it was opened from. */
+function QuotationDetail({ quotationId, backHref }: { quotationId: string; backHref: string }) {
   const [converting, setConverting] = useState(false);
   const canReadPayments = useCan("PAYMENT_READ");
 
@@ -365,10 +366,7 @@ function QuotationDetail({ quotationId, backHref, backLabel }: { quotationId: st
 
   return (
     <div className="space-y-4">
-      <Link href={backHref} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" />
-        {backLabel}
-      </Link>
+      <BackButton fallback={backHref} />
 
       {isPending ? <Skeleton className="h-48" /> : null}
 

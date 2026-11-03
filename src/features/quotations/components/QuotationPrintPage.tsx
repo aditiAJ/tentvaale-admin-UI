@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
-import { ArrowLeft, Download, Loader2, Printer } from "lucide-react";
+import { Download, Loader2, Printer } from "lucide-react";
 import { getQuotation, quotationKeys } from "@/features/quotations/api";
 import { getCompany, settingsKeys } from "@/features/settings/api";
+import { BackButton } from "@/components/back-button";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,9 +60,16 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
     };
   }, [ready, q, c, theme, key]);
 
-  if (quotationId === "") return <Alert tone="error" title="No quotation was chosen." />;
+  // A bad or missing id still leaves a way out, to the list.
+  const failure = (title: string) => (
+    <div className="mx-auto max-w-4xl space-y-4">
+      <BackButton fallback="/quotations" />
+      <Alert tone="error" title={title} />
+    </div>
+  );
+  if (quotationId === "") return failure("No quotation was chosen.");
   if (quotation.isPending || company.isPending) return <Skeleton className="h-96" />;
-  if (quotation.isError || !q) return <Alert tone="error" title="The quotation could not be loaded." />;
+  if (quotation.isError || !q) return failure("The quotation could not be loaded.");
 
   const current = pdf?.key === key ? pdf.url : null;
   const fileName = `Quotation-${q.quotationNumber}.pdf`;
@@ -70,13 +77,7 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href={`/quotations?id=${q.id}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          Back to quotation {q.quotationNumber}
-        </Link>
+        <BackButton fallback={`/quotations?id=${q.id}`} />
         <div className="flex gap-2">
           <Button
             size="sm"

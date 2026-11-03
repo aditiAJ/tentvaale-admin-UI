@@ -119,7 +119,6 @@ export function OrdersPage({ orderId, status }: { orderId: string; status: strin
               key={orderId}
               orderId={orderId}
               backHref={hrefFor(tab.key)}
-              backLabel={tab.status ? `${tab.label} orders` : "All orders"}
             />
           ) : (
             <OrderList

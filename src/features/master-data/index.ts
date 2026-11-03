@@ -17,7 +17,6 @@ export {
   createCustomer,
   updateCustomer,
   listPlannerApplications,
-  applyAsPlanner,
   approvePlannerApplication,
   rejectPlannerApplication,
   listBundles,
