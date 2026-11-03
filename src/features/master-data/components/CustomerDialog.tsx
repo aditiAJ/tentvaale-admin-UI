@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -62,6 +62,12 @@ const schema = z.object({
     .trim()
     .max(20, "Maximum 20 characters")
     .transform((value) => (value === "" ? undefined : value)),
+  // An event planner's percentage off retail. Blank is left out, so the backend keeps what is set (20 for a new planner).
+  plannerDiscountPercent: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || (/^\d{1,3}(\.\d{1,2})?$/.test(value) && Number(value) <= 100), "Enter a percentage from 0 to 100")
+    .transform((value) => (value === "" ? undefined : Number(value))),
 });
 
 type FormInput = z.input<typeof schema>;
@@ -87,6 +93,7 @@ export function CustomerDialog({
     register,
     control,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
@@ -99,8 +106,10 @@ export function CustomerDialog({
       state: initialState(existing?.state),
       addressLine: existing?.addressLine ?? "",
       postalCode: existing?.postalCode ?? "",
+      plannerDiscountPercent: String(existing?.plannerDiscountPercent ?? 20),
     },
   });
+  const accountType = useWatch({ control, name: "accountType" });
 
   const mutation = useMutation({
     mutationFn: (values: FormOutput) =>
@@ -142,7 +151,11 @@ export function CustomerDialog({
         noValidate
         onSubmit={handleSubmit((values) => {
           setFormError(null);
-          mutation.mutate(values);
+          // Only an event planner has a discount; for anyone else it is not sent.
+          mutation.mutate({
+            ...values,
+            plannerDiscountPercent: values.accountType === "EVENT_PLANNER" ? values.plannerDiscountPercent : undefined,
+          });
         })}
       >
         {formError ? <Alert tone="error" title={formError} /> : null}
@@ -183,6 +196,18 @@ export function CustomerDialog({
               </Select>
             )}
           </Field>
+
+          {accountType === "EVENT_PLANNER" ? (
+            <Field
+              label="Planner discount (%)"
+              error={errors.plannerDiscountPercent?.message}
+              hint="20 is the wholesale rate (the default). A higher number gives this planner a further discount, a lower one gives less, and 0 gives none: they pay retail."
+            >
+              {(props) => (
+                <Input {...props} {...register("plannerDiscountPercent")} inputMode="decimal" placeholder="20" />
+              )}
+            </Field>
+          ) : null}
 
           <Field label="GSTIN" error={errors.gstin?.message}>
             {(props) => <Input {...props} {...register("gstin")} placeholder="Optional" />}
