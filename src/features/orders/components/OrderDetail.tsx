@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownLeft,
-  ArrowLeft,
   ArrowUpRight,
   Check,
   CalendarDays,
@@ -43,6 +42,7 @@ import { MediaThumb, useProductMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { BackButton } from "@/components/back-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -67,11 +67,10 @@ const SETTLE_FOR: Record<string, { action: SettleAction; label: string }> = {
 export function OrderDetail({
   orderId,
   backHref,
-  backLabel,
 }: {
   orderId: string;
+  /** Where Back goes when there is no screen of ours behind this one: the list it was opened from. */
   backHref: string;
-  backLabel: string;
 }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: orderKeys.byId(orderId),
@@ -83,13 +82,7 @@ export function OrderDetail({
 
   return (
     <>
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        {backLabel}
-      </Link>
+      <BackButton fallback={backHref} />
 
       {isPending ? <Skeleton className="h-48" /> : null}
 

@@ -23,7 +23,9 @@ import { areaOf, bestFit } from "@/lib/area";
 import { RATE_TYPES, RATE_TYPE_LABEL, ratePerDayLabel, unitLabel, type RateType } from "@/features/master-data/storefront";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
 import { PageHeader } from "@/components/page-header";
+import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select";
@@ -167,6 +169,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const [formError, setFormError] = useState<string | null>(null);
   // The length and width boxes of an area line, as typed; until one is typed they show the best whole-number fit of the area.
   const [sides, setSides] = useState<Record<string, { length: string; width: string }>>({});
+  // Back or Cancel with unsaved changes asks first; this holds the step to take once the user says to discard them.
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -197,7 +201,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     getValues,
     setValue,
     setError,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: existing
@@ -282,12 +286,16 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   // is the wholesale rate itself); anyone else, retail.
   const plannerPercent =
     selectedCustomer?.accountType === "EVENT_PLANNER" ? (selectedCustomer.plannerDiscountPercent ?? 20) : 0;
+  const customerPercent =
+    selectedCustomer && selectedCustomer.accountType !== "EVENT_PLANNER" ? (selectedCustomer.customerDiscountPercent ?? 0) : 0;
 
   /** What this customer is quoted for a product (or one of its variants): retail, or an event planner's wholesale-based rate. */
   const quotedFor = (product: ProductView, variant?: ProductVariantView): number => {
     const source = variant ?? product;
     const retail = Number(source.retailRate.amount);
-    return plannerPercent ? plannerRate(retail, Number(source.wholesaleRate.amount), plannerPercent) : retail;
+    if (plannerPercent) return plannerRate(retail, Number(source.wholesaleRate.amount), plannerPercent);
+    // A regular customer's own percentage off retail (same rounding as the backend: two decimals).
+    return customerPercent ? Math.round(retail * (100 - customerPercent)) / 100 : retail;
   };
 
   /** The per-day rate a line is priced at, or null until it has a product. */
@@ -567,8 +575,32 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const linesError = errors.lines?.root?.message ?? errors.lines?.message;
   const loadError = products.error ?? customers.error;
 
+  /** Leaves at once when nothing has changed; otherwise asks before throwing the changes away. */
+  const leaveGuard = (leave: () => void) => (isDirty ? setLeaving(() => leave) : leave());
+  const parentHref = existing ? `/quotations?id=${existing.id}` : "/quotations";
+
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <BackButton fallback={parentHref} guard={mutation.isPending ? () => undefined : leaveGuard} />
+      {leaving ? (
+        <ConfirmDialog
+          title="Discard your changes?"
+          description={
+            existing
+              ? `Your changes to ${existing.quotationNumber} have not been saved.`
+              : "This quotation has not been created yet. What you entered will be lost."
+          }
+          confirmLabel="Discard changes"
+          fallbackError="Could not leave this page."
+          action={() => Promise.resolve()}
+          onDone={() => {
+            const leave = leaving;
+            setLeaving(null);
+            leave();
+          }}
+          onClose={() => setLeaving(null)}
+        />
+      ) : null}
       <PageHeader
         title={existing ? `Edit ${existing.quotationNumber}` : "New quotation"}
         description={
@@ -581,9 +613,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
-                router.push(existing ? `/quotations?id=${existing.id}` : "/quotations")
-              }
+              onClick={() => leaveGuard(() => router.push(parentHref))}
               disabled={mutation.isPending}
             >
               Cancel

@@ -2,11 +2,10 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2, UserCheck, Users } from "lucide-react";
+import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { deleteCustomer, listCustomers, masterDataKeys } from "@/features/master-data/api";
 import type { CustomerView } from "@/features/master-data/types";
 import { CustomerDialog } from "@/features/master-data/components/CustomerDialog";
-import { PlannerApplicationDialog } from "@/features/master-data/components/PlannerApplicationDialog";
 import { PlannerApplicationsPanel } from "@/features/master-data/components/PlannerApplicationsPanel";
 import { useCan } from "@/features/auth";
 import { PageHeader } from "@/components/page-header";
@@ -33,7 +32,15 @@ function matches(customer: CustomerView, term: string): boolean {
 
 /** The rate a customer is quoted at: retail, or for an event planner the product's wholesale rate moved by their discount. */
 function PricingLabel({ customer }: { customer: CustomerView }) {
-  if (customer.accountType !== "EVENT_PLANNER") return <span className="text-muted-foreground">Retail</span>;
+  if (customer.accountType !== "EVENT_PLANNER") {
+    const percent = customer.customerDiscountPercent ?? 0;
+    if (percent === 0) return <span className="text-muted-foreground">Retail</span>;
+    return (
+      <Badge variant="success" title="Quoted the retail rate less this percentage.">
+        {percent}% off retail
+      </Badge>
+    );
+  }
   const discount = customer.plannerDiscountPercent ?? 20;
   if (discount === 0) return <span className="text-muted-foreground">Retail</span>;
   return (
@@ -50,7 +57,6 @@ export function CustomersPage() {
   const [editing, setEditing] = useState<CustomerView | null>(null);
   const [removing, setRemoving] = useState<CustomerView | null>(null);
   const queryClient = useQueryClient();
-  const [applying, setApplying] = useState<CustomerView | null>(null);
 
   // Filtered in the browser over the full list, like products; deferring the
   // term keeps typing responsive on a long one.
@@ -150,18 +156,6 @@ export function CustomersPage() {
                               quotation, order or credit note was raised against (they store
                               only a copied name, with no foreign key to notice), and says so. */}
                           <div className="flex justify-end">
-                            {customer.accountType === "EVENT_PLANNER" &&
-                            (!customer.plannerProfile || customer.plannerProfile.status === "REJECTED") ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setApplying(customer)}
-                                aria-label={`Submit planner application for ${customer.fullName}`}
-                                title="Submit planner application"
-                              >
-                                <UserCheck />
-                              </Button>
-                            ) : null}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -220,7 +214,6 @@ export function CustomersPage() {
 
       {creating ? <CustomerDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <CustomerDialog existing={editing} onClose={() => setEditing(null)} /> : null}
-      {applying ? <PlannerApplicationDialog customer={applying} onClose={() => setApplying(null)} /> : null}
       {removing ? (
         <ConfirmDialog
           title={`Delete ${removing.fullName}?`}

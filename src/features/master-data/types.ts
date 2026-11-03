@@ -362,6 +362,8 @@ export interface CustomerView {
    * when they are signed in). 20 unless staff set another.
    */
   plannerDiscountPercent?: number | null;
+  /** For a regular customer: the percentage taken off retail wherever they are priced. 0 unless staff set one. */
+  customerDiscountPercent?: number | null;
 }
 
 /**
@@ -774,12 +776,8 @@ export interface CreateCustomerRequest {
   postalCode?: string;
   /** Event planners only: percentage off retail, 0 to 100. Left out, the backend keeps it (20 for a new planner). */
   plannerDiscountPercent?: number;
-}
-
-export interface PlannerApplicationRequest {
-  businessName: string;
-  yearsInBusiness?: string;
-  about?: string;
+  /** Regular customers only: percentage off retail, 0 to 100. Left out, the backend keeps it (0 for a new customer). */
+  customerDiscountPercent?: number;
 }
 
 export type UpdateCustomerRequest = CreateCustomerRequest;

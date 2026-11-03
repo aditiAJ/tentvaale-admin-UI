@@ -173,7 +173,6 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
               customer={open.customer}
               orderNumber={orderNumber}
               backHref={workspaceHref(filter.key)}
-              backLabel={filter.status ? `${filter.label} credit notes` : "All credit notes"}
               canWrite={canWrite}
               onApply={() => actionsFor.onApply(open.note)}
               onCancel={() => actionsFor.onCancel(open.note)}

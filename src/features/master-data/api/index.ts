@@ -77,7 +77,6 @@ import type {
   PaymentModeView,
   PaymentTermsRequest,
   PaymentTermsView,
-  PlannerApplicationRequest,
   PlannerProfileView,
   SetSupplierStockRequest,
   SupplierRequest,
@@ -585,15 +584,6 @@ const NEEDS_BACKEND = "Planner applications need the real backend. Set NEXT_PUBL
 export function listPlannerApplications(signal?: AbortSignal): Promise<PlannerProfileView[]> {
   if (IS_MOCK) return Promise.resolve([]);
   return backend.listPlannerApplications(signal);
-}
-
-/** 422 unless the customer is an event planner. Resubmitting after a rejection re-queues it. */
-export function applyAsPlanner(
-  customerId: string,
-  request: PlannerApplicationRequest,
-): Promise<PlannerProfileView> {
-  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
-  return backend.applyAsPlanner(customerId, request);
 }
 
 export function approvePlannerApplication(customerId: string): Promise<PlannerProfileView> {

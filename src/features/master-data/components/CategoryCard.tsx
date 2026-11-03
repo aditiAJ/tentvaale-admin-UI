@@ -330,7 +330,7 @@ function StorefrontSwitch({
     >
       {compact ? null : (
         <span className={cn("text-[0.7rem] font-medium", on ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400")}>
-          {on ? "Shown" : "Hidden"}
+          {on ? "Show" : "Hide"}
         </span>
       )}
       <span
