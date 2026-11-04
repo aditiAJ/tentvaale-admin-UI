@@ -8,6 +8,7 @@ import { listFacetOptions, listWarehouses, masterDataKeys } from "@/features/mas
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
+import { VariantPicture } from "@/features/master-data/components/VariantPicture";
 import { suggestedRetail, suggestedWholesale } from "../retail-rate";
 
 /** What a variant can differ by; the facets already in the system are listed too. */
@@ -26,6 +27,9 @@ const variantLine = z.object({
   wholesaleRate: z.string().trim(),
   retailRate: z.string().trim(),
   stock: z.array(stockLine).max(20, "At most 20 warehouses"),
+  // The variant's own picture and its small version; empty is none.
+  imageUrl: z.string().optional(),
+  thumbnailUrl: z.string().optional(),
 });
 
 /** The fields of the variant and stock inputs, for the product form's schema. */
@@ -47,6 +51,8 @@ export interface VariantLineValues {
   wholesaleRate: string;
   retailRate: string;
   stock: StockLineValues[];
+  imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 /** The form values this step reads and writes (the product form has more; they are not touched here). */
@@ -63,6 +69,8 @@ export const blankVariant = (): VariantLineValues => ({
   wholesaleRate: "",
   retailRate: "",
   stock: [blankStockLine()],
+  imageUrl: "",
+  thumbnailUrl: "",
 });
 
 /** A stock row counts once anything is entered in it; an empty one is skipped. */
@@ -234,6 +242,8 @@ export function ProductVariantsStep() {
                   )}
                 </Field>
               </div>
+
+              <VariantPicture index={index} />
 
               <StockFields name={`variants.${index}.stock`} />
             </li>

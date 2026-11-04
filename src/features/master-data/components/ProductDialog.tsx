@@ -375,6 +375,8 @@ function ProductForm({
               wholesaleRate: amountText(variant.wholesaleRate.amount),
               retailRate: amountText(variant.retailRate.amount),
               stock: stockOf(variant.id),
+              imageUrl: variant.imageUrl ?? "",
+              thumbnailUrl: variant.thumbnailUrl ?? "",
             }))
           : []),
         blankVariant(),
@@ -531,6 +533,9 @@ function ProductForm({
               wholesaleRate: variant.wholesaleRate === "" ? rest.wholesaleRate : Number(variant.wholesaleRate),
               retailRate: variant.retailRate === "" ? rest.retailRate : Number(variant.retailRate),
               stock: linesOf(variant.stock, variant.id),
+              // Sent as it is: a new picture replaces, an empty one removes, an untouched one stays as it was.
+              imageUrl: variant.imageUrl ?? "",
+              thumbnailUrl: variant.thumbnailUrl ?? "",
             })),
             stock: linesOf(stock, defaultVariant?.id),
           };

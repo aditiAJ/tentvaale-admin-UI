@@ -171,6 +171,9 @@ export interface ProductVariantView {
   hasAttributes?: boolean;
   /** The axes (facets) the variant has a value for, so what type it is. */
   attributeFacetIds?: string[];
+  /** The variant's own picture (and its small version); none means the product's pictures show. */
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
 }
 
 export interface VariantAxis {
@@ -227,6 +230,9 @@ export interface ProductSetupVariant {
   wholesaleRate: number;
   retailRate: number;
   stock: ProductSetupStock[];
+  /** The variant's own picture; left out keeps it, an empty string removes it. */
+  imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 /**

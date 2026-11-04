@@ -114,6 +114,8 @@ interface WireVariant {
   isDefault: boolean;
   active: boolean;
   attributes?: Record<string, number>;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
 }
 
 interface WireProduct {
@@ -323,6 +325,8 @@ function variantFromWire(variant: WireVariant): ProductVariantView {
     hasAttributes: Object.keys(variant.attributes ?? {}).length > 0,
     attributeFacetIds: Object.keys(variant.attributes ?? {}),
     stock: variant.ownedStock + variant.supplierStock,
+    imageUrl: variant.imageUrl ?? null,
+    thumbnailUrl: variant.thumbnailUrl ?? null,
   };
 }
 
@@ -537,6 +541,8 @@ function setupBody(setup: NonNullable<CreateProductRequest["setup"]>) {
       wholesaleRate: variant.wholesaleRate,
       dailyRate: variant.retailRate,
       stock: stock(variant.stock),
+      imageUrl: variant.imageUrl,
+      thumbnailUrl: variant.thumbnailUrl,
     })),
     stock: stock(setup.stock ?? []),
   };
