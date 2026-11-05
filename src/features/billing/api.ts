@@ -5,7 +5,9 @@ const BASE = "/admin/billing";
 
 export type PaymentMode = "BANK_TRANSFER" | "UPI" | "CASH" | "CARD" | "CHEQUE";
 export type PaymentPurpose = "RENTAL" | "DEPOSIT";
-export type PaymentStatus = "RECORDED" | "VERIFIED" | "REJECTED";
+/** VOIDED: a verified payment entered wrongly. It stays on record, with its receipt shown as cancelled, and no longer counts. */
+export type PaymentStatus = "RECORDED" | "VERIFIED" | "REJECTED" | "VOIDED";
+export type PaymentEventType = "RECORDED" | "EDITED" | "ATTACHED_TO_ORDER" | "VERIFIED" | "REJECTED" | "VOIDED";
 export type DocumentKind = "TAX_INVOICE" | "FINAL_INVOICE" | "RECEIPT";
 
 export const PAYMENT_MODES: PaymentMode[] = ["BANK_TRANSFER", "UPI", "CASH", "CARD", "CHEQUE"];
@@ -30,6 +32,49 @@ export interface Payment {
   rejectReason: string | null;
   receiptNumber: string | null;
   recordedAt: string;
+  voidedBy: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+}
+
+/** One line of a payment's history. `changes` is {field: {from, to}} for an edit, otherwise null. */
+export interface PaymentEvent {
+  id: number;
+  paymentId: string;
+  type: PaymentEventType;
+  actor: string;
+  occurredAt: string;
+  /** The reason (reject, void), the receipt number (verify) or the order number (moved onto an order). */
+  note: string | null;
+  changes: Record<string, { from: string | null; to: string | null }> | null;
+}
+
+export interface PaymentLedger {
+  items: Payment[];
+  total: number;
+  /** Counts from 0. */
+  page: number;
+  size: number;
+}
+
+export interface LedgerFilter {
+  status?: PaymentStatus;
+  mode?: PaymentMode;
+  from?: string;
+  to?: string;
+  q?: string;
+  /** Counts from 0. */
+  page: number;
+  size: number;
+}
+
+export interface EditPaymentInput {
+  mode: PaymentMode;
+  amount: number;
+  reference?: string;
+  paidOn?: string;
+  /** Leave out to keep the proof on file. */
+  proofUrl?: string;
 }
 
 export interface ScheduleLine {
@@ -119,6 +164,8 @@ export interface BillingDocument {
   issuedOn: string;
   total: Money;
   body: DocumentBody;
+  /** A receipt whose payment was voided: it and its number stay, shown as cancelled. */
+  cancelled: boolean;
 }
 
 export interface RecordPaymentInput {
@@ -151,8 +198,33 @@ export const recordQuotationPayment = (quotationId: string, input: RecordPayment
 export const listQuotationDocuments = (quotationId: string, signal?: AbortSignal) =>
   apiFetch<BillingDocument[]>(`${BASE}/quotations/${quotationId}/documents`, { signal });
 
-export const listPayments = (status: PaymentStatus, signal?: AbortSignal) =>
-  apiFetch<Payment[]>(`${BASE}/payments?status=${status}`, { signal });
+/** Every payment of the company, newest first, with optional filters. */
+export const getLedger = (filter: LedgerFilter, signal?: AbortSignal) => {
+  const params = new URLSearchParams({ page: String(filter.page), size: String(filter.size) });
+  if (filter.status) params.set("status", filter.status);
+  if (filter.mode) params.set("mode", filter.mode);
+  if (filter.from) params.set("from", filter.from);
+  if (filter.to) params.set("to", filter.to);
+  if (filter.q?.trim()) params.set("q", filter.q.trim());
+  return apiFetch<PaymentLedger>(`${BASE}/payments/ledger?${params.toString()}`, { signal });
+};
+
+/** Corrects a payment nobody has checked yet. */
+export const editPayment = (paymentId: string, input: EditPaymentInput) =>
+  apiFetch<Payment>(`${BASE}/payments/${paymentId}`, { method: "PUT", body: input });
+
+/** Undoes a verified payment entered wrongly. Refused once the order has been dispatched. */
+export const voidPayment = (paymentId: string, reason: string) =>
+  apiFetch<Payment>(`${BASE}/payments/${paymentId}/void`, { method: "POST", body: { reason } });
+
+export const getPaymentHistory = (paymentId: string, signal?: AbortSignal) =>
+  apiFetch<PaymentEvent[]>(`${BASE}/payments/${paymentId}/history`, { signal });
+
+export const getOrderPaymentHistory = (orderId: string, signal?: AbortSignal) =>
+  apiFetch<PaymentEvent[]>(`${BASE}/orders/${orderId}/payment-history`, { signal });
+
+export const getQuotationPaymentHistory = (quotationId: string, signal?: AbortSignal) =>
+  apiFetch<PaymentEvent[]>(`${BASE}/quotations/${quotationId}/payment-history`, { signal });
 
 export const recordPayment = (orderId: string, input: RecordPaymentInput) =>
   apiFetch<Payment>(`${BASE}/orders/${orderId}/payments`, { method: "POST", body: input });
@@ -184,7 +256,25 @@ export const billingKeys = {
   quotationDocuments: (quotationId: string) => ["billing", "quotation-documents", quotationId] as const,
   documents: (orderId: string) => ["billing", "documents", orderId] as const,
   document: (id: string) => ["billing", "document", id] as const,
-  queue: (status: PaymentStatus) => ["billing", "queue", status] as const,
+  ledger: (filter: LedgerFilter) => ["billing", "ledger", filter] as const,
+  paymentHistory: (paymentId: string) => ["billing", "payment-history", paymentId] as const,
+  orderHistory: (targetId: string) => ["billing", "target-history", targetId] as const,
+};
+
+export const STATUS_LABEL: Record<PaymentStatus, string> = {
+  RECORDED: "Waiting to be verified",
+  VERIFIED: "Verified",
+  REJECTED: "Rejected",
+  VOIDED: "Voided",
+};
+
+export const EVENT_LABEL: Record<PaymentEventType, string> = {
+  RECORDED: "Recorded",
+  EDITED: "Edited",
+  ATTACHED_TO_ORDER: "Moved onto the order",
+  VERIFIED: "Verified",
+  REJECTED: "Rejected",
+  VOIDED: "Voided",
 };
 
 export const DOCUMENT_LABEL: Record<DocumentKind, string> = {

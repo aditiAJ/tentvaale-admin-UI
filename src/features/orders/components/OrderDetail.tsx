@@ -326,7 +326,13 @@ function OrderWorkspace({ order }: { order: OrderView }) {
         </Card>
       ) : null}
 
-      {canReadPayments ? <OrderBillingPanel orderId={order.id} completed={order.status === "COMPLETED"} /> : null}
+      {canReadPayments ? (
+        <OrderBillingPanel
+          orderId={order.id}
+          completed={order.status === "COMPLETED"}
+          dispatched={order.status !== "CONFIRMED" && order.status !== "CANCELLED"}
+        />
+      ) : null}
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3">
