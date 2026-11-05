@@ -80,6 +80,7 @@ import type {
   PlannerProfileView,
   SetSupplierStockRequest,
   SupplierRequest,
+  SupplierStockHistoryView,
   SupplierStockView,
   SupplierView,
   ProductVariantView,
@@ -568,13 +569,32 @@ export function listSupplierStock(
   return backend.listSupplierStock(supplierId, signal);
 }
 
-/** Sets (replaces) the supplier's count. Zero is allowed. */
+/** Sets (replaces) the supplier's count, and its rate when one is given. Zero is allowed. */
 export function setSupplierStock(
   supplierId: string,
   request: SetSupplierStockRequest,
 ): Promise<SupplierStockView> {
   if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
   return backend.setSupplierStock(supplierId, request);
+}
+
+/** Sets many lines at once, all or nothing. A bad line (unknown product, wrong variant) saves none of them. */
+export function setSupplierStockBulk(
+  supplierId: string,
+  lines: SetSupplierStockRequest[],
+  reason?: string,
+): Promise<SupplierStockView[]> {
+  if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
+  return backend.setSupplierStockBulk(supplierId, lines, reason);
+}
+
+/** Who changed what this supplier can provide, newest first (the latest 200). */
+export function listSupplierStockHistory(
+  supplierId: string,
+  signal?: AbortSignal,
+): Promise<SupplierStockHistoryView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listSupplierStockHistory(supplierId, signal);
 }
 
 // Planner applications exist only on the real backend; the demo data has no such concept.
@@ -663,6 +683,8 @@ export const masterDataKeys = {
   paymentTerms: ["master-data", "payment-terms"] as const,
   // Nested under `suppliers`, so refreshing the list refreshes every supplier's stock too.
   supplierStock: (supplierId: string) => ["master-data", "suppliers", supplierId, "stock"] as const,
+  supplierStockHistory: (supplierId: string) =>
+    ["master-data", "suppliers", supplierId, "stock-history"] as const,
 };
 
 // ---- the archive ----------------------------------------------------------------------------

@@ -56,6 +56,8 @@ export {
   updateSupplier,
   listSupplierStock,
   setSupplierStock,
+  setSupplierStockBulk,
+  listSupplierStockHistory,
   masterDataKeys,
 } from "./api";
 export { ProductsPage } from "./components/ProductsPage";

@@ -37,6 +37,7 @@ import type {
   SetSupplierStockRequest,
   SubCategoryView,
   SupplierRequest,
+  SupplierStockHistoryView,
   SupplierStockView,
   SupplierView,
   TruckView,
@@ -908,8 +909,43 @@ interface WireSupplier {
   phone?: string | null;
   email?: string | null;
   addressLine?: string | null;
+  city?: string | null;
+  state?: string | null;
   gstin?: string | null;
+  notes?: string | null;
+  leadTimeDays?: number | null;
+  minimumOrderQuantity?: number | null;
   active: boolean;
+  productCount?: number;
+  totalUnits?: number;
+}
+
+interface WireSupplierStock {
+  id: number;
+  supplierId: number;
+  productId: number;
+  productName: string | null;
+  variantId?: number | null;
+  variantName?: string | null;
+  sku?: string | null;
+  quantity: number;
+  rate?: number | null;
+  confirmedAt?: string | null;
+}
+
+interface WireSupplierHistory {
+  id: number;
+  productId: number;
+  productName: string;
+  variantId?: number | null;
+  variantName?: string | null;
+  previousQuantity?: number | null;
+  newQuantity: number;
+  previousRate?: number | null;
+  newRate?: number | null;
+  reason?: string | null;
+  changedBy?: string | null;
+  changedAt: string;
 }
 
 interface WireTruck {
@@ -917,6 +953,12 @@ interface WireTruck {
   registrationNumber: string;
   capacityKg: number;
   active: boolean;
+  vehicleType?: string | null;
+  make?: string | null;
+  model?: string | null;
+  volumeCapacityM3?: number | null;
+  notes?: string | null;
+  inMaintenance?: boolean;
 }
 
 function warehouseFromWire(warehouse: WireWarehouse): WarehouseView {
@@ -968,8 +1010,29 @@ function supplierFromWire(supplier: WireSupplier): SupplierView {
     phone: supplier.phone ?? null,
     email: supplier.email ?? null,
     addressLine: supplier.addressLine ?? null,
+    city: supplier.city ?? null,
+    state: supplier.state ?? null,
     gstin: supplier.gstin ?? null,
+    notes: supplier.notes ?? null,
+    leadTimeDays: supplier.leadTimeDays ?? null,
+    minimumOrderQuantity: supplier.minimumOrderQuantity ?? null,
     active: supplier.active,
+    productCount: supplier.productCount ?? 0,
+    totalUnits: supplier.totalUnits ?? 0,
+  };
+}
+
+function supplierStockFromWire(line: WireSupplierStock): SupplierStockView {
+  return {
+    supplierId: String(line.supplierId),
+    productId: String(line.productId),
+    variantId: line.variantId == null ? null : String(line.variantId),
+    productName: line.productName ?? "",
+    variantName: line.variantName ?? null,
+    sku: line.sku ?? undefined,
+    quantity: line.quantity,
+    rate: line.rate == null ? null : Number(line.rate),
+    confirmedAt: line.confirmedAt ?? null,
   };
 }
 
@@ -980,6 +1043,27 @@ function truckFromWire(truck: WireTruck): TruckView {
     registration: truck.registrationNumber,
     capacityKg: Number(truck.capacityKg),
     active: truck.active,
+    vehicleType: truck.vehicleType ?? null,
+    make: truck.make ?? null,
+    model: truck.model ?? null,
+    volumeCapacityM3: truck.volumeCapacityM3 == null ? null : Number(truck.volumeCapacityM3),
+    notes: truck.notes ?? null,
+    inMaintenance: truck.inMaintenance ?? false,
+  };
+}
+
+/** An edit replaces every field on the server, so the whole form is sent; an empty box clears it. */
+function truckBody(request: CreateTruckRequest) {
+  return {
+    registrationNumber: request.registration,
+    capacityKg: request.capacityKg,
+    active: request.active,
+    vehicleType: request.vehicleType || undefined,
+    make: request.make || undefined,
+    model: request.model || undefined,
+    volumeCapacityM3: request.volumeCapacityM3,
+    notes: request.notes || undefined,
+    inMaintenance: request.inMaintenance,
   };
 }
 
@@ -1065,7 +1149,12 @@ function supplierBody(request: SupplierRequest) {
     phone: request.phone || undefined,
     email: request.email || undefined,
     addressLine: request.addressLine || undefined,
+    city: request.city || undefined,
+    state: request.state || undefined,
     gstin: request.gstin || undefined,
+    notes: request.notes || undefined,
+    leadTimeDays: request.leadTimeDays,
+    minimumOrderQuantity: request.minimumOrderQuantity,
     active: request.active,
   };
 }
@@ -1093,8 +1182,18 @@ export async function listSupplierStock(
   supplierId: string,
   signal?: AbortSignal,
 ): Promise<SupplierStockView[]> {
-  const rows = await apiFetch<WireStockLine[]>(`${BASE}/suppliers/${supplierId}/stock`, { signal });
-  return rows.map(stockFromWire);
+  const rows = await apiFetch<WireSupplierStock[]>(`${BASE}/suppliers/${supplierId}/stock`, { signal });
+  return rows.map(supplierStockFromWire);
+}
+
+function supplierStockBody(request: SetSupplierStockRequest) {
+  return {
+    productId: Number(request.productId),
+    variantId: request.variantId ? Number(request.variantId) : undefined,
+    quantity: request.quantity,
+    rate: request.rate,
+    reason: request.reason || undefined,
+  };
 }
 
 /** Replaces the supplier's count for that product or variant; it does not add to it. */
@@ -1102,15 +1201,45 @@ export async function setSupplierStock(
   supplierId: string,
   request: SetSupplierStockRequest,
 ): Promise<SupplierStockView> {
-  const line = await apiFetch<WireStockLine>(`${BASE}/suppliers/${supplierId}/stock`, {
+  const line = await apiFetch<WireSupplierStock>(`${BASE}/suppliers/${supplierId}/stock`, {
     method: "PUT",
-    body: {
-      productId: Number(request.productId),
-      variantId: request.variantId ? Number(request.variantId) : undefined,
-      quantity: request.quantity,
-    },
+    body: supplierStockBody(request),
   });
-  return stockFromWire(line);
+  return supplierStockFromWire(line);
+}
+
+/** All or nothing: the server saves every line or none of them. */
+export async function setSupplierStockBulk(
+  supplierId: string,
+  lines: SetSupplierStockRequest[],
+  reason?: string,
+): Promise<SupplierStockView[]> {
+  const saved = await apiFetch<WireSupplierStock[]>(`${BASE}/suppliers/${supplierId}/stock/bulk`, {
+    method: "PUT",
+    body: { lines: lines.map(supplierStockBody), reason: reason || undefined },
+  });
+  return saved.map(supplierStockFromWire);
+}
+
+export async function listSupplierStockHistory(
+  supplierId: string,
+  signal?: AbortSignal,
+): Promise<SupplierStockHistoryView[]> {
+  const rows = await apiFetch<WireSupplierHistory[]>(`${BASE}/suppliers/${supplierId}/stock/history`, { signal });
+  return rows.map((row) => ({
+    id: String(row.id),
+    productId: String(row.productId),
+    productName: row.productName,
+    variantId: row.variantId == null ? null : String(row.variantId),
+    variantName: row.variantName ?? null,
+    previousQuantity: row.previousQuantity ?? null,
+    newQuantity: row.newQuantity,
+    previousRate: row.previousRate == null ? null : Number(row.previousRate),
+    newRate: row.newRate == null ? null : Number(row.newRate),
+    reason: row.reason ?? null,
+    changedBy: row.changedBy ?? null,
+    changedAt: row.changedAt,
+  }));
 }
 
 export async function listTrucks(signal?: AbortSignal): Promise<TruckView[]> {
@@ -1121,7 +1250,7 @@ export async function listTrucks(signal?: AbortSignal): Promise<TruckView[]> {
 export async function createTruck(request: CreateTruckRequest): Promise<TruckView> {
   const created = await apiFetch<WireTruck>(`${BASE}/trucks`, {
     method: "POST",
-    body: { registrationNumber: request.registration, capacityKg: request.capacityKg },
+    body: truckBody(request),
   });
   return truckFromWire(created);
 }
@@ -1129,11 +1258,7 @@ export async function createTruck(request: CreateTruckRequest): Promise<TruckVie
 export async function updateTruck(truckId: string, request: UpdateTruckRequest): Promise<TruckView> {
   const updated = await apiFetch<WireTruck>(`${BASE}/trucks/${truckId}`, {
     method: "PUT",
-    body: {
-      registrationNumber: request.registration,
-      capacityKg: request.capacityKg,
-      active: request.active,
-    },
+    body: truckBody(request),
   });
   return truckFromWire(updated);
 }

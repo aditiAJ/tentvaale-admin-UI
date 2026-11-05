@@ -43,7 +43,21 @@ export function DocumentPage({ documentId }: { documentId: string }) {
         </Button>
       </div>
 
-      <article className="space-y-6 rounded-lg border border-border bg-card p-8 text-sm text-card-foreground print:border-0 print:p-0">
+      <article className="relative space-y-6 overflow-hidden rounded-lg border border-border bg-card p-8 text-sm text-card-foreground print:border-0 print:p-0">
+        {d.cancelled ? (
+          <>
+            {/* Printed too: a cancelled receipt must never pass for a valid one. */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 flex items-center justify-center text-7xl font-bold uppercase tracking-widest text-destructive/15 -rotate-12 select-none"
+            >
+              Cancelled
+            </div>
+            <div role="alert" className="rounded-md border border-destructive px-3 py-2 font-medium text-destructive">
+              This receipt is cancelled. The payment it acknowledged was voided and no longer counts. The number stays on record.
+            </div>
+          </>
+        ) : null}
         <header className="flex items-start justify-between gap-4">
           <div>
             {s.logoUrl ? (
@@ -60,8 +74,11 @@ export function DocumentPage({ documentId }: { documentId: string }) {
             <p className="text-muted-foreground">{[s.phone, s.email].filter(Boolean).join(" · ")}</p>
           </div>
           <div className="text-right">
-            <h2 className="text-xl font-semibold uppercase">{DOCUMENT_LABEL[d.kind]}</h2>
-            <p className="tabular">{d.number}</p>
+            <h2 className="text-xl font-semibold uppercase">
+              {DOCUMENT_LABEL[d.kind]}
+              {d.cancelled ? " (cancelled)" : ""}
+            </h2>
+            <p className={d.cancelled ? "tabular line-through" : "tabular"}>{d.number}</p>
             <p className="text-muted-foreground">Dated {d.issuedOn}</p>
             <p className="text-muted-foreground">
               {d.orderNumber ? `Order ${d.orderNumber}` : b.quotationNumber ? `Quotation ${b.quotationNumber}` : ""}
