@@ -88,9 +88,15 @@ type FormOutput = z.output<typeof schema>;
 export function CustomerDialog({
   existing,
   onClose,
+  onCreated,
+  initialName,
 }: {
   existing?: CustomerView;
   onClose: () => void;
+  /** Called with a newly added customer instead of closing, for a caller that carries on from there (the quotation form). */
+  onCreated?: (customer: CustomerView) => void;
+  /** Starts the name box with this (what was typed in the dropdown the dialog was opened from). */
+  initialName?: string;
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
@@ -103,7 +109,7 @@ export function CustomerDialog({
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: {
-      fullName: existing?.fullName ?? "",
+      fullName: existing?.fullName ?? initialName ?? "",
       email: existing?.email ?? "",
       phone: existing?.phone ?? "",
       accountType: existing?.accountType ?? "CUSTOMER",
@@ -125,7 +131,8 @@ export function CustomerDialog({
       toast.success(existing ? `${customer.fullName} updated` : `${customer.fullName} added`, {
         description: customer.email,
       });
-      onClose();
+      if (!existing && onCreated) onCreated(customer);
+      else onClose();
     },
     onError: (error) =>
       setFormError(error instanceof ApiError ? error.message : "Could not save the customer."),

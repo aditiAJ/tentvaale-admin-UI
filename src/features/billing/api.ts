@@ -3,7 +3,8 @@ import type { Money } from "@/lib/money";
 
 const BASE = "/admin/billing";
 
-export type PaymentMode = "BANK_TRANSFER" | "UPI" | "CASH" | "CARD" | "CHEQUE";
+/** RAZORPAY is a customer paying online on the storefront: recorded and verified automatically, never chosen by staff. */
+export type PaymentMode = "BANK_TRANSFER" | "UPI" | "CASH" | "CARD" | "CHEQUE" | "RAZORPAY";
 export type PaymentPurpose = "RENTAL" | "DEPOSIT";
 export type PaymentStatus = "RECORDED" | "VERIFIED" | "REJECTED";
 export type DocumentKind = "TAX_INVOICE" | "FINAL_INVOICE" | "RECEIPT";
@@ -199,4 +200,5 @@ export const MODE_LABEL: Record<PaymentMode, string> = {
   CASH: "Cash",
   CARD: "Card",
   CHEQUE: "Cheque",
+  RAZORPAY: "Paid online (Razorpay)",
 };

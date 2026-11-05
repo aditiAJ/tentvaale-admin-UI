@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -42,10 +42,9 @@ import { useDateStock } from "@/features/quotations/useDateStock";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const schema = z.object({
-  customerName: z.string().trim().min(1, "Enter the customer's name"),
-  // Only filled in when more than one customer has the typed name; otherwise
-  // the name alone resolves the customer on submit.
-  customerId: z.string(),
+  // The name is only what the dropdown shows; the customer is the id chosen there.
+  customerName: z.string(),
+  customerId: z.string().min(1, "Choose a customer"),
   eventDate: z
     .string()
     .refine((value) => value === "" || isIsoDate(value), "Enter a valid date")
@@ -149,9 +148,6 @@ const discountRequest = (values: { discountType: "FLAT" | "PERCENT"; discountAmo
     ? { discountType: "PERCENT" as const, discountPercent: values.discountAmount }
     : { discountType: "FLAT" as const, discountAmount: values.discountAmount };
 
-/** Names compared the way a person would: ignoring case and extra spaces. */
-const normaliseName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
-const sameName = (a: string, b: string) => normaliseName(a) === normaliseName(b);
 
 function EstimateRow({ label, amount }: { label: string; amount: number }) {
   return (
@@ -210,6 +206,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     register,
     handleSubmit,
     getValues,
+    reset,
     setValue,
     setError,
     setFocus,
@@ -219,7 +216,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     defaultValues: existing
       ? {
           customerName: existing.customerName,
-          customerId: "",
+          customerId: existing.customerId ?? "",
           eventDate: existing.eventDate ?? "",
           validUntil: existing.validUntil ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
@@ -272,28 +269,46 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   // than form.watch: watch() hands back a function the React Compiler cannot
   // memoize safely, so using it opts this whole component out of compilation.
   const watchedLines = useWatch({ control, name: "lines" });
-  const watchedCustomerName = useWatch({ control, name: "customerName" });
   const watchedCustomerId = useWatch({ control, name: "customerId" });
   const watchedEventDate = useWatch({ control, name: "eventDate" });
 
-  // The name is typed, but a quotation still belongs to a customer record by
-  // id — its order, deposit and credit notes all hang off that id — so the
-  // name is resolved to an existing customer rather than stored on its own.
-  // Names are not unique (emails are), so several matches ask which one.
-  // Editing keeps the quotation's customer while its name is left as it was,
-  // even if the customer has since been renamed.
-  const keepsExistingCustomer = Boolean(
-    existing?.customerId &&
-      sameName(watchedCustomerName ?? "", existing.customerName),
-  );
-  const nameMatches = (customers.data ?? []).filter((customer) =>
-    sameName(customer.fullName, watchedCustomerName ?? ""),
-  );
-  const selectedCustomer = keepsExistingCustomer
-    ? customers.data?.find((customer) => customer.id === existing?.customerId)
-    : nameMatches.length === 1
-      ? nameMatches[0]
-      : nameMatches.find((customer) => customer.id === watchedCustomerId);
+  // A quotation belongs to a customer record by id (its order, deposit and credit notes all hang off it), so the customer is
+  // chosen from the list by id. Editing starts on the quotation's own customer even if they have since been renamed.
+  const selectedCustomer = (customers.data ?? []).find((customer) => customer.id === watchedCustomerId);
+  const customerOptions: SearchSelectOption[] = (customers.data ?? []).map((customer) => ({
+    value: customer.id,
+    label: customer.fullName,
+    hint: [customer.email, customer.phone].filter(Boolean).join(" · "),
+    keywords: `${customer.email} ${customer.phone ?? ""}`,
+  }));
+
+  // "Add customer" in the dropdown goes to the customer form and comes back here with the new customer chosen. What has been
+  // filled in so far is kept for the trip (see the restore effect below), so the lines are not lost.
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const addCustomer = (typed: string) => {
+    try {
+      sessionStorage.setItem("quotation-draft", JSON.stringify({ path: pathname, values: getValues() }));
+    } catch {
+      // Private window or blocked storage: the customer is still added and chosen, only the lines are not kept.
+    }
+    // The edit page names its quotation in the query (`?id=`), which has to come back too.
+    const params = new URLSearchParams({ new: "1", returnTo: existing ? `${pathname}?id=${existing.id}` : pathname });
+    if (typed) params.set("name", typed);
+    router.push(`/master-data/customers?${params.toString()}`);
+  };
+  useEffect(() => {
+    const params = new URLSearchParams(search.toString());
+    if (params.get("restore") !== "1") return;
+    try {
+      const draft = JSON.parse(sessionStorage.getItem("quotation-draft") ?? "null") as { path: string; values: FormInput } | null;
+      sessionStorage.removeItem("quotation-draft");
+      if (draft?.path === pathname) reset({ ...draft.values, customerId: params.get("customerId") ?? draft.values.customerId });
+      else if (params.get("customerId")) setValue("customerId", params.get("customerId") as string);
+    } catch {
+      if (params.get("customerId")) setValue("customerId", params.get("customerId") as string);
+    }
+  }, [pathname, search, reset, setValue]);
 
   // An event planner is quoted the product's wholesale rate, moved by their own discount (20 unless staff set another, and 20
   // is the wholesale rate itself); anyone else, retail.
@@ -566,22 +581,12 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       }
     });
     if (missingVariant) return;
-    if (keepsExistingCustomer && existing?.customerId) {
-      mutation.mutate({ values, customerId: existing.customerId });
-      return;
-    }
     if (!customers.data) {
-      setError("customerName", { message: "Customers are still loading; try again" });
-      return;
-    }
-    if (nameMatches.length === 0) {
-      setError("customerName", {
-        message: `No customer named '${values.customerName}'. Add them under Customers first.`,
-      });
+      setError("customerId", { message: "Customers are still loading; try again" });
       return;
     }
     if (!selectedCustomer) {
-      setError("customerId", { message: "Choose which customer this is" });
+      setError("customerId", { message: "Choose a customer" });
       return;
     }
     mutation.mutate({ values, customerId: selectedCustomer.id });
@@ -694,32 +699,21 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           <CardTitle>Customer</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field
-            label="Customer name"
-            required
-            error={errors.customerName?.message}
-            className="sm:col-span-2"
-          >
+          <Field label="Customer" required error={errors.customerId?.message} className="sm:col-span-2">
             {(props) => (
-              <>
-                <Input
-                  {...props}
-                  {...register("customerName")}
-                  list="quotation-customer-names"
-                  autoComplete="off"
-                  placeholder="Amit Shah"
-                  maxLength={200}
-                  disabled={mutation.isPending}
-                  autoFocus={!existing}
-                />
-                <datalist id="quotation-customer-names">
-                  {[...new Set((customers.data ?? []).map((customer) => customer.fullName))].map(
-                    (name) => (
-                      <option key={name} value={name} />
-                    ),
-                  )}
-                </datalist>
-              </>
+              <SearchSelect
+                id={props.id}
+                value={watchedCustomerId}
+                options={customerOptions}
+                placeholder={customers.isPending ? "Loading customers…" : "Search a customer by name, email or phone"}
+                disabled={mutation.isPending || customers.isPending}
+                aria-invalid={Boolean(errors.customerId)}
+                onChange={(id) => {
+                  setValue("customerId", id, { shouldValidate: true, shouldDirty: true });
+                  setValue("customerName", customers.data?.find((customer) => customer.id === id)?.fullName ?? "");
+                }}
+                actions={[{ label: "Add customer", onSelect: addCustomer }]}
+              />
             )}
           </Field>
 
@@ -753,26 +747,6 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                   type="date"
                   disabled={mutation.isPending}
                 />
-              )}
-            </Field>
-          ) : null}
-
-          {!keepsExistingCustomer && nameMatches.length > 1 ? (
-            <Field
-              label={`${nameMatches.length} customers have this name`}
-              required
-              error={errors.customerId?.message}
-              className="sm:col-span-2"
-            >
-              {(props) => (
-                <Select {...props} {...register("customerId")} disabled={mutation.isPending}>
-                  <option value="">Choose which one</option>
-                  {nameMatches.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.fullName} · {customer.email}
-                    </option>
-                  ))}
-                </Select>
               )}
             </Field>
           ) : null}

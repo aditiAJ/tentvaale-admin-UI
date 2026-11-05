@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { deleteCustomer, listCustomers, masterDataKeys } from "@/features/master-data/api";
@@ -8,6 +9,7 @@ import type { CustomerView } from "@/features/master-data/types";
 import { CustomerDialog } from "@/features/master-data/components/CustomerDialog";
 import { PlannerApplicationsPanel } from "@/features/master-data/components/PlannerApplicationsPanel";
 import { useCan } from "@/features/auth";
+import { safeInternalPath } from "@/lib/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +55,22 @@ function PricingLabel({ customer }: { customer: CustomerView }) {
 export function CustomersPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
   const [search, setSearch] = useState("");
-  const [creating, setCreating] = useState(false);
+  const router = useRouter();
+  // Opened from a quotation's customer dropdown ("Add customer"): the form is already open, and saving or cancelling returns
+  // to where it came from.
+  // Read from the router, not from window.location: on a client-side navigation the page renders before the address bar changes.
+  const params = useSearchParams();
+  const from =
+    params.get("new") === "1"
+      ? { returnTo: safeInternalPath(params.get("returnTo")), name: params.get("name") ?? "" }
+      : null;
+  const [creating, setCreating] = useState(from !== null);
+  /** Back to the page the dialog was opened from (it may already carry a query, like `?id=`), with what it needs to carry on. */
+  const goBack = (returnTo: string, extra: Record<string, string>) => {
+    const url = new URL(returnTo, "http://same-origin.invalid");
+    Object.entries(extra).forEach(([key, value]) => url.searchParams.set(key, value));
+    router.push(url.pathname + url.search);
+  };
   const [editing, setEditing] = useState<CustomerView | null>(null);
   const [removing, setRemoving] = useState<CustomerView | null>(null);
   const queryClient = useQueryClient();
@@ -212,7 +229,16 @@ export function CustomersPage() {
         ) : null}
       </Card>
 
-      {creating ? <CustomerDialog onClose={() => setCreating(false)} /> : null}
+      {creating ? (
+        <CustomerDialog
+          initialName={from?.name}
+          onClose={() => {
+            setCreating(false);
+            if (from?.returnTo) goBack(from.returnTo, { restore: "1" });
+          }}
+          onCreated={from?.returnTo ? (customer) => goBack(from.returnTo as string, { restore: "1", customerId: customer.id }) : undefined}
+        />
+      ) : null}
       {editing ? <CustomerDialog existing={editing} onClose={() => setEditing(null)} /> : null}
       {removing ? (
         <ConfirmDialog
