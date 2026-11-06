@@ -211,7 +211,8 @@ export function ProductPickerPanel({
                       aria-label={`Choose ${product.name}`}
                       className="size-4 shrink-0 accent-[var(--primary)]"
                     />
-                    <Thumb src={pictureOf(product.media)} />
+                    {/* The chosen variant's own picture when it has one, otherwise the product's. */}
+                    <Thumb src={product.variants.find((v) => v.id === choice?.variantId)?.imageUrl || pictureOf(product.media)} />
                     <button type="button" onClick={() => toggle(product)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate text-sm font-medium">{product.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">

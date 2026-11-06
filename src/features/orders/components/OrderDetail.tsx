@@ -38,7 +38,7 @@ import {
 import { useCan } from "@/features/auth";
 import { OrderBillingPanel } from "@/features/billing";
 import { VenueRow, formatTime } from "@/features/quotations/components/QuotationParts";
-import { MediaThumb, useProductMedia } from "@/features/master-data";
+import { MediaThumb, useLineMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -117,7 +117,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const canReadPayments = useCan("PAYMENT_READ");
   const canWriteDeposit = useCan("DEPOSIT_WRITE");
   const canReadQuotation = useCan("QUOTATION_READ");
-  const productMedia = useProductMedia();
+  const productMedia = useLineMedia();
 
   // The workspace's list and counts are keyed apart from this order, so a
   // status change made here (a dispatch, a return, a cancel) reaches them too.
@@ -189,12 +189,20 @@ function OrderWorkspace({ order }: { order: OrderView }) {
               ) : null}
             </p>
           </div>
-          {order.status === "CONFIRMED" && canWriteOrder ? (
-            <Button size="sm" variant="outline" onClick={() => setActing("cancel")}>
-              <X />
-              Cancel order
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {order.status !== "CANCELLED" ? (
+              <Link href={`/orders/dispatch?id=${order.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <ClipboardList />
+                Dispatch list
+              </Link>
+            ) : null}
+            {order.status === "CONFIRMED" && canWriteOrder ? (
+              <Button size="sm" variant="outline" onClick={() => setActing("cancel")}>
+                <X />
+                Cancel order
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -708,7 +716,7 @@ function OrderLines({
   order: OrderView;
   fulfilment: OrderFulfilment | null;
   functions: Map<string, LineFunction>;
-  media: ReturnType<typeof useProductMedia>;
+  media: ReturnType<typeof useLineMedia>;
 }) {
   // Movements are counted per product, so a product on two lines shows its totals once, on the first.
   const firstOf = new Set(
@@ -750,7 +758,7 @@ function OrderLines({
               <TR key={line.id}>
                 <TD>
                   <div className="flex items-center gap-2.5">
-                    <MediaThumb media={media.get(line.productId)} />
+                    <MediaThumb media={media(line.productId, line.variantId)} />
                     <div className="min-w-0">
                       <span className="font-medium">{name}</span>
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}

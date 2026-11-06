@@ -420,6 +420,18 @@ interface WireProductPage {
   total: number;
 }
 
+/** The pictures variants carry of their own, by variant id. A variant with none is absent: its product's pictures show. */
+export interface VariantImage {
+  variantId: number;
+  productId: number;
+  imageUrl: string;
+  thumbnailUrl?: string | null;
+}
+
+export function listVariantImages(signal?: AbortSignal): Promise<VariantImage[]> {
+  return apiFetch<VariantImage[]>(`${BASE}/variant-images`, { signal });
+}
+
 export async function listProducts(
   signal?: AbortSignal,
   includeInactive = false,

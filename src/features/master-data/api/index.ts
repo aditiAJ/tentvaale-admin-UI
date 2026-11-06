@@ -189,6 +189,12 @@ export function importProducts(file: File, fingerprint: string | undefined): Pro
   return backend.importProducts(file, fingerprint);
 }
 
+/** Variant pictures by variant id; empty in mock mode, where variants have no pictures of their own. */
+export function listVariantImages(signal?: AbortSignal): Promise<backend.VariantImage[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listVariantImages(signal);
+}
+
 export function listProducts(
   signal?: AbortSignal,
   options?: { includeInactive?: boolean },
@@ -660,6 +666,7 @@ export const masterDataKeys = {
   /** Everything put away; refreshed whenever something is archived, restored or deleted for good. */
   archive: ["master-data", "archive"] as const,
   products: ["master-data", "products"] as const,
+  variantImages: ["master-data", "variant-images"] as const,
   categories: ["master-data", "categories"] as const,
   customers: ["master-data", "customers"] as const,
   plannerApplications: ["master-data", "planner-applications"] as const,
