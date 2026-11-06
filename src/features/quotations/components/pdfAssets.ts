@@ -79,3 +79,24 @@ export async function loadQrCodes(
     whatsapp: whatsapp ? await qr(`https://wa.me/${whatsapp}`) : null,
   };
 }
+
+/**
+ * The picture a line should be printed with, as the catalogue has it now: its variant's own picture, else its product's
+ * first picture, else whatever the line saved when it was written (which can be out of date or another product's).
+ */
+export async function loadLivePictures(): Promise<(productId: string, variantId: string | null | undefined, saved: string | null | undefined) => string | null> {
+  const byVariant = new Map<string, string>();
+  const byProduct = new Map<string, string>();
+  try {
+    const api = await import("@/features/master-data/api");
+    const [variants, products] = await Promise.all([api.listVariantImages().catch(() => []), api.listProducts().catch(() => [])]);
+    for (const v of variants) byVariant.set(String(v.variantId), v.imageUrl);
+    for (const p of products) {
+      const first = p.media?.find((m) => m.kind === "IMAGE" && m.url);
+      if (first?.url) byProduct.set(p.id, first.url);
+    }
+  } catch {
+    // Nothing readable: every line keeps the picture it saved.
+  }
+  return (productId, variantId, saved) => (variantId ? byVariant.get(variantId) : undefined) ?? byProduct.get(productId) ?? saved ?? null;
+}

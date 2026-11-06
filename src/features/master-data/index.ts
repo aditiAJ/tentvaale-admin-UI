@@ -78,7 +78,7 @@ export { FeaturedCollectionDialog } from "./components/FeaturedCollectionDialog"
 export { WarehouseDialog } from "./components/WarehouseDialog";
 export { TruckDialog } from "./components/TruckDialog";
 export { MediaThumb } from "./components/MediaThumb";
-export { useProductMedia } from "./useProductMedia";
+export { useLineMedia, useProductMedia } from "./useProductMedia";
 export type {
   ProductView,
   ProductVariantView,
