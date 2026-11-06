@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { Download, Loader2, Printer } from "lucide-react";
@@ -10,15 +9,14 @@ import { getQuotation, quotationKeys } from "@/features/quotations/api";
 import { getCompany, settingsKeys } from "@/features/settings/api";
 import { BackButton } from "@/components/back-button";
 import { Alert } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 
 /**
- * An order's dispatch list as a real PDF (A4, selectable text, page numbers) in the quotation's look, in two
- * editions: a list to tick off, and a picture sheet. Previewed here, then downloaded or printed.
+ * An order's dispatch list as a real PDF (A4, page numbers) in the quotation's look: a card per item with its picture,
+ * grouped by warehouse. Previewed here, then downloaded or printed.
  */
-export function DispatchPrintPage({ orderId, edition }: { orderId: string; edition: "pictures" | "list" }) {
+export function DispatchPrintPage({ orderId }: { orderId: string }) {
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === "dark" ? "dark" : "light";
   const order = useQuery({
@@ -42,7 +40,7 @@ export function DispatchPrintPage({ orderId, edition }: { orderId: string; editi
   const c = company.data;
   // The quotation is only waited for when there is one; an order without one is listed from its own lines.
   const ready = Boolean(o) && !company.isPending && (quotationId === "" || !quotation.isPending);
-  const key = `${o?.id}:${o?.status}:${edition}:${theme}`;
+  const key = `${o?.id}:${o?.status}:${theme}`;
 
   useEffect(() => {
     if (!ready || !o) return;
@@ -56,7 +54,7 @@ export function DispatchPrintPage({ orderId, edition }: { orderId: string; editi
           import("@/features/orders/dispatch/DispatchListDocument"),
           import("@/features/orders/dispatch/buildDispatchDoc"),
         ]);
-        const doc = await buildDispatchDoc(o, q, c, edition);
+        const doc = await buildDispatchDoc(o, q, c);
         const blob = await render(<DispatchListDocument doc={doc} theme={theme} />).toBlob();
         if (cancelled) return;
         made = URL.createObjectURL(blob);
@@ -70,7 +68,7 @@ export function DispatchPrintPage({ orderId, edition }: { orderId: string; editi
       cancelled = true;
       if (made) URL.revokeObjectURL(made);
     };
-  }, [ready, o, q, c, edition, theme, key]);
+  }, [ready, o, q, c, theme, key]);
 
   const failure = (title: string) => (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -83,16 +81,7 @@ export function DispatchPrintPage({ orderId, edition }: { orderId: string; editi
   if (order.isError || !o) return failure("The order could not be loaded.");
 
   const current = pdf?.key === key ? pdf.url : null;
-  const fileName = `Dispatch-${edition === "pictures" ? "pictures-" : ""}${o.orderNumber}.pdf`;
-  const tab = (value: "list" | "pictures", label: string) => (
-    <Link
-      href={`/orders/dispatch?id=${o.id}&kind=${value}`}
-      replace
-      className={cn(buttonVariants({ variant: edition === value ? "default" : "outline", size: "sm" }))}
-    >
-      {label}
-    </Link>
-  );
+  const fileName = `Dispatch-${o.orderNumber}.pdf`;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -118,13 +107,7 @@ export function DispatchPrintPage({ orderId, edition }: { orderId: string; editi
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {tab("list", "List")}
-        {tab("pictures", "Pictures")}
-        <span className="text-xs text-muted-foreground">
-          {theme === "dark" ? "Dark" : "Light"} edition, following the back office theme.
-        </span>
-      </div>
+      <p className="text-xs text-muted-foreground">{theme === "dark" ? "Dark" : "Light"} edition, following the back office theme.</p>
 
       {failed ? <Alert tone="error" title={`The PDF could not be made: ${failed}`} /> : null}
       {current && pdf && pdf.missing > 0 ? (

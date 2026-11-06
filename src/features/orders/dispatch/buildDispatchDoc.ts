@@ -56,9 +56,8 @@ export async function buildDispatchDoc(
   order: OrderView,
   quotation: QuotationView | undefined,
   company: CompanyProfile | undefined,
-  edition: "pictures" | "list",
 ): Promise<DispatchDoc> {
-  const sources = sourcesOf(order, quotation, edition === "pictures" ? await loadLivePictures() : () => null);
+  const sources = sourcesOf(order, quotation, await loadLivePictures());
   const stocked = sources.filter((s): s is Source & { productId: number } => s.productId !== null);
   const plan = await pickPlan(stocked.map((s) => ({ productId: s.productId, variantId: s.variantId, quantity: s.quantity })));
 
@@ -78,13 +77,13 @@ export async function buildDispatchDoc(
     for (const source of line?.sources ?? []) {
       let group = warehouses.get(source.warehouseId);
       if (!group) {
-        group = { kind: "warehouse", title: source.warehouseName, subtitle: source.warehouseCode, entries: [] };
+        group = { kind: "warehouse", title: source.warehouseName, subtitle: null, entries: [] };
         warehouses.set(source.warehouseId, group);
       }
       for (const place of source.locations) {
         group.entries.push(entry(s, place.quantity, place.path ? `${place.path} (${place.code})` : place.code, null));
       }
-      if (source.unplaced > 0) group.entries.push(entry(s, source.unplaced, null, "Location not set in this warehouse"));
+      if (source.unplaced > 0) group.entries.push(entry(s, source.unplaced, null, "Location not set"));
     }
     // A line some warehouse holds shows what it holds, no more; only one no warehouse holds at all is "not assigned".
     if (!line || line.sources.length === 0) unassigned.push(entry(s, s.quantity, null, NO_WAREHOUSE));
@@ -100,11 +99,8 @@ export async function buildDispatchDoc(
   }
   if (other.length > 0) groups.push({ kind: "other", title: "Other items", subtitle: null, entries: other });
 
-  // Pictures are loaded only for the picture edition, and only the ones that will be printed.
-  const urls =
-    edition === "pictures"
-      ? [...new Set(groups.flatMap((g) => g.entries).map((e) => e.image).filter((u): u is string => Boolean(u)))]
-      : [];
+  // Only the pictures that will be printed are loaded.
+  const urls = [...new Set(groups.flatMap((g) => g.entries).map((e) => e.image).filter((u): u is string => Boolean(u)))];
   const [uploadedLogo, pictures] = await Promise.all([
     loadMarkData(company?.logoUrl),
     Promise.all(urls.map(async (url) => [url, await loadImageData(url, 360)] as const)),
@@ -114,7 +110,6 @@ export async function buildDispatchDoc(
   for (const [url, data] of pictures) if (data) images[url] = data;
 
   return {
-    edition,
     orderNumber: order.orderNumber,
     quotationNumber: quotation?.quotationNumber ?? null,
     preparedOn: new Date().toISOString().slice(0, 10),

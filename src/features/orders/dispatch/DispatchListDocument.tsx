@@ -1,8 +1,7 @@
 /**
- * An order's dispatch list as a PDF, in the quotation's header and footer. Two editions of the same list: "pictures"
- * (a tile per item with its picture, for the person picking by sight) and "list" (a table, for the
- * person with a clipboard). Items are grouped by the warehouse they are picked from, with the location inside it;
- * what no warehouse holds is gathered under "No warehouse assigned to this product".
+ * An order's dispatch list as a PDF, in the quotation's header and footer: a card per item with its picture, name, a
+ * big quantity and its details, grouped by the warehouse it is picked from and then by the place inside it. What no
+ * warehouse holds is gathered under "No warehouse assigned to this product".
  */
 import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import {
@@ -28,7 +27,7 @@ export interface DispatchEntry {
   image: string | null;
   /** Where in the warehouse ("Front hall > Bay 02"); null when the units are not placed anywhere. */
   location: string | null;
-  /** Said under the item in place of a location (the no-warehouse and one-time cases). */
+  /** Said on the card in place of a location (the no-warehouse and one-time cases). */
   note: string | null;
 }
 
@@ -40,7 +39,6 @@ export interface DispatchGroup {
 }
 
 export interface DispatchDoc {
-  edition: "pictures" | "list";
   orderNumber: string;
   quotationNumber: string | null;
   /** yyyy-MM-dd */
@@ -56,7 +54,9 @@ export interface DispatchDoc {
 }
 
 const WARN = "#9b2c20";
+const WARN_SOFT = "#fdecea";
 const countUnits = (entries: DispatchEntry[]) => entries.reduce((sum, e) => sum + e.quantity, 0);
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** The entries of a warehouse split by where in it they sit, in the order they come (they arrive sorted by place). */
 function byPlace(entries: DispatchEntry[]): { place: string; placed: boolean; entries: DispatchEntry[] }[] {
@@ -71,25 +71,47 @@ function byPlace(entries: DispatchEntry[]): { place: string; placed: boolean; en
   return out;
 }
 
+const PER_ROW = 3;
+const CARD_HEIGHT = 112;
+
 function styles(c: ReturnType<typeof make>["c"]) {
   return StyleSheet.create({
-    // One block per warehouse: a heavy bar with its name, code and totals, so the eye finds where one ends and the next begins.
-    groupHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: HEAD, paddingVertical: 7, paddingHorizontal: 11, borderBottomWidth: 2, borderBottomColor: HEAD_GOLD },
-    groupTitle: { color: HEAD_GOLD, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 12.5, letterSpacing: 0.8 },
-    groupCode: { color: "#f4ead2", fontSize: 8, marginTop: 2 },
-    groupTotals: { color: HEAD_GOLD, fontWeight: 700, fontSize: 9, textAlign: "right" },
-    warnHead: { backgroundColor: "#fdecea", borderBottomColor: "#e0a8a1" },
-    // Inside a warehouse: one band per location, then its items.
-    placeHead: { flexDirection: "row", justifyContent: "space-between", backgroundColor: c.soft, borderLeftWidth: 3, borderLeftColor: c.gold, paddingVertical: 4, paddingHorizontal: 9, marginTop: 8 },
-    placeText: { color: c.gold, fontWeight: 700, fontSize: 9 },
+    // One block per warehouse: a heavy bar with its number, name and totals, so the eye finds where one ends and the next begins.
+    groupHead: { flexDirection: "row", alignItems: "center", backgroundColor: HEAD, borderBottomWidth: 2, borderBottomColor: HEAD_GOLD },
+    groupNo: { width: 38, alignSelf: "stretch", backgroundColor: HEAD_GOLD, alignItems: "center", justifyContent: "center" },
+    groupNoText: { color: HEAD, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 18 },
+    groupBody: { flex: 1, paddingVertical: 9, paddingHorizontal: 12 },
+    groupTitle: { color: HEAD_GOLD, fontFamily: "Playfair Display", fontWeight: 700, fontSize: 15, letterSpacing: 0.6 },
+    groupSub: { color: "#f4ead2", fontSize: 8, marginTop: 2 },
+    groupStats: { flexDirection: "row", gap: 16, paddingRight: 14 },
+    stat: { alignItems: "flex-end" },
+    statValue: { color: HEAD_GOLD, fontWeight: 700, fontSize: 15 },
+    statLabel: { color: "#f4ead2", fontSize: 6.5, letterSpacing: 0.8, marginTop: 1 },
+    warnHead: { backgroundColor: WARN_SOFT, borderBottomColor: "#e0a8a1" },
+    // Inside a warehouse: one band per location, then its cards.
+    placeHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: c.soft, borderLeftWidth: 3, borderLeftColor: c.gold, paddingVertical: 5, paddingHorizontal: 10, marginTop: 8 },
+    placeText: { color: c.gold, fontWeight: 700, fontSize: 9.5 },
     placeCount: { color: c.muted, fontSize: 8 },
-    summaryRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: c.border },
-        tile: { width: 126, height: 142, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, borderRadius: 3, overflow: "hidden" },
-        tileImg: { width: "100%", height: 92, objectFit: "cover" },
-        tileNoImg: { height: 92, backgroundColor: c.soft, alignItems: "center", justifyContent: "center" },
-    tileText: { height: 40, paddingHorizontal: 6, paddingTop: 4, overflow: "hidden" },
-    noPlace: { backgroundColor: "#fdecea", color: WARN, fontSize: 6.5, fontWeight: 600, paddingHorizontal: 6, paddingVertical: 2 },
-    qty: { position: "absolute", top: 5, right: 5, backgroundColor: HEAD, color: HEAD_GOLD, fontSize: 9, fontWeight: 700, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+    row: { flexDirection: "row", gap: 8, marginBottom: 8 },
+    card: { flex: 1, height: CARD_HEIGHT, flexDirection: "row", borderWidth: 1, borderColor: c.border, backgroundColor: c.card, borderRadius: 4, overflow: "hidden" },
+    cardEmpty: { flex: 1 },
+    photo: { width: 70, height: CARD_HEIGHT, backgroundColor: "#ffffff", borderRightWidth: 1, borderRightColor: c.border, alignItems: "center", justifyContent: "center" },
+    photoImg: { width: 69, height: CARD_HEIGHT, objectFit: "contain" },
+    info: { flex: 1, paddingVertical: 5, paddingHorizontal: 8, overflow: "hidden" },
+    top: { height: 26, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 6 },
+    name: { flex: 1, fontWeight: 700, fontSize: 9 },
+    qtyBox: { alignItems: "flex-end" },
+    qty: { color: c.gold, fontWeight: 700, fontSize: 18, lineHeight: 1 },
+    qtyLabel: { color: c.muted, fontSize: 6, letterSpacing: 0.8, marginTop: 2 },
+    // Every card has the same slots in the same order, so the same thing sits at the same height on each.
+    slotVariant: { height: 20, paddingTop: 4 },
+    slotOccasion: { height: 12, paddingTop: 2 },
+    slotRemark: { height: 24, paddingTop: 3 },
+    slotNote: { height: 17, paddingTop: 3 },
+    chip: { alignSelf: "flex-start", backgroundColor: c.soft, color: c.text, fontSize: 7.5, fontWeight: 600, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+    detail: { color: c.muted, fontSize: 7 },
+    remark: { color: c.text, fontSize: 7, paddingLeft: 6, borderLeftWidth: 2, borderLeftColor: c.gold },
+    noPlace: { alignSelf: "flex-start", backgroundColor: WARN_SOFT, color: WARN, fontSize: 7, fontWeight: 600, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3 },
   });
 }
 
@@ -103,45 +125,34 @@ export function DispatchListDocument({ doc, theme }: { doc: DispatchDoc; theme: 
     { icon: "pin" as IconName, label: "VENUE", value: doc.venue ?? "To be confirmed" },
     { icon: "user" as IconName, label: "CUSTOMER", value: doc.customerName },
   ];
-  const title = doc.edition === "pictures" ? "DISPATCH LIST · PICTURES" : "DISPATCH LIST";
   const subtitle = doc.quotationNumber ? `Order ${doc.orderNumber} · from ${doc.quotationNumber}` : `Order ${doc.orderNumber}`;
   const totalUnits = doc.groups.reduce((sum, g) => sum + countUnits(g.entries), 0);
   const many = doc.groups.length > 1;
 
-  const row = (e: DispatchEntry, i: number) => (
-    <View style={s.tr} key={`${e.name}-${i}`} wrap={false}>
-      <Text style={[s.cellCenter, s.gold, { width: 24, fontSize: 8 }]}>{i + 1}</Text>
-      <View style={{ flex: 1, paddingHorizontal: 6 }}>
-        <Text style={{ fontWeight: 600 }}>{e.name}</Text>
-        {e.variant ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{e.variant}</Text> : null}
-        {e.occasion ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{e.occasion}</Text> : null}
-        {e.remark ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{e.remark}</Text> : null}
-        {e.location === null ? <Text style={{ color: WARN, fontSize: 7.5, fontWeight: 600, marginTop: 1 }}>{e.note ?? "Location not set"}</Text> : null}
-      </View>
-      <Text style={[s.cellCenter, { width: 60, fontWeight: 700, fontSize: 10 }]}>{e.quantity}</Text>
-    </View>
-  );
-
-  const tile = (e: DispatchEntry, i: number) => {
+  const card = (e: DispatchEntry, i: number) => {
     const picture = e.image ? (doc.images[e.image] ?? null) : null;
     return (
-      <View style={x.tile} key={`${e.name}-${i}`} wrap={false}>
-        <View>
+      <View style={x.card} key={`${e.name}-${i}`}>
+        <View style={x.photo}>
           {picture ? (
             // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
-            <Image src={picture} style={x.tileImg} />
+            <Image src={picture} style={x.photoImg} />
           ) : (
-            <View style={x.tileNoImg}>
-              <Text style={[s.muted, { fontSize: 7 }]}>No picture</Text>
-            </View>
+            <Text style={[s.muted, { fontSize: 7 }]}>No picture</Text>
           )}
-          <Text style={x.qty}>× {e.quantity}</Text>
         </View>
-        {e.location === null ? <Text style={x.noPlace}>{e.note ?? "Location not set"}</Text> : null}
-        <View style={x.tileText}>
-          <Text style={{ fontWeight: 600, fontSize: 8 }}>{e.name}</Text>
-          {e.variant ? <Text style={[s.muted, { fontSize: 7, marginTop: 1 }]}>{e.variant}</Text> : null}
-          {e.remark ? <Text style={[s.muted, { fontSize: 6.5, marginTop: 1 }]}>{e.remark}</Text> : null}
+        <View style={x.info}>
+          <View style={x.top}>
+            <Text style={x.name}>{e.name}</Text>
+            <View style={x.qtyBox}>
+              <Text style={x.qty}>{e.quantity}</Text>
+              <Text style={x.qtyLabel}>{e.quantity === 1 ? "UNIT" : "UNITS"}</Text>
+            </View>
+          </View>
+          <View style={x.slotVariant}>{e.variant ? <Text style={x.chip}>{e.variant}</Text> : null}</View>
+          <View style={x.slotOccasion}>{e.occasion ? <Text style={x.detail}>{e.occasion}</Text> : null}</View>
+          <View style={x.slotRemark}>{e.remark ? <Text style={x.remark}>{e.remark}</Text> : null}</View>
+          <View style={x.slotNote}>{e.location === null ? <Text style={x.noPlace}>{e.note ?? "Location not set"}</Text> : null}</View>
         </View>
       </View>
     );
@@ -150,7 +161,7 @@ export function DispatchListDocument({ doc, theme }: { doc: DispatchDoc; theme: 
   return (
     <Document title={`Dispatch list ${doc.orderNumber}`} author={co.name} subject={`Dispatch list for ${doc.customerName}`}>
       <Page size="A4" style={s.page}>
-        <Header s={s} doc={doc} big title={title} subtitle={subtitle} meta={meta} />
+        <Header s={s} doc={doc} big title="DISPATCH LIST" subtitle={subtitle} meta={meta} />
         <View style={s.body}>
           <View style={[s.strip, { paddingVertical: 8 }]} wrap={false}>
             <Text style={{ fontSize: 8.5 }}>
@@ -163,17 +174,30 @@ export function DispatchListDocument({ doc, theme }: { doc: DispatchDoc; theme: 
 
           {doc.groups.map((g, gi) => {
             const problem = g.kind === "unassigned";
+            const tone = problem ? { color: WARN } : {};
             return (
               // Each warehouse starts on a page of its own when there are several, so a team can be handed just its pages.
-              <View key={`${g.kind}-${g.title}-${gi}`} break={many && gi > 0} style={{ marginTop: 16 }}>
+              <View key={`${g.kind}-${g.title}-${gi}`} break={many && gi > 0} style={{ marginTop: gi === 0 ? 10 : 16 }}>
                 <View style={[x.groupHead, problem ? x.warnHead : {}]} minPresenceAhead={90}>
-                  <View>
-                    <Text style={[x.groupTitle, problem ? { color: WARN } : {}]}>{many ? `${gi + 1}. ` : ""}{g.title.toUpperCase()}</Text>
-                    {g.subtitle ? <Text style={[x.groupCode, problem ? { color: WARN } : {}]}>{g.subtitle}</Text> : null}
+                  {many ? (
+                    <View style={[x.groupNo, problem ? { backgroundColor: "#e0a8a1" } : {}]}>
+                      <Text style={[x.groupNoText, problem ? { color: WARN } : {}]}>{gi + 1}</Text>
+                    </View>
+                  ) : null}
+                  <View style={x.groupBody}>
+                    <Text style={[x.groupTitle, tone]}>{g.title.toUpperCase()}</Text>
+                    {g.subtitle ? <Text style={[x.groupSub, tone]}>{g.subtitle}</Text> : null}
                   </View>
-                  <Text style={[x.groupTotals, problem ? { color: WARN } : {}]}>
-                    {g.entries.length} item{g.entries.length === 1 ? "" : "s"} · {countUnits(g.entries)} units
-                  </Text>
+                  <View style={x.groupStats}>
+                    <View style={x.stat}>
+                      <Text style={[x.statValue, tone]}>{g.entries.length}</Text>
+                      <Text style={[x.statLabel, tone]}>{g.entries.length === 1 ? "ITEM" : "ITEMS"}</Text>
+                    </View>
+                    <View style={x.stat}>
+                      <Text style={[x.statValue, tone]}>{countUnits(g.entries)}</Text>
+                      <Text style={[x.statLabel, tone]}>UNITS</Text>
+                    </View>
+                  </View>
                 </View>
 
                 {byPlace(g.entries).map((p) => (
@@ -181,28 +205,23 @@ export function DispatchListDocument({ doc, theme }: { doc: DispatchDoc; theme: 
                     {p.placed ? (
                       <View style={x.placeHead} minPresenceAhead={60}>
                         <Text style={x.placeText}>{p.place}</Text>
-                        <Text style={x.placeCount}>{countUnits(p.entries)} units</Text>
+                        <Text style={x.placeCount}>
+                          {plural(p.entries.length, "item")} · {plural(countUnits(p.entries), "unit")}
+                        </Text>
                       </View>
                     ) : null}
-                    {doc.edition === "list" ? (
-                      <View style={s.table}>
-                        <View style={s.thead} fixed>
-                          <Text style={[s.th, { width: 24 }]}>#</Text>
-                          <Text style={[s.th, { flex: 1, textAlign: "left" }]}>ITEM</Text>
-                          <Text style={[s.th, { width: 60 }]}>QTY</Text>
-                        </View>
-                        {p.entries.map(row)}
-                      </View>
-                    ) : (
-                      // Rows of four, each kept whole: a wrapping grid that has to split across pages can stall the PDF layout.
-                      <View style={{ marginTop: 7 }}>
-                        {Array.from({ length: Math.ceil(p.entries.length / 4) }, (_, r) => (
-                          <View key={r} wrap={false} style={{ flexDirection: "row", gap: 9, marginBottom: 9 }}>
-                            {p.entries.slice(r * 4, r * 4 + 4).map((e, i) => tile(e, r * 4 + i))}
+                    {/* Rows of cards, each kept whole: a wrapping grid that has to split across pages can stall the PDF layout. */}
+                    <View style={{ marginTop: 7 }}>
+                      {Array.from({ length: Math.ceil(p.entries.length / PER_ROW) }, (_, r) => {
+                        const cards = p.entries.slice(r * PER_ROW, r * PER_ROW + PER_ROW);
+                        return (
+                          <View key={r} wrap={false} style={x.row}>
+                            {cards.map((e, i) => card(e, r * PER_ROW + i))}
+                            {cards.length < PER_ROW ? <View style={x.cardEmpty} /> : null}
                           </View>
-                        ))}
-                      </View>
-                    )}
+                        );
+                      })}
+                    </View>
                   </View>
                 ))}
               </View>
