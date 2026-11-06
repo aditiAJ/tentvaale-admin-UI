@@ -329,7 +329,6 @@ function OrderWorkspace({ order }: { order: OrderView }) {
       {canReadPayments ? (
         <OrderBillingPanel
           orderId={order.id}
-          completed={order.status === "COMPLETED"}
           dispatched={order.status !== "CONFIRMED" && order.status !== "CANCELLED"}
         />
       ) : null}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2 } from "lucide-react";
+import { Download, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/features/auth";
 import { uploadMedia } from "@/features/master-data/api/backend";
@@ -16,19 +16,21 @@ import {
   getOrderPaymentHistory,
   getQuotationBalance,
   getQuotationPaymentHistory,
-  issueFinalInvoice,
   issueTaxInvoice,
   listDocuments,
   listQuotationDocuments,
   recordPayment,
   recordQuotationPayment,
   saveSchedule,
+  type BillingDocument,
   type OrderBalance,
   type Payment,
   type PaymentMode,
   type PaymentPurpose,
 } from "@/features/billing/api";
 import { EventList, PaymentRowActions, PaymentStatusCell, apiMessage as message } from "@/features/billing/components/PaymentParts";
+import { canMakeInvoicePdf, type InvoiceBody } from "@/features/billing/invoice/buildInvoiceDoc";
+import { downloadInvoicePdf } from "@/features/billing/invoice/downloadInvoicePdf";
 import { formatMoney } from "@/lib/money";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +45,6 @@ import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/t
 export function OrderBillingPanel({
   orderId,
   quotationId,
-  completed = false,
   dispatched = false,
   acceptsOnPayment = false,
 }: {
@@ -51,7 +52,6 @@ export function OrderBillingPanel({
   orderId?: string;
   /** ...or a quotation that is not an order yet. */
   quotationId?: string;
-  completed?: boolean;
   /** Goods have gone out: a payment on the order can no longer be voided. */
   dispatched?: boolean;
   /** A sent quotation: a verified payment accepts it. */
@@ -80,7 +80,7 @@ export function OrderBillingPanel({
   };
 
   const invoice = useMutation({
-    mutationFn: (kind: "tax" | "final") => (kind === "tax" ? issueTaxInvoice(targetId) : issueFinalInvoice(targetId)),
+    mutationFn: () => issueTaxInvoice(targetId),
     onSuccess: (d) => {
       refresh();
       toast.success(`${DOCUMENT_LABEL[d.kind]} ${d.number} issued`);
@@ -91,25 +91,22 @@ export function OrderBillingPanel({
   if (balance.isPending) return <Skeleton className="h-40" />;
   if (balance.isError) return <Alert tone="error" title="The payments could not be loaded." />;
   const b = balance.data;
-  const hasInvoice = (kind: string) => documents.data?.some((d) => d.kind === kind) ?? false;
+  // The order's one invoice. It is issued by the system the moment the order is paid in full (rental and deposit, verified).
+  const invoiceDoc = documents.data?.find((d) => d.kind === "TAX_INVOICE");
+  const paidInFull =
+    !forQuotation &&
+    Number(b.verifiedPaid.amount) > 0 &&
+    Number(b.balance.amount) <= 0 &&
+    Number(b.depositReceived.amount) >= Number(b.depositRequired.amount);
 
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle>Payments</CardTitle>
-        {canWriteInvoices && !forQuotation ? (
-          <div className="flex gap-2">
-            {!hasInvoice("TAX_INVOICE") ? (
-              <Button size="sm" variant="outline" onClick={() => invoice.mutate("tax")} disabled={invoice.isPending}>
-                Issue tax invoice
-              </Button>
-            ) : null}
-            {completed && !hasInvoice("FINAL_INVOICE") ? (
-              <Button size="sm" variant="outline" onClick={() => invoice.mutate("final")} disabled={invoice.isPending}>
-                Issue final invoice
-              </Button>
-            ) : null}
-          </div>
+        {canWriteInvoices && paidInFull && documents.data && !invoiceDoc ? (
+          <Button size="sm" variant="outline" onClick={() => invoice.mutate()} disabled={invoice.isPending}>
+            Issue invoice now
+          </Button>
         ) : null}
       </CardHeader>
       <CardContent className="space-y-5">
@@ -164,7 +161,13 @@ export function OrderBillingPanel({
                     canWrite={canWrite}
                     canVerify={canVerify}
                     canVoid={canVoid}
-                    voidBlockedReason={dispatched ? "The order has been dispatched; a payment on it can no longer be voided." : undefined}
+                    voidBlockedReason={
+                      invoiceDoc
+                        ? "An invoice has been issued for this order; a payment on it can no longer be voided."
+                        : dispatched
+                          ? "The order has been dispatched; a payment on it can no longer be voided."
+                          : undefined
+                    }
                     onChanged={refresh}
                   />
                 ))}
@@ -200,11 +203,15 @@ export function OrderBillingPanel({
           </>
         ) : null}
 
-        {canReadInvoices && documents.data && documents.data.length > 0 ? (
+        {canReadInvoices && !forQuotation && documents.data ? (
+          <InvoiceBlock invoice={invoiceDoc} paidInFull={paidInFull} />
+        ) : null}
+
+        {canReadInvoices && documents.data && documents.data.filter((d) => d.id !== invoiceDoc?.id).length > 0 ? (
           <div>
             <h3 className="mb-2 text-sm font-medium">Documents</h3>
             <ul className="space-y-1 text-sm">
-              {documents.data.map((d) => (
+              {documents.data.filter((d) => d.id !== invoiceDoc?.id).map((d) => (
                 <li key={d.id} className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-2">
                     <FileText className="size-4 text-muted-foreground" />
@@ -222,6 +229,57 @@ export function OrderBillingPanel({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+/** The order's invoice: its number, date and amount, with the PDF; or why there is none yet. */
+function InvoiceBlock({ invoice, paidInFull }: { invoice: BillingDocument | undefined; paidInFull: boolean }) {
+  const [making, setMaking] = useState(false);
+  if (!invoice) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {paidInFull
+          ? "This order is paid in full but has no invoice yet. Use \"Issue invoice now\"."
+          : "The invoice is issued automatically once the rental and the deposit are both paid and verified."}
+      </p>
+    );
+  }
+  const body = invoice.body as unknown as InvoiceBody;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+      <div className="space-y-0.5">
+        <p className="font-medium">
+          Tax invoice <span className="tabular">{invoice.number}</span> <Badge variant="success">paid in full</Badge>
+        </p>
+        <p className="text-muted-foreground">
+          Issued {invoice.issuedOn} · {formatMoney(invoice.total)}
+          {body.summary && Number(body.summary.securityDeposit) > 0 ? " (includes the refundable deposit)" : ""}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Link href={`/billing/document?id=${invoice.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Open
+        </Link>
+        {canMakeInvoicePdf({ body }) ? (
+          <Button
+            size="sm"
+            disabled={making}
+            onClick={async () => {
+              setMaking(true);
+              try {
+                await downloadInvoicePdf({ number: invoice.number, issuedOn: invoice.issuedOn, orderNumber: invoice.orderNumber ?? "", body });
+              } catch {
+                toast.error("The invoice PDF could not be made. Please try again.");
+              } finally {
+                setMaking(false);
+              }
+            }}
+          >
+            {making ? <Loader2 className="animate-spin" /> : <Download />} Download PDF
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

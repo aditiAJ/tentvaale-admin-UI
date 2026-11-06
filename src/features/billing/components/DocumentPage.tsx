@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { DOCUMENT_LABEL, billingKeys, getDocument, type DocumentBody } from "@/features/billing/api";
+import { canMakeInvoicePdf, type InvoiceBody } from "@/features/billing/invoice/buildInvoiceDoc";
+import { InvoicePdfView } from "@/features/billing/invoice/InvoicePdfView";
 import { BackButton } from "@/components/back-button";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,15 @@ export function DocumentPage({ documentId }: { documentId: string }) {
   const d = doc.data;
   const b: DocumentBody = d.body;
   const s = b.seller ?? {};
+  // A new invoice is shown as the PDF itself, the same file Download saves, so Print gives exactly that.
+  if (d.kind === "TAX_INVOICE" && canMakeInvoicePdf({ body: b as unknown as InvoiceBody })) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-3">
+        <BackButton fallback={d.orderId ? `/orders?id=${d.orderId}` : "/quotations"} />
+        <InvoicePdfView source={{ number: d.number, issuedOn: d.issuedOn, orderNumber: d.orderNumber ?? "", body: b as unknown as InvoiceBody }} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">

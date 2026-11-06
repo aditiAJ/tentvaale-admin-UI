@@ -248,9 +248,6 @@ export const getDocument = (documentId: string, signal?: AbortSignal) =>
 export const issueTaxInvoice = (orderId: string) =>
   apiFetch<BillingDocument>(`${BASE}/orders/${orderId}/tax-invoice`, { method: "POST" });
 
-export const issueFinalInvoice = (orderId: string) =>
-  apiFetch<BillingDocument>(`${BASE}/orders/${orderId}/final-invoice`, { method: "POST" });
-
 export const billingKeys = {
   order: (orderId: string) => ["billing", "order", orderId] as const,
   quotation: (quotationId: string) => ["billing", "quotation", quotationId] as const,

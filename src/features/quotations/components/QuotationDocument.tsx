@@ -272,7 +272,7 @@ function make(theme: DocTheme) {
       // header
       head: { backgroundColor: HEAD, flexDirection: "row", alignItems: "center", paddingHorizontal: 28, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: HEAD_GOLD },
       headBrand: { width: 150, alignItems: "center" },
-      headLogo: { width: 62, height: 46, objectFit: "contain" },
+      headLogo: { width: 140, height: 29, objectFit: "contain" },
       wordmark: { fontFamily: "Playfair Display", fontWeight: 700, color: HEAD_GOLD, fontSize: 15, letterSpacing: 3, textAlign: "center" },
       tagline: { color: HEAD_TEXT, fontSize: 5.5, letterSpacing: 1.6, marginTop: 3, textAlign: "center" },
       divider: { width: 1, alignSelf: "stretch", backgroundColor: HEAD_GOLD, opacity: 0.55, marginHorizontal: 14 },
@@ -367,18 +367,10 @@ type Styles = ReturnType<typeof make>["s"];
 
 function Brand({ s, company, small }: { s: Styles; company: DocCompany; small?: boolean }) {
   // In the footer the mark sits beside the name, in the header it sits above it (see Header).
-  if (small && company.logo) {
-    return (
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        {/* eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text */}
-        <Image src={company.logo} style={{ width: 32, height: 26, objectFit: "contain", flexShrink: 0 }} />
-        <Text style={[s.wordmark, { fontSize: 10, letterSpacing: 1.5, textAlign: "left", flex: 1 }]}>{company.name.toUpperCase()}</Text>
-      </View>
-    );
-  }
+  // The logo is the wide TENTVAALE wordmark, which already carries the name, so no name text goes beside it.
   return company.logo ? (
     // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
-    <Image src={company.logo} style={small ? { width: 52, height: 30, objectFit: "contain" } : s.headLogo} />
+    <Image src={company.logo} style={small ? { width: 96, height: 20, objectFit: "contain" } : s.headLogo} />
   ) : (
     <View>
       <Text style={[s.wordmark, small ? { fontSize: 11, textAlign: "left" } : {}]}>{company.name.toUpperCase()}</Text>
@@ -407,7 +399,6 @@ function Header({
       <View style={s.head}>
         <View style={s.headBrand}>
           <Brand s={s} company={doc.company} />
-          {doc.company.logo ? <Text style={[s.wordmark, { fontSize: 12, marginTop: 3 }]}>{doc.company.name.toUpperCase()}</Text> : null}
         </View>
         <View style={s.divider} />
         <View style={s.headMid}>
