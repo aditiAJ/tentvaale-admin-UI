@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownLeft,
-  ArrowLeft,
   ArrowUpRight,
   Check,
   CalendarDays,
@@ -39,10 +38,11 @@ import {
 import { useCan } from "@/features/auth";
 import { OrderBillingPanel } from "@/features/billing";
 import { VenueRow, formatTime } from "@/features/quotations/components/QuotationParts";
-import { MediaThumb, useProductMedia } from "@/features/master-data";
+import { MediaThumb, useLineMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { BackButton } from "@/components/back-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -67,11 +67,10 @@ const SETTLE_FOR: Record<string, { action: SettleAction; label: string }> = {
 export function OrderDetail({
   orderId,
   backHref,
-  backLabel,
 }: {
   orderId: string;
+  /** Where Back goes when there is no screen of ours behind this one: the list it was opened from. */
   backHref: string;
-  backLabel: string;
 }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: orderKeys.byId(orderId),
@@ -83,13 +82,7 @@ export function OrderDetail({
 
   return (
     <>
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        {backLabel}
-      </Link>
+      <BackButton fallback={backHref} />
 
       {isPending ? <Skeleton className="h-48" /> : null}
 
@@ -124,7 +117,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const canReadPayments = useCan("PAYMENT_READ");
   const canWriteDeposit = useCan("DEPOSIT_WRITE");
   const canReadQuotation = useCan("QUOTATION_READ");
-  const productMedia = useProductMedia();
+  const productMedia = useLineMedia();
 
   // The workspace's list and counts are keyed apart from this order, so a
   // status change made here (a dispatch, a return, a cancel) reaches them too.
@@ -196,12 +189,20 @@ function OrderWorkspace({ order }: { order: OrderView }) {
               ) : null}
             </p>
           </div>
-          {order.status === "CONFIRMED" && canWriteOrder ? (
-            <Button size="sm" variant="outline" onClick={() => setActing("cancel")}>
-              <X />
-              Cancel order
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {order.status !== "CANCELLED" ? (
+              <Link href={`/orders/dispatch?id=${order.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <ClipboardList />
+                Dispatch list
+              </Link>
+            ) : null}
+            {order.status === "CONFIRMED" && canWriteOrder ? (
+              <Button size="sm" variant="outline" onClick={() => setActing("cancel")}>
+                <X />
+                Cancel order
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -333,7 +334,12 @@ function OrderWorkspace({ order }: { order: OrderView }) {
         </Card>
       ) : null}
 
-      {canReadPayments ? <OrderBillingPanel orderId={order.id} completed={order.status === "COMPLETED"} /> : null}
+      {canReadPayments ? (
+        <OrderBillingPanel
+          orderId={order.id}
+          dispatched={order.status !== "CONFIRMED" && order.status !== "CANCELLED"}
+        />
+      ) : null}
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-3">
@@ -710,7 +716,7 @@ function OrderLines({
   order: OrderView;
   fulfilment: OrderFulfilment | null;
   functions: Map<string, LineFunction>;
-  media: ReturnType<typeof useProductMedia>;
+  media: ReturnType<typeof useLineMedia>;
 }) {
   // Movements are counted per product, so a product on two lines shows its totals once, on the first.
   const firstOf = new Set(
@@ -752,7 +758,7 @@ function OrderLines({
               <TR key={line.id}>
                 <TD>
                   <div className="flex items-center gap-2.5">
-                    <MediaThumb media={media.get(line.productId)} />
+                    <MediaThumb media={media(line.productId, line.variantId)} />
                     <div className="min-w-0">
                       <span className="font-medium">{name}</span>
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}

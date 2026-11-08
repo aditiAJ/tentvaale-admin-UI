@@ -23,6 +23,7 @@ import {
 } from "@/features/master-data/api";
 import { addBundleComponent } from "@/features/master-data/bundles";
 import { unitLabel } from "@/features/master-data/storefront";
+import { choosableVariants } from "@/features/master-data/variants";
 import {
   BUNDLE_HIGHLIGHT_LIMIT,
   BUNDLE_OCCASION_LIMIT,
@@ -551,7 +552,7 @@ export function BundleDialog({
                 className="w-40"
               >
                 <option value="">Choose a variant</option>
-                {pickedProduct.variants.filter((variant) => variant.active !== false).map((variant) => (
+                {choosableVariants(pickedProduct).map((variant) => (
                   <option key={variant.id} value={variant.id}>
                     {variant.name}
                   </option>
@@ -782,7 +783,7 @@ function SwapEditor({
                   className="h-8 w-36"
                 >
                   <option value="">Variant…</option>
-                  {picked.variants.filter((variant) => variant.active !== false).map((variant) => (
+                  {choosableVariants(picked).map((variant) => (
                     <option key={variant.id} value={variant.id}>
                       {variant.name}
                     </option>

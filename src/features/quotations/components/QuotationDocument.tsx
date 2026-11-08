@@ -21,7 +21,7 @@ Font.register({ family: "Playfair Display", src: "/fonts/PlayfairDisplay-Bold.wo
 Font.registerHyphenationCallback((word) => (word.length > 18 ? (word.match(/.{1,10}/g) ?? [word]) : [word]));
 
 /** "https://www.example.com/page" -> "www.example.com" */
-const hostOf = (url: string) => url.replace(/^https?:\/\//, "").split(/[/?#]/)[0];
+export const hostOf = (url: string) => url.replace(/^https?:\/\//, "").split(/[/?#]/)[0];
 
 export type DocTheme = "light" | "dark";
 
@@ -131,13 +131,13 @@ const PALETTES = {
     border: "#352f23",
   },
 };
-const HEAD = "#0c0b09";
-const HEAD_GOLD = "#d6b25e";
-const HEAD_TEXT = "#f4ead2";
+export const HEAD = "#0c0b09";
+export const HEAD_GOLD = "#d6b25e";
+export const HEAD_TEXT = "#f4ead2";
 
 // ---- formatting ----------------------------------------------------------------------------
 
-const number = (value: number, digits = 2) =>
+export const number = (value: number, digits = 2) =>
   value.toLocaleString("en-IN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const rupees = (value: number) => `₹ ${number(value)}`;
 
@@ -147,11 +147,11 @@ function parse(iso: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-function longDate(iso: string | null | undefined): string | null {
+export function longDate(iso: string | null | undefined): string | null {
   const d = parse(iso);
   return d ? `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` : null;
 }
-function shortDate(iso: string | null | undefined): string | null {
+export function shortDate(iso: string | null | undefined): string | null {
   const d = parse(iso);
   return d ? `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)} ${d.getFullYear()}` : null;
 }
@@ -161,7 +161,7 @@ function clock(time: string | null): string | null {
   if (!Number.isFinite(h)) return null;
   return `${String(h % 12 || 12).padStart(2, "0")}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
-function dateRange(dates: string[]): string | null {
+export function dateRange(dates: string[]): string | null {
   const sorted = [...new Set(dates)].sort();
   if (sorted.length === 0) return null;
   const first = parse(sorted[0])!;
@@ -207,8 +207,8 @@ export function amountInWords(amount: number): string {
 
 // ---- icons ---------------------------------------------------------------------------------
 
-type IconName = "user" | "calendar" | "pin" | "phone" | "mail" | "globe" | "clock" | "doc";
-function Icon({ name, color, size = 14 }: { name: IconName; color: string; size?: number }) {
+export type IconName = "user" | "calendar" | "pin" | "phone" | "mail" | "globe" | "clock" | "doc";
+export function Icon({ name, color, size = 14 }: { name: IconName; color: string; size?: number }) {
   const p = { stroke: color, strokeWidth: 1.8, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -263,7 +263,7 @@ function Icon({ name, color, size = 14 }: { name: IconName; color: string; size?
 
 // ---- styles --------------------------------------------------------------------------------
 
-function make(theme: DocTheme) {
+export function make(theme: DocTheme) {
   const c = PALETTES[theme];
   return {
     c,
@@ -272,7 +272,7 @@ function make(theme: DocTheme) {
       // header
       head: { backgroundColor: HEAD, flexDirection: "row", alignItems: "center", paddingHorizontal: 28, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: HEAD_GOLD },
       headBrand: { width: 150, alignItems: "center" },
-      headLogo: { width: 62, height: 46, objectFit: "contain" },
+      headLogo: { width: 140, height: 29, objectFit: "contain" },
       wordmark: { fontFamily: "Playfair Display", fontWeight: 700, color: HEAD_GOLD, fontSize: 15, letterSpacing: 3, textAlign: "center" },
       tagline: { color: HEAD_TEXT, fontSize: 5.5, letterSpacing: 1.6, marginTop: 3, textAlign: "center" },
       divider: { width: 1, alignSelf: "stretch", backgroundColor: HEAD_GOLD, opacity: 0.55, marginHorizontal: 14 },
@@ -361,24 +361,16 @@ function make(theme: DocTheme) {
   };
 }
 
-type Styles = ReturnType<typeof make>["s"];
+export type Styles = ReturnType<typeof make>["s"];
 
 // ---- pieces --------------------------------------------------------------------------------
 
 function Brand({ s, company, small }: { s: Styles; company: DocCompany; small?: boolean }) {
   // In the footer the mark sits beside the name, in the header it sits above it (see Header).
-  if (small && company.logo) {
-    return (
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        {/* eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text */}
-        <Image src={company.logo} style={{ width: 32, height: 26, objectFit: "contain", flexShrink: 0 }} />
-        <Text style={[s.wordmark, { fontSize: 10, letterSpacing: 1.5, textAlign: "left", flex: 1 }]}>{company.name.toUpperCase()}</Text>
-      </View>
-    );
-  }
+  // The logo is the wide TENTVAALE wordmark, which already carries the name, so no name text goes beside it.
   return company.logo ? (
     // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image has no alt text
-    <Image src={company.logo} style={small ? { width: 52, height: 30, objectFit: "contain" } : s.headLogo} />
+    <Image src={company.logo} style={small ? { width: 96, height: 20, objectFit: "contain" } : s.headLogo} />
   ) : (
     <View>
       <Text style={[s.wordmark, small ? { fontSize: 11, textAlign: "left" } : {}]}>{company.name.toUpperCase()}</Text>
@@ -387,7 +379,7 @@ function Brand({ s, company, small }: { s: Styles; company: DocCompany; small?: 
   );
 }
 
-function Header({
+export function Header({
   s,
   doc,
   title,
@@ -396,7 +388,7 @@ function Header({
   meta,
 }: {
   s: Styles;
-  doc: QuotationDoc;
+  doc: { company: DocCompany };
   title: string;
   subtitle?: string;
   big?: boolean;
@@ -407,7 +399,6 @@ function Header({
       <View style={s.head}>
         <View style={s.headBrand}>
           <Brand s={s} company={doc.company} />
-          {doc.company.logo ? <Text style={[s.wordmark, { fontSize: 12, marginTop: 3 }]}>{doc.company.name.toUpperCase()}</Text> : null}
         </View>
         <View style={s.divider} />
         <View style={s.headMid}>
@@ -435,7 +426,7 @@ function Header({
   );
 }
 
-function Footer({ s, company }: { s: Styles; company: DocCompany }) {
+export function Footer({ s, company }: { s: Styles; company: DocCompany }) {
   return (
     <View style={s.foot} fixed>
       <View style={s.footBrand}>
@@ -735,7 +726,7 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
                           <View style={{ flex: 1, paddingHorizontal: 6 }}>
                             <Text style={{ fontWeight: 600 }}>{l.name}</Text>
                             {l.variant ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{l.variant}</Text> : null}
-                            {l.remark ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1, fontStyle: "italic" }]}>{l.remark}</Text> : null}
+                            {l.remark ? <Text style={[s.muted, { fontSize: 7.5, marginTop: 1 }]}>{l.remark}</Text> : null}
                           </View>
                           <View style={{ width: 52, alignItems: "center" }}>
                             <Text style={s.cellCenter}>{l.quantity}</Text>

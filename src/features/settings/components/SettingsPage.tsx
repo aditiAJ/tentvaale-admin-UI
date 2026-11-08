@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { StateSelect, initialState } from "@/components/ui/state-select";
+import { isStateName, matchState } from "@/lib/indian-states";
 import { cn } from "@/lib/utils";
 
 type TabKey = "profile" | "tax" | "bank" | "numbering" | "policies";
@@ -71,7 +73,7 @@ type TextKey = Exclude<keyof Draft, "requirePaymentBeforeDispatch">;
 const draftOf = (c: CompanyProfile): Draft => ({
   name: c.name,
   gstin: c.gstin ?? "",
-  state: c.state ?? "",
+  state: initialState(c.state),
   addressLine: c.addressLine ?? "",
   city: c.city ?? "",
   postalCode: c.postalCode ?? "",
@@ -169,7 +171,7 @@ function Readiness({ company, onGo }: { company: CompanyProfile; onGo: (tab: Tab
   const missing = useMemo(() => {
     const list: { label: string; tab: TabKey }[] = [];
     if (!company.gstin) list.push({ label: "GSTIN", tab: "tax" });
-    if (!company.state) list.push({ label: "State", tab: "tax" });
+    if (!matchState(company.state)) list.push({ label: "State", tab: "tax" });
     if (company.gstRate == null) list.push({ label: "GST rate", tab: "tax" });
     if (!company.addressLine) list.push({ label: "Address", tab: "profile" });
     if (!company.primaryPhone) list.push({ label: "Phone", tab: "profile" });
@@ -234,7 +236,10 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
   const ifscOdd = draft.bankIfsc.trim() !== "" && !/^[A-Z]{4}0[A-Z0-9]{6}$/i.test(draft.bankIfsc.trim());
   const upiOdd = draft.upiId.trim() !== "" && !/^[\w.-]+@[\w.-]+$/.test(draft.upiId.trim());
   const skuInvalid = draft.skuPrefix.trim() !== "" && !/^[A-Za-z0-9]{2,6}$/.test(draft.skuPrefix.trim());
-  const blocked = rateInvalid || coordsInvalid || emailInvalid || skuInvalid || draft.name.trim() === "";
+  // Optional, but a value nobody can read (an old saved one) must be corrected or cleared: the server refuses it, and
+  // the quotation's GST split depends on it.
+  const stateInvalid = draft.state.trim() !== "" && !isStateName(draft.state.trim());
+  const blocked = rateInvalid || coordsInvalid || emailInvalid || skuInvalid || stateInvalid || draft.name.trim() === "";
 
   const save = useMutation({
     mutationFn: () => {
@@ -371,8 +376,12 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
 
           <Section title="GST on quotations" shownOn="the totals of every quotation">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Your state" hint="The base for CGST + SGST versus IGST: a customer in this state pays CGST + SGST, anyone else IGST.">
-                {text("state", { placeholder: "e.g. Gujarat" })}
+              <Field
+                label="Your state"
+                error={stateInvalid ? "Choose a state from the list, or clear it" : undefined}
+                hint="The base for CGST + SGST versus IGST: a customer in this state pays CGST + SGST, anyone else IGST."
+              >
+                {(p) => <StateSelect id={p.id} aria-invalid={p["aria-invalid"]} value={draft.state} onChange={set("state")} disabled={!canWrite} clearable />}
               </Field>
               <Field label="GST rate (%)" error={rateInvalid ? "A percentage between 0 and 100" : undefined} hint="One rate for all quotations. A quotation cannot be sent until it is set (0 means no tax).">
                 {text("gstRate", { inputMode: "decimal", placeholder: "18" })}

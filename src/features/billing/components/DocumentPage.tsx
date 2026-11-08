@@ -1,9 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
 import { DOCUMENT_LABEL, billingKeys, getDocument, type DocumentBody } from "@/features/billing/api";
+import { canMakeInvoicePdf, type InvoiceBody } from "@/features/billing/invoice/buildInvoiceDoc";
+import { InvoicePdfView } from "@/features/billing/invoice/InvoicePdfView";
+import { BackButton } from "@/components/back-button";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,29 +22,53 @@ export function DocumentPage({ documentId }: { documentId: string }) {
     queryFn: ({ signal }) => getDocument(documentId, signal),
     enabled: documentId !== "",
   });
-  if (documentId === "") return <Alert tone="error" title="No document was chosen." />;
+  // A bad or missing id still leaves a way out. Documents are opened from an order, and there is no list of them.
+  const failure = (title: string) => (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <BackButton fallback="/orders" />
+      <Alert tone="error" title={title} />
+    </div>
+  );
+  if (documentId === "") return failure("No document was chosen.");
   if (doc.isPending) return <Skeleton className="h-96" />;
-  if (doc.isError) return <Alert tone="error" title="The document could not be loaded." />;
+  if (doc.isError) return failure("The document could not be loaded.");
   const d = doc.data;
   const b: DocumentBody = d.body;
   const s = b.seller ?? {};
+  // A new invoice is shown as the PDF itself, the same file Download saves, so Print gives exactly that.
+  if (d.kind === "TAX_INVOICE" && canMakeInvoicePdf({ body: b as unknown as InvoiceBody })) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-3">
+        <BackButton fallback={d.orderId ? `/orders?id=${d.orderId}` : "/quotations"} />
+        <InvoicePdfView source={{ number: d.number, issuedOn: d.issuedOn, orderNumber: d.orderNumber ?? "", body: b as unknown as InvoiceBody }} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center justify-between gap-3 print:hidden">
-        <Link
-          href={d.orderId ? `/orders?id=${d.orderId}` : "/quotations"}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" />
-          {d.orderId ? `Back to order ${d.orderNumber}` : "Back to quotations"}
-        </Link>
+        <BackButton fallback={d.orderId ? `/orders?id=${d.orderId}` : "/quotations"} />
         <Button size="sm" onClick={() => window.print()}>
           <Printer /> Print
         </Button>
       </div>
 
-      <article className="space-y-6 rounded-lg border border-border bg-card p-8 text-sm text-card-foreground print:border-0 print:p-0">
+      <article className="relative space-y-6 overflow-hidden rounded-lg border border-border bg-card p-8 text-sm text-card-foreground print:border-0 print:p-0">
+        {d.cancelled ? (
+          <>
+            {/* Printed too: a cancelled receipt must never pass for a valid one. */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 flex items-center justify-center text-7xl font-bold uppercase tracking-widest text-destructive/15 -rotate-12 select-none"
+            >
+              Cancelled
+            </div>
+            <div role="alert" className="rounded-md border border-destructive px-3 py-2 font-medium text-destructive">
+              This receipt is cancelled. The payment it acknowledged was voided and no longer counts. The number stays on record.
+            </div>
+          </>
+        ) : null}
         <header className="flex items-start justify-between gap-4">
           <div>
             {s.logoUrl ? (
@@ -59,8 +85,11 @@ export function DocumentPage({ documentId }: { documentId: string }) {
             <p className="text-muted-foreground">{[s.phone, s.email].filter(Boolean).join(" · ")}</p>
           </div>
           <div className="text-right">
-            <h2 className="text-xl font-semibold uppercase">{DOCUMENT_LABEL[d.kind]}</h2>
-            <p className="tabular">{d.number}</p>
+            <h2 className="text-xl font-semibold uppercase">
+              {DOCUMENT_LABEL[d.kind]}
+              {d.cancelled ? " (cancelled)" : ""}
+            </h2>
+            <p className={d.cancelled ? "tabular line-through" : "tabular"}>{d.number}</p>
             <p className="text-muted-foreground">Dated {d.issuedOn}</p>
             <p className="text-muted-foreground">
               {d.orderNumber ? `Order ${d.orderNumber}` : b.quotationNumber ? `Quotation ${b.quotationNumber}` : ""}

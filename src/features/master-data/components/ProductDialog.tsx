@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Controller, FormProvider, useFieldArray, useForm, useWatch, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -288,10 +288,14 @@ function ProductForm({
   existing,
   grid,
   initialStep = 0,
+  initialName,
   onSaved,
+  onStored,
   onClose,
 }: {
   existing?: ProductView;
+  /** A new product's name to start with, such as what was typed in a quotation line before choosing "Add new product". */
+  initialName?: string;
   /** An existing product's stock per variant and warehouse; absent when it could not be loaded. */
   grid?: StockGrid;
   /** The step to open on: after a Save & Next the form is rebuilt from what was saved and carries on from here. */
@@ -301,6 +305,8 @@ function ProductForm({
    * this form from the saved product (see ProductDialog), so what is on screen is what the server holds.
    */
   onSaved?: (product: ProductView, nextStep: number) => Promise<void>;
+  /** Told about every successful save (Save & Next and the last one alike), with the product as the server holds it. */
+  onStored?: (product: ProductView) => void;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -350,7 +356,7 @@ function ProductForm({
     mode: "onTouched",
     defaultValues: {
       skuOwner: existing?.skuOwner ?? "",
-      name: existing?.name ?? "",
+      name: existing?.name ?? initialName ?? "",
       genericName: existing?.genericName ?? "",
       hsnCode: existing?.hsnCode ?? "",
       description: existing?.description ?? "",
@@ -369,6 +375,8 @@ function ProductForm({
               wholesaleRate: amountText(variant.wholesaleRate.amount),
               retailRate: amountText(variant.retailRate.amount),
               stock: stockOf(variant.id),
+              imageUrl: variant.imageUrl ?? "",
+              thumbnailUrl: variant.thumbnailUrl ?? "",
             }))
           : []),
         blankVariant(),
@@ -525,6 +533,9 @@ function ProductForm({
               wholesaleRate: variant.wholesaleRate === "" ? rest.wholesaleRate : Number(variant.wholesaleRate),
               retailRate: variant.retailRate === "" ? rest.retailRate : Number(variant.retailRate),
               stock: linesOf(variant.stock, variant.id),
+              // Sent as it is: a new picture replaces, an empty one removes, an untouched one stays as it was.
+              imageUrl: variant.imageUrl ?? "",
+              thumbnailUrl: variant.thumbnailUrl ?? "",
             })),
             stock: linesOf(stock, defaultVariant?.id),
           };
@@ -565,6 +576,7 @@ function ProductForm({
       // Collections and bundles show each product's name (and collections its image).
       queryClient.invalidateQueries({ queryKey: masterDataKeys.featuredCollections });
       queryClient.invalidateQueries({ queryKey: masterDataKeys.bundles });
+      onStored?.(product);
       if (nextStep !== undefined && onSaved) {
         toast.success(`${product.name} saved`, { description: `Now: ${STEPS[nextStep].label}` });
         // The dialog rebuilds this form from the saved product, so a variant added here carries its new id
@@ -1245,8 +1257,28 @@ function ProductForm({
  * The product form. For an existing product the stock per variant and warehouse is loaded first, since it is
  * the starting point of the "Variants & stock" step.
  */
-export function ProductDialog({ existing, onClose }: { existing?: ProductView; onClose: () => void }) {
+export function ProductDialog({
+  existing,
+  initialName,
+  onClose,
+  onClosedAfterSave,
+}: {
+  existing?: ProductView;
+  /** A new product's name to start with. */
+  initialName?: string;
+  onClose: () => void;
+  /**
+   * Called as the dialog closes, when the product was saved while it was open, with the product as last saved. Lets a
+   * caller (a quotation line) carry on with the product once the user is done with it, not at its first save.
+   */
+  onClosedAfterSave?: (product: ProductView) => void;
+}) {
   const queryClient = useQueryClient();
+  const stored = useRef<ProductView | null>(null);
+  const close = () => {
+    onClose();
+    if (stored.current) onClosedAfterSave?.(stored.current);
+  };
   // After a Save & Next the form is rebuilt from the product as it was just saved (its fresh stock grid with it), and
   // opens on the next step. Rebuilding, rather than patching the form, is what gives a variant added in this
   // session its real id, so the next save updates it instead of creating it again.
@@ -1268,7 +1300,7 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
   });
   if (existing && (full.isPending || grid.isPending)) {
     return (
-      <Dialog open onClose={onClose} title="Edit product" description={`SKU ${existing.sku}`} className="max-w-2xl">
+      <Dialog open onClose={close} title="Edit product" description={`SKU ${existing.sku}`} className="max-w-2xl">
         <p className="text-sm text-muted-foreground">Loading…</p>
       </Dialog>
     );
@@ -1280,6 +1312,10 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
       // Without the full product its variants are unknown, so the form leaves variants and stock untouched.
       grid={saved?.grid ?? (full.data ? grid.data : undefined)}
       initialStep={saved?.step ?? 0}
+      initialName={initialName}
+      onStored={(product) => {
+        stored.current = product;
+      }}
       onSaved={async (product, step) => {
         const fresh = await queryClient.fetchQuery({
           queryKey: ["master-data", "stock-grid", product.id],
@@ -1288,7 +1324,7 @@ export function ProductDialog({ existing, onClose }: { existing?: ProductView; o
         });
         setSaved((previous) => ({ product, grid: fresh, step, version: (previous?.version ?? 0) + 1 }));
       }}
-      onClose={onClose}
+      onClose={close}
     />
   );
 }

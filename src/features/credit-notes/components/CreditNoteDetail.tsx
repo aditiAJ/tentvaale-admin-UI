@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import { creditNoteKeys, getCustomerCreditBalance } from "@/features/credit-notes/api";
 import {
   remainingCredit,
@@ -16,6 +15,7 @@ import {
 import type { CustomerView } from "@/features/master-data/types";
 import { formatEventDate } from "@/features/orders/display";
 import { formatMoney } from "@/lib/money";
+import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,6 @@ export function CreditNoteDetail({
   customer,
   orderNumber,
   backHref,
-  backLabel,
   canWrite,
   onApply,
   onCancel,
@@ -43,8 +42,8 @@ export function CreditNoteDetail({
   note: CreditNoteView;
   customer: CustomerView | undefined;
   orderNumber: (orderId: string) => string;
+  /** Where Back goes when there is no screen of ours behind this one: the list it was opened from. */
   backHref: string;
-  backLabel: string;
   canWrite: boolean;
   onApply: () => void;
   onCancel: () => void;
@@ -86,13 +85,7 @@ export function CreditNoteDetail({
 
   return (
     <>
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        {backLabel}
-      </Link>
+      <BackButton fallback={backHref} />
 
       <Card>
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">

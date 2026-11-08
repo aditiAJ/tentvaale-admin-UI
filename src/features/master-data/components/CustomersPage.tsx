@@ -1,14 +1,15 @@
 "use client";
 
 import { useDeferredValue, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2, UserCheck, Users } from "lucide-react";
+import { Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { deleteCustomer, listCustomers, masterDataKeys } from "@/features/master-data/api";
 import type { CustomerView } from "@/features/master-data/types";
 import { CustomerDialog } from "@/features/master-data/components/CustomerDialog";
-import { PlannerApplicationDialog } from "@/features/master-data/components/PlannerApplicationDialog";
 import { PlannerApplicationsPanel } from "@/features/master-data/components/PlannerApplicationsPanel";
 import { useCan } from "@/features/auth";
+import { safeInternalPath } from "@/lib/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,15 @@ function matches(customer: CustomerView, term: string): boolean {
 
 /** The rate a customer is quoted at: retail, or for an event planner the product's wholesale rate moved by their discount. */
 function PricingLabel({ customer }: { customer: CustomerView }) {
-  if (customer.accountType !== "EVENT_PLANNER") return <span className="text-muted-foreground">Retail</span>;
+  if (customer.accountType !== "EVENT_PLANNER") {
+    const percent = customer.customerDiscountPercent ?? 0;
+    if (percent === 0) return <span className="text-muted-foreground">Retail</span>;
+    return (
+      <Badge variant="success" title="Quoted the retail rate less this percentage.">
+        {percent}% off retail
+      </Badge>
+    );
+  }
   const discount = customer.plannerDiscountPercent ?? 20;
   if (discount === 0) return <span className="text-muted-foreground">Retail</span>;
   return (
@@ -46,11 +55,25 @@ function PricingLabel({ customer }: { customer: CustomerView }) {
 export function CustomersPage() {
   const canWrite = useCan("MASTER_DATA_WRITE");
   const [search, setSearch] = useState("");
-  const [creating, setCreating] = useState(false);
+  const router = useRouter();
+  // Opened from a quotation's customer dropdown ("Add customer"): the form is already open, and saving or cancelling returns
+  // to where it came from.
+  // Read from the router, not from window.location: on a client-side navigation the page renders before the address bar changes.
+  const params = useSearchParams();
+  const from =
+    params.get("new") === "1"
+      ? { returnTo: safeInternalPath(params.get("returnTo")), name: params.get("name") ?? "" }
+      : null;
+  const [creating, setCreating] = useState(from !== null);
+  /** Back to the page the dialog was opened from (it may already carry a query, like `?id=`), with what it needs to carry on. */
+  const goBack = (returnTo: string, extra: Record<string, string>) => {
+    const url = new URL(returnTo, "http://same-origin.invalid");
+    Object.entries(extra).forEach(([key, value]) => url.searchParams.set(key, value));
+    router.push(url.pathname + url.search);
+  };
   const [editing, setEditing] = useState<CustomerView | null>(null);
   const [removing, setRemoving] = useState<CustomerView | null>(null);
   const queryClient = useQueryClient();
-  const [applying, setApplying] = useState<CustomerView | null>(null);
 
   // Filtered in the browser over the full list, like products; deferring the
   // term keeps typing responsive on a long one.
@@ -150,18 +173,6 @@ export function CustomersPage() {
                               quotation, order or credit note was raised against (they store
                               only a copied name, with no foreign key to notice), and says so. */}
                           <div className="flex justify-end">
-                            {customer.accountType === "EVENT_PLANNER" &&
-                            (!customer.plannerProfile || customer.plannerProfile.status === "REJECTED") ? (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setApplying(customer)}
-                                aria-label={`Submit planner application for ${customer.fullName}`}
-                                title="Submit planner application"
-                              >
-                                <UserCheck />
-                              </Button>
-                            ) : null}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -218,9 +229,17 @@ export function CustomersPage() {
         ) : null}
       </Card>
 
-      {creating ? <CustomerDialog onClose={() => setCreating(false)} /> : null}
+      {creating ? (
+        <CustomerDialog
+          initialName={from?.name}
+          onClose={() => {
+            setCreating(false);
+            if (from?.returnTo) goBack(from.returnTo, { restore: "1" });
+          }}
+          onCreated={from?.returnTo ? (customer) => goBack(from.returnTo as string, { restore: "1", customerId: customer.id }) : undefined}
+        />
+      ) : null}
       {editing ? <CustomerDialog existing={editing} onClose={() => setEditing(null)} /> : null}
-      {applying ? <PlannerApplicationDialog customer={applying} onClose={() => setApplying(null)} /> : null}
       {removing ? (
         <ConfirmDialog
           title={`Delete ${removing.fullName}?`}

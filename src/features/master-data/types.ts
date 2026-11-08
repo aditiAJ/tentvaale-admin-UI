@@ -171,6 +171,9 @@ export interface ProductVariantView {
   hasAttributes?: boolean;
   /** The axes (facets) the variant has a value for, so what type it is. */
   attributeFacetIds?: string[];
+  /** The variant's own picture (and its small version); none means the product's pictures show. */
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
 }
 
 export interface VariantAxis {
@@ -227,6 +230,9 @@ export interface ProductSetupVariant {
   wholesaleRate: number;
   retailRate: number;
   stock: ProductSetupStock[];
+  /** The variant's own picture; left out keeps it, an empty string removes it. */
+  imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 /**
@@ -362,6 +368,8 @@ export interface CustomerView {
    * when they are signed in). 20 unless staff set another.
    */
   plannerDiscountPercent?: number | null;
+  /** For a regular customer: the percentage taken off retail wherever they are priced. 0 unless staff set one. */
+  customerDiscountPercent?: number | null;
 }
 
 /**
@@ -559,6 +567,8 @@ export interface WarehouseView {
   /** What the layout holds now; 0 for a warehouse with no layout. */
   zoneCount?: number;
   locationCount?: number;
+  /** What is stored about where it is: the picked place and, above all, its state. Real backend only. */
+  location?: WarehouseLocationRequest;
 }
 
 /**
@@ -598,12 +608,56 @@ export interface SupplierView {
   phone: string | null;
   email: string | null;
   addressLine: string | null;
+  city: string | null;
+  /** The canonical state name, or null when none was given. */
+  state: string | null;
   gstin: string | null;
+  notes: string | null;
+  /** Days between asking and the stock arriving. */
+  leadTimeDays: number | null;
+  /** The smallest quantity the supplier rents out in one go. */
+  minimumOrderQuantity: number | null;
   active: boolean;
+  /** How many different products it can provide right now (a count of 0 is not counted). */
+  productCount: number;
+  /** Units it can provide in all, right now. */
+  totalUnits: number;
 }
 
-/** How many of a product (or variant) a supplier can provide. Set, not added to. */
-export type SupplierStockView = WarehouseProductView;
+/**
+ * How many of a product (or variant) a supplier can provide, at what price per unit, and when that was last
+ * confirmed. Set, not added to.
+ */
+export interface SupplierStockView {
+  supplierId: string;
+  productId: string;
+  variantId: string | null;
+  productName: string;
+  variantName: string | null;
+  /** The variant's SKU, or the product's when the line has no variant. */
+  sku?: string;
+  quantity: number;
+  /** Price per unit for one rental, as agreed with the supplier. Null when none has been entered. */
+  rate: number | null;
+  /** When the line was last set, even to the same numbers. Null for a line that predates this. */
+  confirmedAt: string | null;
+}
+
+/** One change to what a supplier can provide. `previousQuantity` is null for the first entry of an item. */
+export interface SupplierStockHistoryView {
+  id: string;
+  productId: string;
+  productName: string;
+  variantId: string | null;
+  variantName: string | null;
+  previousQuantity: number | null;
+  newQuantity: number;
+  previousRate: number | null;
+  newRate: number | null;
+  reason: string | null;
+  changedBy: string | null;
+  changedAt: string;
+}
 
 export interface TruckView {
   id: string;
@@ -613,6 +667,15 @@ export interface TruckView {
   capacityKg: number;
   /** An inactive truck is kept on record but not offered. */
   active?: boolean;
+  /** One of the codes in `trucks.ts` (TEMPO, MINI_TRUCK, ...). Real backend only. */
+  vehicleType?: string | null;
+  make?: string | null;
+  model?: string | null;
+  /** Cargo space in cubic metres. */
+  volumeCapacityM3?: number | null;
+  notes?: string | null;
+  /** In the workshop: still on the fleet, but not available to send out. */
+  inMaintenance?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -691,6 +754,12 @@ export interface CreateTruckRequest {
   registration: string;
   capacityKg: number;
   active?: boolean;
+  vehicleType?: string;
+  make?: string;
+  model?: string;
+  volumeCapacityM3?: number;
+  notes?: string;
+  inMaintenance?: boolean;
 }
 
 export interface SupplierRequest {
@@ -699,7 +768,13 @@ export interface SupplierRequest {
   phone?: string;
   email?: string;
   addressLine?: string;
+  city?: string;
+  /** A state or union territory in any spelling; the backend stores the canonical name. */
+  state?: string;
   gstin?: string;
+  notes?: string;
+  leadTimeDays?: number;
+  minimumOrderQuantity?: number;
   active?: boolean;
 }
 
@@ -708,6 +783,10 @@ export interface SetSupplierStockRequest {
   variantId?: string;
   /** Zero is allowed: the supplier has none right now. */
   quantity: number;
+  /** Price per unit for one rental. Left out, the rate already agreed is kept. */
+  rate?: number;
+  /** Why the number changed, kept in the history. */
+  reason?: string;
 }
 
 export type UpdateTruckRequest = CreateTruckRequest;
@@ -772,12 +851,8 @@ export interface CreateCustomerRequest {
   postalCode?: string;
   /** Event planners only: percentage off retail, 0 to 100. Left out, the backend keeps it (20 for a new planner). */
   plannerDiscountPercent?: number;
-}
-
-export interface PlannerApplicationRequest {
-  businessName: string;
-  yearsInBusiness?: string;
-  about?: string;
+  /** Regular customers only: percentage off retail, 0 to 100. Left out, the backend keeps it (0 for a new customer). */
+  customerDiscountPercent?: number;
 }
 
 export type UpdateCustomerRequest = CreateCustomerRequest;

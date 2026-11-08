@@ -1,19 +1,22 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LogoLoader } from "@/components/ui/logo-loader";
 import { LoginForm, useSession } from "@/features/auth";
+import { safeInternalPath } from "@/lib/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 
 function LoginPanel() {
   const { session, loading } = useSession();
   const router = useRouter();
+  const next = useSearchParams().get("next");
 
-  // Someone who still has a valid token has no business on the login screen.
+  // Someone who still has a valid token has no business on the login screen. This also runs the moment the form signs
+  // in, so it goes to the same checked `next` as the form does: sending everyone to "/" here overrode the deep link.
   useEffect(() => {
-    if (!loading && session) router.replace("/");
-  }, [loading, session, router]);
+    if (!loading && session) router.replace(safeInternalPath(next) ?? "/");
+  }, [loading, session, router, next]);
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background p-4">

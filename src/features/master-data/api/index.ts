@@ -77,10 +77,10 @@ import type {
   PaymentModeView,
   PaymentTermsRequest,
   PaymentTermsView,
-  PlannerApplicationRequest,
   PlannerProfileView,
   SetSupplierStockRequest,
   SupplierRequest,
+  SupplierStockHistoryView,
   SupplierStockView,
   SupplierView,
   ProductVariantView,
@@ -187,6 +187,12 @@ export function importWarehouses(file: File, fingerprint: string | undefined): P
 export function importProducts(file: File, fingerprint: string | undefined): Promise<ImportOutcome> {
   if (IS_MOCK) return Promise.reject(new ApiError("This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.", 422));
   return backend.importProducts(file, fingerprint);
+}
+
+/** Variant pictures by variant id; empty in mock mode, where variants have no pictures of their own. */
+export function listVariantImages(signal?: AbortSignal): Promise<backend.VariantImage[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listVariantImages(signal);
 }
 
 export function listProducts(
@@ -569,13 +575,32 @@ export function listSupplierStock(
   return backend.listSupplierStock(supplierId, signal);
 }
 
-/** Sets (replaces) the supplier's count. Zero is allowed. */
+/** Sets (replaces) the supplier's count, and its rate when one is given. Zero is allowed. */
 export function setSupplierStock(
   supplierId: string,
   request: SetSupplierStockRequest,
 ): Promise<SupplierStockView> {
   if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
   return backend.setSupplierStock(supplierId, request);
+}
+
+/** Sets many lines at once, all or nothing. A bad line (unknown product, wrong variant) saves none of them. */
+export function setSupplierStockBulk(
+  supplierId: string,
+  lines: SetSupplierStockRequest[],
+  reason?: string,
+): Promise<SupplierStockView[]> {
+  if (IS_MOCK) return Promise.reject(new ApiError(SUPPLIERS_NEED_BACKEND, 422));
+  return backend.setSupplierStockBulk(supplierId, lines, reason);
+}
+
+/** Who changed what this supplier can provide, newest first (the latest 200). */
+export function listSupplierStockHistory(
+  supplierId: string,
+  signal?: AbortSignal,
+): Promise<SupplierStockHistoryView[]> {
+  if (IS_MOCK) return Promise.resolve([]);
+  return backend.listSupplierStockHistory(supplierId, signal);
 }
 
 // Planner applications exist only on the real backend; the demo data has no such concept.
@@ -585,15 +610,6 @@ const NEEDS_BACKEND = "Planner applications need the real backend. Set NEXT_PUBL
 export function listPlannerApplications(signal?: AbortSignal): Promise<PlannerProfileView[]> {
   if (IS_MOCK) return Promise.resolve([]);
   return backend.listPlannerApplications(signal);
-}
-
-/** 422 unless the customer is an event planner. Resubmitting after a rejection re-queues it. */
-export function applyAsPlanner(
-  customerId: string,
-  request: PlannerApplicationRequest,
-): Promise<PlannerProfileView> {
-  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
-  return backend.applyAsPlanner(customerId, request);
 }
 
 export function approvePlannerApplication(customerId: string): Promise<PlannerProfileView> {
@@ -650,6 +666,7 @@ export const masterDataKeys = {
   /** Everything put away; refreshed whenever something is archived, restored or deleted for good. */
   archive: ["master-data", "archive"] as const,
   products: ["master-data", "products"] as const,
+  variantImages: ["master-data", "variant-images"] as const,
   categories: ["master-data", "categories"] as const,
   customers: ["master-data", "customers"] as const,
   plannerApplications: ["master-data", "planner-applications"] as const,
@@ -673,6 +690,8 @@ export const masterDataKeys = {
   paymentTerms: ["master-data", "payment-terms"] as const,
   // Nested under `suppliers`, so refreshing the list refreshes every supplier's stock too.
   supplierStock: (supplierId: string) => ["master-data", "suppliers", supplierId, "stock"] as const,
+  supplierStockHistory: (supplierId: string) =>
+    ["master-data", "suppliers", supplierId, "stock-history"] as const,
 };
 
 // ---- the archive ----------------------------------------------------------------------------

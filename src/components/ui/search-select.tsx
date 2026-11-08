@@ -46,7 +46,7 @@ export function SearchSelect({
   onChange,
   options,
   placeholder = "Choose…",
-  action,
+  actions = [],
   disabled,
   className,
   ...aria
@@ -56,8 +56,11 @@ export function SearchSelect({
   onChange: (value: string) => void;
   options: readonly SearchSelectOption[];
   placeholder?: string;
-  /** A row kept at the bottom of the list that does something else than pick an option, such as "Add one-time product". It is handed what was typed. */
-  action?: { label: string; onSelect: (typed: string) => void };
+  /**
+   * Rows kept at the bottom of the list that do something else than pick an option, such as "Add one-time product"
+   * and "Add new product". Each is handed what was typed.
+   */
+  actions?: readonly { label: string; onSelect: (typed: string) => void }[];
   disabled?: boolean;
   className?: string;
   "aria-label"?: string;
@@ -85,8 +88,8 @@ export function SearchSelect({
       })
       .sort((a, b) => Number(!a.label.toLowerCase().startsWith(text)) - Number(!b.label.toLowerCase().startsWith(text)));
   }, [options, query]);
-  // The action row, when there is one, is the last row of the list and reachable by the arrow keys like the others.
-  const rows = entries.length + (action ? 1 : 0);
+  // The action rows come after the options and are reachable by the arrow keys like the others.
+  const rows = entries.length + actions.length;
   const highlighted = Math.min(active, Math.max(rows - 1, 0));
 
   // Keep the highlighted row in view while the arrow keys move it.
@@ -103,10 +106,10 @@ export function SearchSelect({
     onChange(option.value);
     close();
   };
-  const runAction = () => {
+  const runAction = (index: number) => {
     const typed = query.trim();
     close();
-    action?.onSelect(typed);
+    actions[index]?.onSelect(typed);
   };
 
   return (
@@ -146,7 +149,7 @@ export function SearchSelect({
               // Picks the highlighted name; it must never submit the form around the box.
               event.preventDefault();
               if (open && entries[highlighted]) pick(entries[highlighted]);
-              else if (open && action && highlighted === entries.length) runAction();
+              else if (open && highlighted >= entries.length) runAction(highlighted - entries.length);
             } else if (event.key === "Escape" && open) {
               event.preventDefault();
               close();
@@ -211,26 +214,31 @@ export function SearchSelect({
                   ))
                 )}
               </ul>
-              {action ? (
-                <div
-                  id={`${listId}-${entries.length}`}
-                  role="option"
-                  aria-selected={false}
-                  // Mouse down, not click, for the same reason as the rows above.
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    runAction();
-                  }}
-                  onMouseMove={() => setActive(entries.length)}
-                  className={cn(
-                    "flex min-h-10 shrink-0 cursor-pointer items-center gap-2 border-t border-border px-3.5 py-2 text-sm font-medium",
-                    highlighted === entries.length ? "bg-primary/10 text-primary" : "text-primary",
-                  )}
-                >
-                  <Plus className="size-3.5 shrink-0" />
-                  {action.label}
-                </div>
-              ) : null}
+              {actions.map((action, index) => {
+                const row = entries.length + index;
+                return (
+                  <div
+                    key={action.label}
+                    id={`${listId}-${row}`}
+                    role="option"
+                    aria-selected={false}
+                    // Mouse down, not click, for the same reason as the rows above.
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      runAction(index);
+                    }}
+                    onMouseMove={() => setActive(row)}
+                    className={cn(
+                      "flex min-h-10 shrink-0 cursor-pointer items-center gap-2 px-3.5 py-2 text-sm font-medium",
+                      index === 0 && "border-t border-border",
+                      highlighted === row ? "bg-primary/10 text-primary" : "text-primary",
+                    )}
+                  >
+                    <Plus className="size-3.5 shrink-0" />
+                    {action.label}
+                  </div>
+                );
+              })}
             </FloatingList>
           )
         : null}

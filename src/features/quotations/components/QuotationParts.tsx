@@ -4,7 +4,7 @@ import { Check, CalendarDays, Clock, ExternalLink, MapPin, Users, X } from "luci
 import type { QuotationLineView, QuotationPlan, QuotationStatus, QuotationVenue, QuotationView } from "@/features/quotations/types";
 import type { QuotationBucket } from "@/features/quotations/source";
 import { discountLabel } from "@/features/quotations/discount";
-import { MediaThumb, useProductMedia } from "@/features/master-data";
+import { MediaThumb, useLineMedia } from "@/features/master-data";
 import { quantityLabel } from "@/features/master-data/storefront";
 import { formatMoney, type Money } from "@/lib/money";
 import { InventoryChip, StockSummary, type LineStock } from "@/features/quotations/components/InventoryChip";
@@ -271,7 +271,7 @@ function LineRows({
   before?: number;
   stocks?: Map<string, LineStock>;
 }) {
-  const media = useProductMedia();
+  const media = useLineMedia();
   return (
     <TableWrapper>
       <Table>
@@ -294,7 +294,7 @@ function LineRows({
                 <TD className="tabular text-muted-foreground">{before + index + 1}</TD>
                 <TD>
                   <div className="flex items-center gap-2.5">
-                    <MediaThumb media={media.get(line.productId)} />
+                    <MediaThumb media={media(line.productId, line.variantId)} />
                     <div className="min-w-0">
                       <span className="font-medium">{name}</span>
                       {variant ? <Badge className="ml-1.5 align-middle">{variant}</Badge> : null}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileText, Loader2, X } from "lucide-react";
+import { Download, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/features/auth";
 import { uploadMedia } from "@/features/master-data/api/backend";
@@ -13,23 +13,24 @@ import {
   PAYMENT_MODES,
   billingKeys,
   getOrderBalance,
+  getOrderPaymentHistory,
   getQuotationBalance,
-  issueFinalInvoice,
+  getQuotationPaymentHistory,
   issueTaxInvoice,
   listDocuments,
   listQuotationDocuments,
   recordPayment,
   recordQuotationPayment,
-  rejectPayment,
   saveSchedule,
-  verifyPayment,
+  type BillingDocument,
   type OrderBalance,
   type Payment,
   type PaymentMode,
   type PaymentPurpose,
-  type PaymentStatus,
 } from "@/features/billing/api";
-import { ApiError } from "@/services/api-client";
+import { EventList, PaymentRowActions, PaymentStatusCell, apiMessage as message } from "@/features/billing/components/PaymentParts";
+import { canMakeInvoicePdf, type InvoiceBody } from "@/features/billing/invoice/buildInvoiceDoc";
+import { downloadInvoicePdf } from "@/features/billing/invoice/downloadInvoicePdf";
 import { formatMoney } from "@/lib/money";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -40,26 +41,19 @@ import { Input, Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
-const STATUS_VARIANT: Record<PaymentStatus, "warning" | "success" | "destructive"> = {
-  RECORDED: "warning",
-  VERIFIED: "success",
-  REJECTED: "destructive",
-};
-
-const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
-
 /** Money received against one order, the balance, the instalments and the documents. */
 export function OrderBillingPanel({
   orderId,
   quotationId,
-  completed = false,
+  dispatched = false,
   acceptsOnPayment = false,
 }: {
   /** An order... */
   orderId?: string;
   /** ...or a quotation that is not an order yet. */
   quotationId?: string;
-  completed?: boolean;
+  /** Goods have gone out: a payment on the order can no longer be voided. */
+  dispatched?: boolean;
   /** A sent quotation: a verified payment accepts it. */
   acceptsOnPayment?: boolean;
 }) {
@@ -67,6 +61,7 @@ export function OrderBillingPanel({
   const targetId = (orderId ?? quotationId) as string;
   const canWrite = useCan("PAYMENT_WRITE");
   const canVerify = useCan("PAYMENT_VERIFY");
+  const canVoid = useCan("PAYMENT_VOID");
   const canReadInvoices = useCan("INVOICE_READ");
   const canWriteInvoices = useCan("INVOICE_WRITE");
   const queryClient = useQueryClient();
@@ -84,24 +79,8 @@ export function OrderBillingPanel({
     queryClient.invalidateQueries({ queryKey: ["quotations"] });
   };
 
-  const verify = useMutation({
-    mutationFn: (id: string) => verifyPayment(id),
-    onSuccess: (p) => {
-      refresh();
-      toast.success(`Payment verified. Receipt ${p.receiptNumber}`);
-    },
-    onError: (e) => toast.error(message(e, "Could not verify the payment.")),
-  });
-  const reject = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => rejectPayment(id, reason),
-    onSuccess: () => {
-      refresh();
-      toast.success("Payment rejected");
-    },
-    onError: (e) => toast.error(message(e, "Could not reject the payment.")),
-  });
   const invoice = useMutation({
-    mutationFn: (kind: "tax" | "final") => (kind === "tax" ? issueTaxInvoice(targetId) : issueFinalInvoice(targetId)),
+    mutationFn: () => issueTaxInvoice(targetId),
     onSuccess: (d) => {
       refresh();
       toast.success(`${DOCUMENT_LABEL[d.kind]} ${d.number} issued`);
@@ -112,25 +91,22 @@ export function OrderBillingPanel({
   if (balance.isPending) return <Skeleton className="h-40" />;
   if (balance.isError) return <Alert tone="error" title="The payments could not be loaded." />;
   const b = balance.data;
-  const hasInvoice = (kind: string) => documents.data?.some((d) => d.kind === kind) ?? false;
+  // The order's one invoice. It is issued by the system the moment the order is paid in full (rental and deposit, verified).
+  const invoiceDoc = documents.data?.find((d) => d.kind === "TAX_INVOICE");
+  const paidInFull =
+    !forQuotation &&
+    Number(b.verifiedPaid.amount) > 0 &&
+    Number(b.balance.amount) <= 0 &&
+    Number(b.depositReceived.amount) >= Number(b.depositRequired.amount);
 
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle>Payments</CardTitle>
-        {canWriteInvoices && !forQuotation ? (
-          <div className="flex gap-2">
-            {!hasInvoice("TAX_INVOICE") ? (
-              <Button size="sm" variant="outline" onClick={() => invoice.mutate("tax")} disabled={invoice.isPending}>
-                Issue tax invoice
-              </Button>
-            ) : null}
-            {completed && !hasInvoice("FINAL_INVOICE") ? (
-              <Button size="sm" variant="outline" onClick={() => invoice.mutate("final")} disabled={invoice.isPending}>
-                Issue final invoice
-              </Button>
-            ) : null}
-          </div>
+        {canWriteInvoices && paidInFull && documents.data && !invoiceDoc ? (
+          <Button size="sm" variant="outline" onClick={() => invoice.mutate()} disabled={invoice.isPending}>
+            Issue invoice now
+          </Button>
         ) : null}
       </CardHeader>
       <CardContent className="space-y-5">
@@ -182,16 +158,24 @@ export function OrderBillingPanel({
                   <PaymentRow
                     key={p.id}
                     payment={p}
+                    canWrite={canWrite}
                     canVerify={canVerify}
-                    busy={verify.isPending || reject.isPending}
-                    onVerify={() => verify.mutate(p.id)}
-                    onReject={(reason) => reject.mutate({ id: p.id, reason })}
+                    canVoid={canVoid}
+                    voidBlockedReason={
+                      invoiceDoc
+                        ? "An invoice has been issued for this order; a payment on it can no longer be voided."
+                        : dispatched
+                          ? "The order has been dispatched; a payment on it can no longer be voided."
+                          : undefined
+                    }
+                    onChanged={refresh}
                   />
                 ))}
               </TBody>
             </Table>
           </TableWrapper>
         )}
+        {b.payments.length > 0 ? <PaymentTimeline targetId={targetId} forQuotation={forQuotation} payments={b.payments} /> : null}
 
         {!forQuotation && b.schedule.length > 0 ? (
           <div>
@@ -219,16 +203,21 @@ export function OrderBillingPanel({
           </>
         ) : null}
 
-        {canReadInvoices && documents.data && documents.data.length > 0 ? (
+        {canReadInvoices && !forQuotation && documents.data ? (
+          <InvoiceBlock invoice={invoiceDoc} paidInFull={paidInFull} />
+        ) : null}
+
+        {canReadInvoices && documents.data && documents.data.filter((d) => d.id !== invoiceDoc?.id).length > 0 ? (
           <div>
             <h3 className="mb-2 text-sm font-medium">Documents</h3>
             <ul className="space-y-1 text-sm">
-              {documents.data.map((d) => (
+              {documents.data.filter((d) => d.id !== invoiceDoc?.id).map((d) => (
                 <li key={d.id} className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-2">
                     <FileText className="size-4 text-muted-foreground" />
-                    {DOCUMENT_LABEL[d.kind]} <span className="tabular">{d.number}</span>
+                    {DOCUMENT_LABEL[d.kind]} <span className={d.cancelled ? "tabular line-through" : "tabular"}>{d.number}</span>
                     <span className="text-muted-foreground">{d.issuedOn}</span>
+                    {d.cancelled ? <Badge variant="destructive">cancelled</Badge> : null}
                   </span>
                   <Link href={`/billing/document?id=${d.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
                     Open / print
@@ -243,6 +232,57 @@ export function OrderBillingPanel({
   );
 }
 
+/** The order's invoice: its number, date and amount, with the PDF; or why there is none yet. */
+function InvoiceBlock({ invoice, paidInFull }: { invoice: BillingDocument | undefined; paidInFull: boolean }) {
+  const [making, setMaking] = useState(false);
+  if (!invoice) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        {paidInFull
+          ? "This order is paid in full but has no invoice yet. Use \"Issue invoice now\"."
+          : "The invoice is issued automatically once the rental and the deposit are both paid and verified."}
+      </p>
+    );
+  }
+  const body = invoice.body as unknown as InvoiceBody;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm">
+      <div className="space-y-0.5">
+        <p className="font-medium">
+          Tax invoice <span className="tabular">{invoice.number}</span> <Badge variant="success">paid in full</Badge>
+        </p>
+        <p className="text-muted-foreground">
+          Issued {invoice.issuedOn} · {formatMoney(invoice.total)}
+          {body.summary && Number(body.summary.securityDeposit) > 0 ? " (includes the refundable deposit)" : ""}
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Link href={`/billing/document?id=${invoice.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Open
+        </Link>
+        {canMakeInvoicePdf({ body }) ? (
+          <Button
+            size="sm"
+            disabled={making}
+            onClick={async () => {
+              setMaking(true);
+              try {
+                await downloadInvoicePdf({ number: invoice.number, issuedOn: invoice.issuedOn, orderNumber: invoice.orderNumber ?? "", body });
+              } catch {
+                toast.error("The invoice PDF could not be made. Please try again.");
+              } finally {
+                setMaking(false);
+              }
+            }}
+          >
+            {making ? <Loader2 className="animate-spin" /> : <Download />} Download PDF
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div>
@@ -254,16 +294,18 @@ function Figure({ label, value, strong }: { label: string; value: string; strong
 
 function PaymentRow({
   payment,
+  canWrite,
   canVerify,
-  busy,
-  onVerify,
-  onReject,
+  canVoid,
+  voidBlockedReason,
+  onChanged,
 }: {
   payment: Payment;
+  canWrite: boolean;
   canVerify: boolean;
-  busy: boolean;
-  onVerify: () => void;
-  onReject: (reason: string) => void;
+  canVoid: boolean;
+  voidBlockedReason?: string;
+  onChanged: () => void;
 }) {
   return (
     <TR>
@@ -280,37 +322,53 @@ function PaymentRow({
       </TD>
       <TD className="tabular text-right">{formatMoney(payment.amount)}</TD>
       <TD>
-        <Badge variant={STATUS_VARIANT[payment.status]}>{payment.status.toLowerCase()}</Badge>
-        {payment.receiptNumber ? <div className="text-xs text-muted-foreground">{payment.receiptNumber}</div> : null}
-        {payment.rejectReason ? <div className="text-xs text-muted-foreground">{payment.rejectReason}</div> : null}
+        <PaymentStatusCell payment={payment} />
       </TD>
       <TD>
-        {canVerify && payment.status === "RECORDED" ? (
-          <div className="flex gap-1">
-            <Button size="sm" variant="outline" disabled={busy} onClick={onVerify}>
-              <Check /> Verify
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                const reason = window.prompt("Why is this payment rejected?");
-                if (reason && reason.trim()) onReject(reason.trim());
-              }}
-            >
-              <X /> Reject
-            </Button>
-          </div>
-        ) : null}
+        <PaymentRowActions
+          payment={payment}
+          canWrite={canWrite}
+          canVerify={canVerify}
+          canVoid={canVoid}
+          voidBlockedReason={voidBlockedReason}
+          onChanged={onChanged}
+        />
       </TD>
     </TR>
   );
 }
 
-/** What can still be recorded for one purpose: what is due less what is already verified or waiting to be (rejected money frees the room). */
+/** Everything that happened to the order's payments, oldest first. Loaded only when opened. */
+function PaymentTimeline({ targetId, forQuotation, payments }: { targetId: string; forQuotation: boolean; payments: Payment[] }) {
+  const [open, setOpen] = useState(false);
+  const history = useQuery({
+    queryKey: billingKeys.orderHistory(targetId),
+    queryFn: ({ signal }) => (forQuotation ? getQuotationPaymentHistory(targetId, signal) : getOrderPaymentHistory(targetId, signal)),
+    enabled: open,
+  });
+  const describe = (paymentId: string) => {
+    const p = payments.find((x) => x.id === paymentId);
+    return p ? `${formatMoney(p.amount)} · ${MODE_LABEL[p.mode]}${p.purpose === "DEPOSIT" ? " · deposit" : ""}` : "";
+  };
+  return (
+    <div>
+      <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        {open ? "Hide payment history" : "Show payment history"}
+      </Button>
+      {open ? (
+        <div className="mt-2">
+          {history.isPending ? <Skeleton className="h-20" /> : null}
+          {history.isError ? <Alert tone="error" title="The history could not be loaded." /> : null}
+          {history.data ? <EventList events={history.data} describe={describe} /> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** What can still be recorded for one purpose: what is due less what is already verified or waiting to be (rejected and voided money frees the room). */
 function remainingFor(b: OrderBalance, purpose: PaymentPurpose): number {
-  const counted = (p: Payment) => p.purpose === purpose && p.status !== "REJECTED";
+  const counted = (p: Payment) => p.purpose === purpose && p.status !== "REJECTED" && p.status !== "VOIDED";
   const committed = b.payments.filter(counted).reduce((sum, p) => sum + Number(p.amount.amount), 0);
   const due =
     purpose === "DEPOSIT"
@@ -338,6 +396,9 @@ function RecordPaymentForm({
   const [reference, setReference] = useState("");
   const [paidOn, setPaidOn] = useState("");
   const [proof, setProof] = useState<File | null>(null);
+  /** Someone who may verify can confirm in the same step (the usual case at the counter) or leave it to be checked later, which keeps it editable. */
+  const [confirmNow, setConfirmNow] = useState(true);
+  const verifyNow = canVerify && confirmNow;
   const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
@@ -355,7 +416,7 @@ function RecordPaymentForm({
         reference: reference.trim() || undefined,
         paidOn: paidOn || undefined,
         proofUrl,
-        verifyNow: canVerify || undefined,
+        verifyNow: verifyNow || undefined,
       });
     },
     onSuccess: () => {
@@ -364,7 +425,7 @@ function RecordPaymentForm({
       setReference("");
       setProof(null);
       onDone();
-      toast.success(canVerify ? "Payment recorded and confirmed. The receipt is issued." : "Payment recorded. It counts once Accounts verify it.");
+      toast.success(verifyNow ? "Payment recorded and confirmed. The receipt is issued." : "Payment recorded. It counts once it is verified.");
     },
     onError: (e) => setError(e instanceof Error ? e.message : "Could not record the payment."),
   });
@@ -419,6 +480,13 @@ function RecordPaymentForm({
           )}
         </Field>
       </div>
+      {canVerify ? (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={confirmNow} onChange={(e) => setConfirmNow(e.target.checked)} />
+          Confirm now and issue the receipt
+          <span className="text-xs text-muted-foreground">(untick to leave it waiting to be verified; it can be edited until then)</span>
+        </label>
+      ) : null}
       <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || invalid}>
         {save.isPending ? <Loader2 className="animate-spin" /> : null}
         Record payment

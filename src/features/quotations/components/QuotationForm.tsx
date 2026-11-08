@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,6 +12,9 @@ import { toast } from "sonner";
 import { createQuotation, quotationKeys, updateQuotation } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { listCustomers, listProducts, masterDataKeys } from "@/features/master-data/api";
+import { ProductDialog } from "@/features/master-data/components/ProductDialog";
+import { choosableVariants } from "@/features/master-data/variants";
+import { useCan } from "@/features/auth";
 import type { ProductVariantView, ProductView } from "@/features/master-data/types";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
@@ -23,7 +27,9 @@ import { areaOf, bestFit } from "@/lib/area";
 import { RATE_TYPES, RATE_TYPE_LABEL, ratePerDayLabel, unitLabel, type RateType } from "@/features/master-data/storefront";
 import { amountField, isIsoDate, positiveIntegerField } from "@/lib/forms";
 import { PageHeader } from "@/components/page-header";
+import { BackButton } from "@/components/back-button";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select";
@@ -36,10 +42,9 @@ import { useDateStock } from "@/features/quotations/useDateStock";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const schema = z.object({
-  customerName: z.string().trim().min(1, "Enter the customer's name"),
-  // Only filled in when more than one customer has the typed name; otherwise
-  // the name alone resolves the customer on submit.
-  customerId: z.string(),
+  // The name is only what the dropdown shows; the customer is the id chosen there.
+  customerName: z.string(),
+  customerId: z.string().min(1, "Choose a customer"),
   eventDate: z
     .string()
     .refine((value) => value === "" || isIsoDate(value), "Enter a valid date")
@@ -143,9 +148,6 @@ const discountRequest = (values: { discountType: "FLAT" | "PERCENT"; discountAmo
     ? { discountType: "PERCENT" as const, discountPercent: values.discountAmount }
     : { discountType: "FLAT" as const, discountAmount: values.discountAmount };
 
-/** Names compared the way a person would: ignoring case and extra spaces. */
-const normaliseName = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
-const sameName = (a: string, b: string) => normaliseName(a) === normaliseName(b);
 
 function EstimateRow({ label, amount }: { label: string; amount: number }) {
   return (
@@ -170,6 +172,12 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const [formError, setFormError] = useState<string | null>(null);
   // The length and width boxes of an area line, as typed; until one is typed they show the best whole-number fit of the area.
   const [sides, setSides] = useState<Record<string, { length: string; width: string }>>({});
+  // Back or Cancel with unsaved changes asks first; this holds the step to take once the user says to discard them.
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  // "Add new product" from a line: which line, and what had been typed in its box (the new product's name to start with).
+  const [newProductFor, setNewProductFor] = useState<{ index: number; name: string } | null>(null);
+  // Creating a product needs master-data rights; someone who can only write quotations is not offered it.
+  const canCreateProducts = useCan("MASTER_DATA_WRITE");
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -198,15 +206,17 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     register,
     handleSubmit,
     getValues,
+    reset,
     setValue,
     setError,
-    formState: { errors },
+    setFocus,
+    formState: { errors, isDirty },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: existing
       ? {
           customerName: existing.customerName,
-          customerId: "",
+          customerId: existing.customerId ?? "",
           eventDate: existing.eventDate ?? "",
           validUntil: existing.validUntil ?? "",
           securityDeposit: String(Number(existing.totalSecurityDeposit.amount)),
@@ -259,39 +269,61 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   // than form.watch: watch() hands back a function the React Compiler cannot
   // memoize safely, so using it opts this whole component out of compilation.
   const watchedLines = useWatch({ control, name: "lines" });
-  const watchedCustomerName = useWatch({ control, name: "customerName" });
   const watchedCustomerId = useWatch({ control, name: "customerId" });
   const watchedEventDate = useWatch({ control, name: "eventDate" });
 
-  // The name is typed, but a quotation still belongs to a customer record by
-  // id — its order, deposit and credit notes all hang off that id — so the
-  // name is resolved to an existing customer rather than stored on its own.
-  // Names are not unique (emails are), so several matches ask which one.
-  // Editing keeps the quotation's customer while its name is left as it was,
-  // even if the customer has since been renamed.
-  const keepsExistingCustomer = Boolean(
-    existing?.customerId &&
-      sameName(watchedCustomerName ?? "", existing.customerName),
-  );
-  const nameMatches = (customers.data ?? []).filter((customer) =>
-    sameName(customer.fullName, watchedCustomerName ?? ""),
-  );
-  const selectedCustomer = keepsExistingCustomer
-    ? customers.data?.find((customer) => customer.id === existing?.customerId)
-    : nameMatches.length === 1
-      ? nameMatches[0]
-      : nameMatches.find((customer) => customer.id === watchedCustomerId);
+  // A quotation belongs to a customer record by id (its order, deposit and credit notes all hang off it), so the customer is
+  // chosen from the list by id. Editing starts on the quotation's own customer even if they have since been renamed.
+  const selectedCustomer = (customers.data ?? []).find((customer) => customer.id === watchedCustomerId);
+  const customerOptions: SearchSelectOption[] = (customers.data ?? []).map((customer) => ({
+    value: customer.id,
+    label: customer.fullName,
+    hint: [customer.email, customer.phone].filter(Boolean).join(" · "),
+    keywords: `${customer.email} ${customer.phone ?? ""}`,
+  }));
+
+  // "Add customer" in the dropdown goes to the customer form and comes back here with the new customer chosen. What has been
+  // filled in so far is kept for the trip (see the restore effect below), so the lines are not lost.
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const addCustomer = (typed: string) => {
+    try {
+      sessionStorage.setItem("quotation-draft", JSON.stringify({ path: pathname, values: getValues() }));
+    } catch {
+      // Private window or blocked storage: the customer is still added and chosen, only the lines are not kept.
+    }
+    // The edit page names its quotation in the query (`?id=`), which has to come back too.
+    const params = new URLSearchParams({ new: "1", returnTo: existing ? `${pathname}?id=${existing.id}` : pathname });
+    if (typed) params.set("name", typed);
+    router.push(`/master-data/customers?${params.toString()}`);
+  };
+  useEffect(() => {
+    const params = new URLSearchParams(search.toString());
+    if (params.get("restore") !== "1") return;
+    try {
+      const draft = JSON.parse(sessionStorage.getItem("quotation-draft") ?? "null") as { path: string; values: FormInput } | null;
+      sessionStorage.removeItem("quotation-draft");
+      if (draft?.path === pathname) reset({ ...draft.values, customerId: params.get("customerId") ?? draft.values.customerId });
+      else if (params.get("customerId")) setValue("customerId", params.get("customerId") as string);
+    } catch {
+      if (params.get("customerId")) setValue("customerId", params.get("customerId") as string);
+    }
+  }, [pathname, search, reset, setValue]);
 
   // An event planner is quoted the product's wholesale rate, moved by their own discount (20 unless staff set another, and 20
   // is the wholesale rate itself); anyone else, retail.
   const plannerPercent =
     selectedCustomer?.accountType === "EVENT_PLANNER" ? (selectedCustomer.plannerDiscountPercent ?? 20) : 0;
+  const customerPercent =
+    selectedCustomer && selectedCustomer.accountType !== "EVENT_PLANNER" ? (selectedCustomer.customerDiscountPercent ?? 0) : 0;
 
   /** What this customer is quoted for a product (or one of its variants): retail, or an event planner's wholesale-based rate. */
   const quotedFor = (product: ProductView, variant?: ProductVariantView): number => {
     const source = variant ?? product;
     const retail = Number(source.retailRate.amount);
-    return plannerPercent ? plannerRate(retail, Number(source.wholesaleRate.amount), plannerPercent) : retail;
+    if (plannerPercent) return plannerRate(retail, Number(source.wholesaleRate.amount), plannerPercent);
+    // A regular customer's own percentage off retail (same rounding as the backend: two decimals).
+    return customerPercent ? Math.round(retail * (100 - customerPercent)) / 100 : retail;
   };
 
   /** The per-day rate a line is priced at, or null until it has a product. */
@@ -549,22 +581,12 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
       }
     });
     if (missingVariant) return;
-    if (keepsExistingCustomer && existing?.customerId) {
-      mutation.mutate({ values, customerId: existing.customerId });
-      return;
-    }
     if (!customers.data) {
-      setError("customerName", { message: "Customers are still loading; try again" });
-      return;
-    }
-    if (nameMatches.length === 0) {
-      setError("customerName", {
-        message: `No customer named '${values.customerName}'. Add them under Customers first.`,
-      });
+      setError("customerId", { message: "Customers are still loading; try again" });
       return;
     }
     if (!selectedCustomer) {
-      setError("customerId", { message: "Choose which customer this is" });
+      setError("customerId", { message: "Choose a customer" });
       return;
     }
     mutation.mutate({ values, customerId: selectedCustomer.id });
@@ -573,8 +595,59 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const linesError = errors.lines?.root?.message ?? errors.lines?.message;
   const loadError = products.error ?? customers.error;
 
+  /** Puts a product just added to the catalogue on the line it was added from, priced as a catalogue product is. */
+  const fillWithNewProduct = (index: number, product: ProductView) => {
+    setValue(`lines.${index}.oneTime`, false);
+    setValue(`lines.${index}.productId`, product.id, { shouldDirty: true, shouldValidate: true });
+    setValue(`lines.${index}.lineId`, "");
+    setValue(`lines.${index}.variantId`, "");
+    setValue(`lines.${index}.unitRatePerDay`, String(quotedFor(product)), { shouldValidate: true });
+    setValue(`lines.${index}.rateOverride`, false);
+    // On to the line's quantity, the next thing to fill, once the dialog has gone.
+    setTimeout(() => setFocus(`lines.${index}.quantity`), 0);
+  };
+
+  /** Leaves at once when nothing has changed; otherwise asks before throwing the changes away. */
+  const leaveGuard = (leave: () => void) => (isDirty ? setLeaving(() => leave) : leave());
+  const parentHref = existing ? `/quotations?id=${existing.id}` : "/quotations";
+
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <BackButton fallback={parentHref} guard={mutation.isPending ? () => undefined : leaveGuard} />
+      {leaving ? (
+        <ConfirmDialog
+          title="Discard your changes?"
+          description={
+            existing
+              ? `Your changes to ${existing.quotationNumber} have not been saved.`
+              : "This quotation has not been created yet. What you entered will be lost."
+          }
+          confirmLabel="Discard changes"
+          fallbackError="Could not leave this page."
+          action={() => Promise.resolve()}
+          onDone={() => {
+            const leave = leaving;
+            setLeaving(null);
+            leave();
+          }}
+          onClose={() => setLeaving(null)}
+        />
+      ) : null}
+      {/* The Products module's own dialog, over this page, so nothing typed into the quotation is lost. It is put on
+          the page body because it has a form of its own, which must not sit inside this one; and its submit is
+          stopped at its edge, because React passes events up through a portal to this form too. */}
+      {newProductFor
+        ? createPortal(
+            <div onSubmit={(event) => event.stopPropagation()}>
+              <ProductDialog
+                initialName={newProductFor.name || undefined}
+                onClose={() => setNewProductFor(null)}
+                onClosedAfterSave={(product) => fillWithNewProduct(newProductFor.index, product)}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
       <PageHeader
         title={existing ? `Edit ${existing.quotationNumber}` : "New quotation"}
         description={
@@ -587,9 +660,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
-                router.push(existing ? `/quotations?id=${existing.id}` : "/quotations")
-              }
+              onClick={() => leaveGuard(() => router.push(parentHref))}
               disabled={mutation.isPending}
             >
               Cancel
@@ -628,32 +699,21 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           <CardTitle>Customer</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field
-            label="Customer name"
-            required
-            error={errors.customerName?.message}
-            className="sm:col-span-2"
-          >
+          <Field label="Customer" required error={errors.customerId?.message} className="sm:col-span-2">
             {(props) => (
-              <>
-                <Input
-                  {...props}
-                  {...register("customerName")}
-                  list="quotation-customer-names"
-                  autoComplete="off"
-                  placeholder="Amit Shah"
-                  maxLength={200}
-                  disabled={mutation.isPending}
-                  autoFocus={!existing}
-                />
-                <datalist id="quotation-customer-names">
-                  {[...new Set((customers.data ?? []).map((customer) => customer.fullName))].map(
-                    (name) => (
-                      <option key={name} value={name} />
-                    ),
-                  )}
-                </datalist>
-              </>
+              <SearchSelect
+                id={props.id}
+                value={watchedCustomerId}
+                options={customerOptions}
+                placeholder={customers.isPending ? "Loading customers…" : "Search a customer by name, email or phone"}
+                disabled={mutation.isPending || customers.isPending}
+                aria-invalid={Boolean(errors.customerId)}
+                onChange={(id) => {
+                  setValue("customerId", id, { shouldValidate: true, shouldDirty: true });
+                  setValue("customerName", customers.data?.find((customer) => customer.id === id)?.fullName ?? "");
+                }}
+                actions={[{ label: "Add customer", onSelect: addCustomer }]}
+              />
             )}
           </Field>
 
@@ -687,26 +747,6 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                   type="date"
                   disabled={mutation.isPending}
                 />
-              )}
-            </Field>
-          ) : null}
-
-          {!keepsExistingCustomer && nameMatches.length > 1 ? (
-            <Field
-              label={`${nameMatches.length} customers have this name`}
-              required
-              error={errors.customerId?.message}
-              className="sm:col-span-2"
-            >
-              {(props) => (
-                <Select {...props} {...register("customerId")} disabled={mutation.isPending}>
-                  <option value="">Choose which one</option>
-                  {nameMatches.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.fullName} · {customer.email}
-                    </option>
-                  ))}
-                </Select>
               )}
             </Field>
           ) : null}
@@ -844,18 +884,35 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                           <SearchSelect
                             value={productField.value}
                             // Something that is not in the catalogue is typed in by name and rate instead.
-                            action={{
-                              label: "Add one-time product",
-                              onSelect: (typed) => {
-                                setValue(`lines.${index}.oneTime`, true);
-                                setValue(`lines.${index}.oneTimeName`, typed);
-                                setValue(`lines.${index}.productId`, "");
-                                setValue(`lines.${index}.variantId`, "");
-                                setValue(`lines.${index}.lineId`, "");
-                                setValue(`lines.${index}.unitRatePerDay`, "");
-                                setValue(`lines.${index}.rateOverride`, false);
+                            // Something missing from the catalogue can also be added to it from here, for anyone
+                            // allowed to create products; the line takes it once the product dialog is closed.
+                            actions={[
+                              {
+                                label: "Add one-time product",
+                                onSelect: (typed) => {
+                                  setValue(`lines.${index}.oneTime`, true);
+                                  setValue(`lines.${index}.oneTimeName`, typed);
+                                  setValue(`lines.${index}.productId`, "");
+                                  setValue(`lines.${index}.variantId`, "");
+                                  setValue(`lines.${index}.lineId`, "");
+                                  setValue(`lines.${index}.unitRatePerDay`, "");
+                                  setValue(`lines.${index}.rateOverride`, false);
+                                },
                               },
-                            }}
+                              ...(canCreateProducts
+                                ? [
+                                    {
+                                      label: "Add new product",
+                                      onSelect: (typed: string) => {
+                                        // Let go of the box first: the dialog hands focus back to what had it when it
+                                        // closes, and focusing this box opens its list over the product just chosen.
+                                        (document.activeElement as HTMLElement | null)?.blur();
+                                        setNewProductFor({ index, name: typed });
+                                      },
+                                    },
+                                  ]
+                                : []),
+                            ]}
                             // A different product is a different line: it is priced afresh rather than
                             // inheriting this line's stored rate.
                             onChange={(productId) => {
@@ -916,9 +973,11 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                             className="mt-1.5 min-w-52"
                           >
                             <option value="">Choose a variant</option>
-                            {/* An inactive variant cannot be priced, so it is not offered; one already on the line stays so it still shows. */}
-                            {(productsById.get(line.productId)?.variants ?? [])
-                              .filter((variant) => variant.active !== false || variant.id === line.variantId)
+                            {/* An inactive variant cannot be priced, and a "Standard" with no stock beside real variants is
+                                not a choice, so neither is offered; one already on the line stays so it still shows. */}
+                            {(productsById.get(line.productId)
+                              ? choosableVariants(productsById.get(line.productId)!, line.variantId || undefined)
+                              : [])
                               .map((variant) => (
                               <option key={variant.id} value={variant.id}>
                                 {variant.name} — {formatMoney(quotedMoney(variant.retailRate, variant.wholesaleRate, plannerPercent))} {ratePerDayLabel(productsById.get(line.productId)?.rateType)}

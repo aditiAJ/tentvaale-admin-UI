@@ -2,7 +2,7 @@ import { policyHistory, type CompanyProfile, type PolicyKind } from "@/features/
 import type { QuotationView } from "@/features/quotations/types";
 import { discountLabel } from "@/features/quotations/discount";
 import type { DocFunction, DocLine, QuotationDoc } from "./QuotationDocument";
-import { loadImageData, loadMarkData, loadQrCodes } from "./pdfAssets";
+import { loadImageData, loadMarkData, loadLivePictures, loadQrCodes } from "./pdfAssets";
 
 const POLICY_TITLE: Record<string, string> = {
   CANCELLATION: "Cancellation policy",
@@ -39,6 +39,7 @@ function statusOf(status: string): { status: string; note: string } {
  * pictures and QR codes loaded as data. Anything that cannot be loaded is simply left out.
  */
 export async function buildQuotationDoc(q: QuotationView, company: CompanyProfile | undefined): Promise<QuotationDoc> {
+  const pictureFor = await loadLivePictures();
   const groups = new Map<string, DocFunction>();
   for (const line of q.lines) {
     const key = line.functionName ? `${line.functionName}|${line.functionDate ?? ""}` : "";
@@ -61,18 +62,19 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
       rate: amount(line.unitRatePerDay),
       amount: amount(line.lineTotal),
       category: line.categoryName ?? "Items",
-      image: line.imageUrl ?? null,
+      // The catalogue's picture today (variant first), not the copy the line saved when it was written.
+      image: pictureFor(line.productId, line.variantId, line.imageUrl),
     };
     group.lines.push(row);
   }
 
-  const urls = [...new Set(q.lines.map((l) => l.imageUrl).filter((u): u is string => Boolean(u)))];
-  const [uploadedLogo, pictures] = await Promise.all([
-    loadMarkData(company?.logoUrl),
+  const urls = [...new Set([...groups.values()].flatMap((g) => g.lines).map((l) => l.image).filter((u): u is string => Boolean(u)))];
+  const [wordmark, pictures] = await Promise.all([
+    loadMarkData("/logo-wordmark-pdf.png"),
     Promise.all(urls.map(async (url) => [url, await loadImageData(url)] as const)),
   ]);
-  // The company's own logo when it has uploaded one, otherwise the Tentvaale mark (a 480px copy of logo-mark.png).
-  const logo = uploadedLogo ?? (await loadMarkData("/logo-mark-pdf.png"));
+  // Always the TENTVAALE wordmark (public/logo-wordmark-pdf.png), not the logo uploaded in Company settings.
+  const logo = wordmark ?? (await loadMarkData("/logo-mark-pdf.png"));
   const images: Record<string, string> = {};
   for (const [url, data] of pictures) if (data) images[url] = data;
 

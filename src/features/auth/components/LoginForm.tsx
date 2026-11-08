@@ -11,6 +11,7 @@ import { useSession } from "@/features/auth/session";
 import { ApiError } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import { readSession } from "@/services/jwt";
+import { safeInternalPath } from "@/lib/navigation";
 import { DEMO_LOGINS, DEMO_PASSWORD } from "@/mock-data/seed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +57,8 @@ export function LoginForm() {
       signIn(accessToken);
       // `next` is set by the route guard so a deep link survives the detour
       // through login. Only same-origin paths are honoured — an absolute URL
-      // here would be an open redirect.
-      const next = searchParams.get("next");
-      router.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
+      // (or `//host`, `/\host`) here would be an open redirect.
+      router.replace(safeInternalPath(searchParams.get("next")) ?? "/");
     } catch (error) {
       setFormError(
         error instanceof ApiError && error.status === 401

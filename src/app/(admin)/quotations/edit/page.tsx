@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { EditQuotationPage } from "@/features/quotations";
 import { RequirePermission } from "@/components/require-permission";
 
@@ -11,7 +12,9 @@ export default async function Page({
 
   return (
     <RequirePermission permission="QUOTATION_WRITE">
-      <EditQuotationPage quotationId={typeof id === "string" ? id : ""} />
+      <Suspense>
+        <EditQuotationPage quotationId={typeof id === "string" ? id : ""} />
+      </Suspense>
     </RequirePermission>
   );
 }

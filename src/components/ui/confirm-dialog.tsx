@@ -54,10 +54,12 @@ export function ConfirmDialog({
       description={description}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+          {/* type="button": the dialog renders where it is used, which can be inside a form it must not submit. */}
+          <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
             Cancel
           </Button>
           <Button
+            type="button"
             variant={destructive ? "destructive" : "default"}
             disabled={mutation.isPending}
             onClick={() => {
