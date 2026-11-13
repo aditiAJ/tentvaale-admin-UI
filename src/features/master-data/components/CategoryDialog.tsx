@@ -217,6 +217,8 @@ export function CategoryDialog({
           onChange={setMedia}
           onBusyChange={setMediaBusy}
           disabled={mutation.isPending}
+          allowUrl={false}
+          expressive
         />
       </form>
     </Dialog>
