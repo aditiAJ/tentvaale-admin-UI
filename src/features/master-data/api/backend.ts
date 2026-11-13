@@ -117,12 +117,15 @@ interface WireVariant {
   attributes?: Record<string, number>;
   imageUrl?: string | null;
   thumbnailUrl?: string | null;
+  /** Stated by an import; null/absent means it is worked out from the stock. */
+  maxOrderable?: number | null;
 }
 
 interface WireProduct {
   id: number;
   sku: string;
   name: string;
+  maxOrderable?: number | null;
   description?: string | null;
   categoryId: number;
   categoryName: string;
@@ -328,6 +331,7 @@ function variantFromWire(variant: WireVariant): ProductVariantView {
     stock: variant.ownedStock + variant.supplierStock,
     imageUrl: variant.imageUrl ?? null,
     thumbnailUrl: variant.thumbnailUrl ?? null,
+    maxOrderable: variant.maxOrderable ?? null,
   };
 }
 
@@ -381,6 +385,7 @@ function productFromWire(product: WireProduct, variants: WireVariant[] = []): Pr
     wholesaleRate: money(product.wholesaleRate),
     retailRate: money(product.dailyRate),
     hasVariants: product.hasVariants,
+    maxOrderable: product.maxOrderable ?? null,
     variants: list.map(variantFromWire),
     axes: (product.axes ?? []).map((axis) => ({
       facetId: String(axis.facetId),

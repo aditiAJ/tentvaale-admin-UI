@@ -45,6 +45,7 @@ function Row({
   wholesale,
   retail,
   off,
+  maxOrderable,
 }: {
   name: string;
   sku?: string;
@@ -52,6 +53,7 @@ function Row({
   wholesale: ProductVariantView["wholesaleRate"];
   retail: ProductVariantView["retailRate"];
   off?: boolean;
+  maxOrderable?: number | null;
 }) {
   return (
     <li className={`rounded-lg border border-border bg-background px-3 py-2.5 ${off ? "opacity-60" : ""}`}>
@@ -65,7 +67,7 @@ function Row({
         </div>
         <StockPill stock={stock} />
       </div>
-      <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+      <dl className={`mt-2 grid gap-2 text-xs ${maxOrderable != null ? "grid-cols-3" : "grid-cols-2"}`}>
         <div>
           <dt className="text-muted-foreground">Retail</dt>
           <dd className="font-semibold text-primary tabular">{formatMoney(retail)}</dd>
@@ -74,6 +76,12 @@ function Row({
           <dt className="text-muted-foreground">Wholesale</dt>
           <dd className="font-medium tabular">{formatMoney(wholesale)}</dd>
         </div>
+        {maxOrderable != null ? (
+          <div>
+            <dt className="text-muted-foreground">Maximum orderable</dt>
+            <dd className="font-medium tabular">{maxOrderable}</dd>
+          </div>
+        ) : null}
       </dl>
     </li>
   );
@@ -173,6 +181,11 @@ export function ProductVariantsDialog({
           ) : list.length === 0 ? (
             <span className="rounded-md bg-muted px-2 py-1">No stock recorded</span>
           ) : null}
+          {product.maxOrderable != null ? (
+            <span className="rounded-md bg-muted px-2 py-1">
+              Maximum orderable <span className="font-semibold tabular">{product.maxOrderable}</span>
+            </span>
+          ) : null}
         </div>
 
         {list.length === 0 ? (
@@ -196,6 +209,7 @@ export function ProductVariantsDialog({
                         wholesale={variant.wholesaleRate}
                         retail={variant.retailRate}
                         off={variant.active === false}
+                        maxOrderable={variant.maxOrderable}
                       />
                     ))}
                 </ul>

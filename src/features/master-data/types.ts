@@ -131,6 +131,8 @@ export interface ProductView extends Partial<ProductStorefrontDetails> {
    * warehouse or out on rent without a variant.
    */
   hasVariants: boolean;
+  /** The most that can be ordered of the product, as stated by a product import; null: worked out from the stock. */
+  maxOrderable?: number | null;
   /** Every product has at least one variant (the default, hidden while it is the only one). */
   variants: ProductVariantView[];
   /** The facets this product's variants vary on, in display order. Empty until the admin picks (the demo data has none). */
@@ -174,6 +176,8 @@ export interface ProductVariantView {
   /** The variant's own picture (and its small version); none means the product's pictures show. */
   imageUrl?: string | null;
   thumbnailUrl?: string | null;
+  /** The most that can be ordered, as stated by a product import; null means it is worked out from the stock. */
+  maxOrderable?: number | null;
 }
 
 export interface VariantAxis {
