@@ -414,13 +414,10 @@ function ProductForm({
 
   const attributeRows = useFieldArray({ control, name: "attributes" });
 
-  // Only active categories can take a product. One already filed under a
-  // category that has since been deactivated keeps it as an option, rather
-  // than having the picker silently reset it.
+  // Switched-off categories can take a product too (so staff can prepare products before a category goes live);
+  // the "Hidden from the storefront" alert explains the effect. Archived ones are not in this list at all.
   const categoryOptions = useMemo(() => {
-    const list: CategoryView[] = (categories.data ?? []).filter(
-      (category) => category.active || category.id === existing?.categoryId,
-    );
+    const list: CategoryView[] = [...(categories.data ?? [])];
     if (
       existing?.categoryId &&
       categories.data &&
@@ -452,11 +449,8 @@ function ProductForm({
   const selectedSubCategoryId = useWatch({ control, name: "subCategoryId" });
   const selectedCategory = categoryOptions.find((category) => category.id === selectedCategoryId);
   const subCategoryOptions = selectedCategory?.subCategories ?? [];
-  // A switched-off sub-category takes no new product, but the one this product is already filed under stays
-  // choosable: the product can be saved where it is, and stays hidden from the storefront meanwhile.
-  const isCurrentFiling = (subId: string) => subId === existing?.subCategoryId;
-  const canTake = (category: CategoryView) =>
-    category.subCategories.some((sub) => sub.active !== false || isCurrentFiling(sub.id));
+  // A switched-off sub-category can be chosen too; the product stays hidden from the storefront meanwhile.
+  const canTake = (category: CategoryView) => category.subCategories.length > 0;
   const selectedSub = subCategoryOptions.find((sub) => sub.id === selectedSubCategoryId);
   const hiddenBecause =
     selectedSub && selectedCategory
@@ -833,11 +827,9 @@ function ProductForm({
                       {category.name}
                       {!category.subCategories.length
                         ? " (no sub-categories)"
-                        : !canTake(category)
-                          ? " (all sub-categories hidden)"
-                          : !category.active
-                            ? " (switched off)"
-                            : ""}
+                        : !category.active
+                          ? " (switched off)"
+                          : ""}
                     </option>
                   ))}
                 </Select>
@@ -856,11 +848,7 @@ function ProductForm({
                     {selectedCategoryId ? "Choose a sub-category" : "Choose a category first"}
                   </option>
                   {subCategoryOptions.map((sub) => (
-                    <option
-                      key={sub.id}
-                      value={sub.id}
-                      disabled={sub.active === false && !isCurrentFiling(sub.id)}
-                    >
+                    <option key={sub.id} value={sub.id}>
                       {sub.name}
                       {sub.active === false ? " (hidden)" : ""}
                     </option>
