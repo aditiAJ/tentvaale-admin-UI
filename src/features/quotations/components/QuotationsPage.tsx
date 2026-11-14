@@ -20,6 +20,7 @@ import {
 } from "@/features/quotations/components/QuotationParts";
 import { QuotationActions } from "@/features/quotations/components/QuotationActions";
 import { useCan } from "@/features/auth";
+import { VenueDialog } from "@/features/quotations/components/VenueDialog";
 import { ConvertToOrderDialog } from "@/features/orders";
 import { OrderBillingPanel } from "@/features/billing";
 import { IS_MOCK } from "@/services/data-source";
@@ -392,6 +393,8 @@ function QuotationDetail({ quotationId, backHref }: { quotationId: string; backH
 
 function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: QuotationView; onConvert: () => void; showBilling: boolean }) {
   const bucket = bucketOf(q);
+  const canWriteVenue = useCan("QUOTATION_WRITE");
+  const [editingVenue, setEditingVenue] = useState(false);
   return (
     <>
       <Card className="space-y-4 p-5">
@@ -442,7 +445,11 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
             </div>
           ) : null}
         </dl>
-        <VenueRow venue={q.venue} />
+        <VenueRow
+          venue={q.venue}
+          onEdit={canWriteVenue && q.status !== "REJECTED" && q.status !== "EXPIRED" ? () => setEditingVenue(true) : undefined}
+        />
+        {editingVenue ? <VenueDialog quotation={q} onClose={() => setEditingVenue(false)} /> : null}
       </Card>
 
       <section className="space-y-2">
