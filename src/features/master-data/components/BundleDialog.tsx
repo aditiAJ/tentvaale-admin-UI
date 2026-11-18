@@ -662,6 +662,8 @@ export function BundleDialog({
           onChange={setMedia}
           onBusyChange={setMediaBusy}
           disabled={mutation.isPending}
+          allowUrl={false}
+          expressive
         />
       </form>
     </Dialog>

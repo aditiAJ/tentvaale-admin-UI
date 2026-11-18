@@ -285,6 +285,10 @@ export function StockFields({ name, warehouseLabel = "Warehouse" }: { name: Stoc
           <Field label={index === 0 ? warehouseLabel : ""} error={lineErrors?.[index]?.warehouseId?.message}>
             {(props) => (
               <Select
+                // The warehouse list loads separately from the product. A select drawn before it has no option for the
+                // saved warehouse and would stay on "Choose a warehouse"; redrawing it once the options arrive makes
+                // the form apply the saved value. Kept ahead of the spreads, which React requires of a key.
+                key={`${field.id}-${options.length}`}
                 {...props}
                 {...register(`${name}.${index}.warehouseId` as `stock.${number}.warehouseId`)}
                 disabled={loading || options.length === 0}

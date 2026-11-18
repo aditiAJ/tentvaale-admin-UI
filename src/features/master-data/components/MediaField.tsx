@@ -114,8 +114,10 @@ export function MediaField({
       // unless compression genuinely can't get it under that (an unusually busy/large photo).
       const toSend: File[] = [];
       for (const [file, kind] of accepted) {
-        if (kind === "IMAGE" && acceptsVideo) {
-          if (file.size > MAX_PRODUCT_IMAGE_PICK_BYTES) {
+        if (kind === "IMAGE") {
+          // Every image is shrunk first, not just product photos: a phone photo of several MB sent as is can be
+          // refused by the server or the proxy in front of it ("Request Entity Too Large").
+          if (acceptsVideo && file.size > MAX_PRODUCT_IMAGE_PICK_BYTES) {
             problems.push(`${file.name}: over ${formatBytes(MAX_PRODUCT_IMAGE_PICK_BYTES)}; choose a smaller photo`);
             continue;
           }
@@ -241,10 +243,18 @@ export function MediaField({
           </span>
           <div className="space-y-1">
             <p className="text-sm font-semibold">
-              {busy ? "Uploading…" : dragging ? "Drop to upload" : "Drag photos and a video here"}
+              {busy
+                ? "Uploading…"
+                : dragging
+                  ? "Drop to upload"
+                  : acceptsVideo
+                    ? "Drag photos and a video here"
+                    : replacesImage
+                      ? "Drag a photo here"
+                      : "Drag photos here"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {full ? "The gallery is full. Remove one to add another." : "or choose them from your device"}
+              {full && !replacesImage ? "The gallery is full. Remove one to add another." : "or choose them from your device"}
             </p>
           </div>
           <Button
@@ -258,7 +268,7 @@ export function MediaField({
           </Button>
           <div className="flex flex-wrap justify-center gap-1.5 text-[0.7rem] text-muted-foreground">
             <span className="rounded-full border border-border bg-card px-2.5 py-0.5">
-              {images.length} of {limits.images} images
+              {images.length} of {limits.images} {limits.images === 1 ? "image" : "images"}
             </span>
             {acceptsVideo ? (
               <span className="rounded-full border border-border bg-card px-2.5 py-0.5">

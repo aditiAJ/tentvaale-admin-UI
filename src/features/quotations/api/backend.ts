@@ -280,3 +280,16 @@ export async function acceptOnBehalf(quotationId: string): Promise<{ id: string;
 export function getQuotationPlan(quotationId: string, signal?: AbortSignal): Promise<QuotationPlan> {
   return apiFetch<QuotationPlan>(`/admin/ordering/quotations/${id(quotationId)}/plan`, { signal });
 }
+
+/**
+ * Sets or corrects where the event is, in any status except closed or expired and until the order is dispatched.
+ * Changes no price and does not reopen the quotation; the customer is told. 422 when it is too late.
+ */
+export async function changeQuotationVenue(quotationId: string, venue: { text: string }): Promise<QuotationView> {
+  return fromWire(
+    await apiFetch<WireQuotation>(`/admin/ordering/quotations/${id(quotationId)}/venue`, {
+      method: "PUT",
+      body: { text: venue.text },
+    }),
+  );
+}

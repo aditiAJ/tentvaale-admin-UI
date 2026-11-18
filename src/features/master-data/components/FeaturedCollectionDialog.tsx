@@ -307,6 +307,8 @@ export function FeaturedCollectionDialog({
           onChange={setMedia}
           onBusyChange={setMediaBusy}
           disabled={mutation.isPending}
+          allowUrl={false}
+          expressive
         />
       </form>
     </Dialog>
