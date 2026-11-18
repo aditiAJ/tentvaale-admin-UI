@@ -37,6 +37,7 @@ import {
 } from "@/features/deposits/components/SettleDepositDialog";
 import { useCan } from "@/features/auth";
 import { OrderBillingPanel } from "@/features/billing";
+import { VenueDialog } from "@/features/quotations/components/VenueDialog";
 import { VenueRow, formatTime } from "@/features/quotations/components/QuotationParts";
 import { MediaThumb, useLineMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
@@ -117,6 +118,10 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const canReadPayments = useCan("PAYMENT_READ");
   const canWriteDeposit = useCan("DEPOSIT_WRITE");
   const canReadQuotation = useCan("QUOTATION_READ");
+  const canWriteQuotation = useCan("QUOTATION_WRITE");
+  const [editingVenue, setEditingVenue] = useState(false);
+  /** The venue can be set or corrected until the first dispatch (the server enforces the same rule). */
+  const canEditVenue = canWriteQuotation && order.status === "CONFIRMED";
   const productMedia = useLineMedia();
 
   // The workspace's list and counts are keyed apart from this order, so a
@@ -273,12 +278,13 @@ function OrderWorkspace({ order }: { order: OrderView }) {
         </CardContent>
       </Card>
 
-      {quotation.data?.venue ? (
+      {quotation.data && (quotation.data.venue || canEditVenue) ? (
         <Card className="space-y-3 p-5">
           <h3 className="text-sm font-semibold">Event</h3>
-          <VenueRow venue={quotation.data.venue} />
+          <VenueRow venue={quotation.data.venue} onEdit={canEditVenue ? () => setEditingVenue(true) : undefined} />
         </Card>
       ) : null}
+      {editingVenue && quotation.data ? <VenueDialog quotation={quotation.data} onClose={() => setEditingVenue(false)} /> : null}
 
       {canReadDeposit ? (
         <Card>

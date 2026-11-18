@@ -440,7 +440,7 @@ export function LinesByFunction({ quotation, plan }: { quotation: QuotationView;
 }
 
 /** The venue as a row with a map link, or a line saying there is none. */
-export function VenueRow({ venue }: { venue: QuotationVenue | null | undefined }) {
+export function VenueRow({ venue, onEdit }: { venue: QuotationVenue | null | undefined; onEdit?: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -462,8 +462,17 @@ export function VenueRow({ venue }: { venue: QuotationVenue | null | undefined }
           </a>
         </>
       ) : (
-        <p className="text-muted-foreground">No venue was given.</p>
+        <p className="flex-1 text-muted-foreground">No venue was given.</p>
       )}
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex shrink-0 items-center rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium hover:bg-muted"
+        >
+          {venue ? "Change" : "Add venue"}
+        </button>
+      ) : null}
     </div>
   );
 }
