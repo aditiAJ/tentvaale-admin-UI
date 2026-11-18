@@ -101,11 +101,12 @@ export async function buildDispatchDoc(
 
   // Only the pictures that will be printed are loaded.
   const urls = [...new Set(groups.flatMap((g) => g.entries).map((e) => e.image).filter((u): u is string => Boolean(u)))];
-  const [uploadedLogo, pictures] = await Promise.all([
-    loadMarkData(company?.logoUrl),
+  const [wordmark, pictures] = await Promise.all([
+    loadMarkData("/logo-wordmark-pdf.png"),
     Promise.all(urls.map(async (url) => [url, await loadImageData(url, 360)] as const)),
   ]);
-  const logo = uploadedLogo ?? (await loadMarkData("/logo-mark-pdf.png"));
+  // Always the TENTVAALE wordmark, the same as the quotation, not the logo uploaded in Company settings.
+  const logo = wordmark ?? (await loadMarkData("/logo-mark-pdf.png"));
   const images: Record<string, string> = {};
   for (const [url, data] of pictures) if (data) images[url] = data;
 
