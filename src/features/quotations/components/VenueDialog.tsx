@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PlaceSearch } from "@/components/ui/place-search";
+import { MAPS_KEY, describePlace, detailsOf, type Place } from "@/lib/maps";
 
 /**
  * Adds or corrects the venue of a quotation after it was sent or confirmed. Nothing is repriced; the customer
@@ -22,9 +24,23 @@ export function VenueDialog({ quotation, onClose }: { quotation: QuotationView; 
   const queryClient = useQueryClient();
   const [text, setText] = useState(quotation.venue?.text ?? "");
   const [error, setError] = useState<string | null>(null);
+  // What Google knew about a picked place; sent with the text, and dropped as soon as the text is typed over.
+  const [picked, setPicked] = useState<ReturnType<typeof detailsOf> | null>(null);
+
+  function fillFrom(place: Place) {
+    const line = describePlace(place);
+    if (!line) return;
+    setText(line.slice(0, 300));
+    setPicked(detailsOf(place));
+  }
 
   const mutation = useMutation({
-    mutationFn: () => changeQuotationVenue(quotation.id, { text: text.trim() }),
+    mutationFn: () => changeQuotationVenue(quotation.id, {
+        text: text.trim(),
+        latitude: picked?.latitude,
+        longitude: picked?.longitude,
+        placeId: picked?.placeId,
+      }),
     onSuccess: (updated) => {
       queryClient.setQueryData(quotationKeys.byId(quotation.id), updated);
       queryClient.invalidateQueries({ queryKey: quotationKeys.list });
@@ -35,7 +51,7 @@ export function VenueDialog({ quotation, onClose }: { quotation: QuotationView; 
     onError: (e) => setError(e instanceof ApiError ? e.message : "Could not save the venue."),
   });
 
-  const unchanged = text.trim() === (quotation.venue?.text ?? "");
+  const unchanged = !picked && text.trim() === (quotation.venue?.text ?? "");
 
   return (
     <Dialog
@@ -63,14 +79,22 @@ export function VenueDialog({ quotation, onClose }: { quotation: QuotationView; 
     >
       <div className="space-y-4">
         {error ? <Alert tone="error" title={error} /> : null}
+        {MAPS_KEY ? (
+          <Field label="Find it on Google Maps" hint="Pick a result to fill the venue below, with its map point, or type it yourself.">
+            {(props) => <PlaceSearch id={props.id} onPick={fillFrom} placeholder="Search a hall, place or address" />}
+          </Field>
+        ) : null}
         <Field label="Venue" hint="Hall or place name and address, as it should appear on the order and the dispatch list.">
           {(props) => (
             <Input
               {...props}
               value={text}
               maxLength={300}
-              autoFocus
-              onChange={(event) => setText(event.target.value)}
+              autoFocus={!MAPS_KEY}
+              onChange={(event) => {
+                setText(event.target.value);
+                setPicked(null);
+              }}
               disabled={mutation.isPending}
             />
           )}

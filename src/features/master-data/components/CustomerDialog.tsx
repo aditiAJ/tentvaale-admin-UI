@@ -17,7 +17,9 @@ import { Input, Select } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { StateSelect, initialState } from "@/components/ui/state-select";
-import { isStateName } from "@/lib/indian-states";
+import { PlaceSearch } from "@/components/ui/place-search";
+import { isStateName, matchState } from "@/lib/indian-states";
+import { MAPS_KEY, detailsOf, type Place } from "@/lib/maps";
 
 const FORM_ID = "customer-form";
 
@@ -105,6 +107,7 @@ export function CustomerDialog({
     register,
     control,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
@@ -122,6 +125,18 @@ export function CustomerDialog({
     },
   });
   const accountType = useWatch({ control, name: "accountType" });
+
+  // A picked place fills the address, the PIN code and (when it is a state on the list) the state.
+  function fillFrom(place: Place) {
+    const address = place.formattedAddress ?? place.displayName;
+    if (!address) return;
+    const details = detailsOf(place);
+    const options = { shouldValidate: true, shouldDirty: true };
+    setValue("addressLine", address.slice(0, 500), options);
+    const state = matchState(details.state)?.name;
+    if (state) setValue("state", state, options);
+    if (details.postalCode) setValue("postalCode", details.postalCode.slice(0, 20), options);
+  }
 
   const mutation = useMutation({
     mutationFn: (values: FormOutput) =>
@@ -250,6 +265,12 @@ export function CustomerDialog({
             )}
           </Field>
         </div>
+
+        {MAPS_KEY ? (
+          <Field label="Find the address on Google Maps" hint="Pick a result to fill the address, state and PIN code, or type them below.">
+            {(props) => <PlaceSearch id={props.id} onPick={fillFrom} />}
+          </Field>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
           <Field label="Address" error={errors.addressLine?.message}>

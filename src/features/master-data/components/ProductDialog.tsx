@@ -370,6 +370,7 @@ function ProductForm({
           ? (existing?.variants ?? []).filter((variant) => variant !== defaultVariant).map((variant) => ({
               id: variant.id,
               active: variant.active !== false,
+              locked: (variant.attributeFacetIds?.length ?? 0) > 1,
               type: typeOf(variant.attributeFacetIds),
               name: variant.name,
               wholesaleRate: amountText(variant.wholesaleRate.amount),

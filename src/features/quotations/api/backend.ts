@@ -285,11 +285,14 @@ export function getQuotationPlan(quotationId: string, signal?: AbortSignal): Pro
  * Sets or corrects where the event is, in any status except closed or expired and until the order is dispatched.
  * Changes no price and does not reopen the quotation; the customer is told. 422 when it is too late.
  */
-export async function changeQuotationVenue(quotationId: string, venue: { text: string }): Promise<QuotationView> {
+export async function changeQuotationVenue(
+  quotationId: string,
+  venue: { text: string; latitude?: number | null; longitude?: number | null; placeId?: string | null },
+): Promise<QuotationView> {
   return fromWire(
     await apiFetch<WireQuotation>(`/admin/ordering/quotations/${id(quotationId)}/venue`, {
       method: "PUT",
-      body: { text: venue.text },
+      body: { text: venue.text, latitude: venue.latitude ?? null, longitude: venue.longitude ?? null, placeId: venue.placeId ?? null },
     }),
   );
 }

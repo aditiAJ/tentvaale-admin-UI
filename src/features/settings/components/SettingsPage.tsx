@@ -28,7 +28,9 @@ import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { StateSelect, initialState } from "@/components/ui/state-select";
+import { PlaceSearch } from "@/components/ui/place-search";
 import { isStateName, matchState } from "@/lib/indian-states";
+import { MAPS_KEY, cityOf, detailsOf, type Place } from "@/lib/maps";
 import { cn } from "@/lib/utils";
 
 type TabKey = "profile" | "tax" | "bank" | "numbering" | "policies";
@@ -279,6 +281,21 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
     onError: (e) => setError(e instanceof ApiError ? e.message : "Could not save the settings."),
   });
 
+  // A picked place fills the address, city, PIN code and map point. The GST state is left alone: it changes the tax split.
+  function fillFrom(place: Place) {
+    const address = place.formattedAddress ?? place.displayName;
+    if (!address) return;
+    const details = detailsOf(place);
+    setDraft((d) => ({
+      ...d,
+      addressLine: address.slice(0, 500),
+      city: cityOf(place).slice(0, 100) || d.city,
+      postalCode: details.postalCode ?? d.postalCode,
+      latitude: details.latitude == null ? d.latitude : String(details.latitude),
+      longitude: details.longitude == null ? d.longitude : String(details.longitude),
+    }));
+  }
+
   // A Field child: called by the Field to draw the input, never mounted as a component of its own.
   const text = (key: TextKey, props: { placeholder?: string; type?: string; inputMode?: "decimal" | "numeric" } = {}) =>
     // eslint-disable-next-line react/display-name
@@ -294,6 +311,11 @@ function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile"
         <>
           <Section title="Business" shownOn="every document's header and footer">
             <Field label="Business name" required>{text("name")}</Field>
+            {MAPS_KEY && canWrite ? (
+              <Field label="Find it on Google Maps" hint="Pick a result to fill the address, city, postal code and map point, or type them below.">
+                {(p) => <PlaceSearch id={p.id} onPick={fillFrom} />}
+              </Field>
+            ) : null}
             <Field label="Address line">{text("addressLine", { placeholder: "e.g. 123 Ring Road, Industrial Area" })}</Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="City">{text("city")}</Field>

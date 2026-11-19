@@ -21,6 +21,8 @@ const variantLine = z.object({
   // Set for a variant the product already has.
   id: z.string().optional(),
   active: z.boolean().optional(),
+  // A variant made from several values ("Gold / Velvet") has no single name to edit.
+  locked: z.boolean().optional(),
   type: z.string(),
   name: z.string().trim(),
   // Left empty, a variant takes the product's own rate.
@@ -46,6 +48,7 @@ export interface StockLineValues {
 export interface VariantLineValues {
   id?: string;
   active?: boolean;
+  locked?: boolean;
   type: string;
   name: string;
   wholesaleRate: string;
@@ -202,8 +205,10 @@ export function ProductVariantsStep() {
                       {...register(`variants.${index}.name`)}
                       placeholder="Red"
                       autoComplete="off"
-                      // An existing variant on a type is named from its value.
-                      readOnly={Boolean(existingId) && Boolean(getValues(`variants.${index}.type`))}
+                      // The name of a variant made from several values cannot be edited; any other can be renamed
+                      // (a typed variant is then given the other value of its type, see ProductSetupService).
+                      readOnly={Boolean(getValues(`variants.${index}.locked`))}
+                      className={getValues(`variants.${index}.locked`) ? "bg-muted" : undefined}
                     />
                   )}
                 </Field>

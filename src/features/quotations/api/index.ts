@@ -115,7 +115,10 @@ export function getQuotationPlan(quotationId: string, signal?: AbortSignal): Pro
 }
 
 /** Staff set or correct the venue after confirmation, until the order is dispatched. 422 when it is too late. */
-export function changeQuotationVenue(quotationId: string, venue: { text: string }): Promise<QuotationView> {
+export function changeQuotationVenue(
+  quotationId: string,
+  venue: { text: string; latitude?: number | null; longitude?: number | null; placeId?: string | null },
+): Promise<QuotationView> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.changeQuotationVenue(quotationId, venue);
 }

@@ -13,7 +13,9 @@ import { ActiveToggle } from "@/features/master-data/components/ActiveToggle";
 import { GSTIN_PATTERN } from "@/features/master-data/supplierUtils";
 import { ApiError } from "@/services/api-client";
 import { isValidPhone } from "@/lib/forms";
-import { INDIAN_STATES } from "@/lib/indian-states";
+import { INDIAN_STATES, matchState } from "@/lib/indian-states";
+import { MAPS_KEY, cityOf, detailsOf, type Place } from "@/lib/maps";
+import { PlaceSearch } from "@/components/ui/place-search";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -79,6 +81,7 @@ export function SupplierDialog({
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors },
   } = useForm<FormInput, unknown, FormValues>({
     resolver: zodResolver(schema),
@@ -97,6 +100,18 @@ export function SupplierDialog({
       active: existing?.active ?? true,
     },
   });
+
+  // A picked place fills the address, the city and (when it is a state on the list) the state.
+  function fillFrom(place: Place) {
+    const address = place.formattedAddress ?? place.displayName;
+    if (!address) return;
+    const options = { shouldValidate: true, shouldDirty: true };
+    setValue("addressLine", address.slice(0, 500), options);
+    const city = cityOf(place);
+    if (city) setValue("city", city.slice(0, 100), options);
+    const state = matchState(detailsOf(place).state)?.name;
+    if (state) setValue("state", state, options);
+  }
 
   const gstin = (useWatch({ control, name: "gstin" }) ?? "").trim().toUpperCase();
   // The first two digits of a GSTIN are the state: say which, so a typo in either shows up.
@@ -194,6 +209,12 @@ export function SupplierDialog({
             )}
           </Field>
         </div>
+
+        {MAPS_KEY ? (
+          <Field label="Find the address on Google Maps" hint="Pick a result to fill the address, city and state, or type them below.">
+            {(props) => <PlaceSearch id={props.id} onPick={fillFrom} />}
+          </Field>
+        ) : null}
 
         <Field label="Address" error={errors.addressLine?.message}>
           {(props) => <Textarea {...props} {...register("addressLine")} rows={2} />}

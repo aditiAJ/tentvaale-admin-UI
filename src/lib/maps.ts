@@ -75,6 +75,14 @@ export function cityOf(place: Place): string {
   return find("locality") ?? find("administrative_area_level_2") ?? find("administrative_area_level_1") ?? "";
 }
 
+/** A venue as one line: its name and address, without repeating the name when the address already starts with it. */
+export function describePlace(place: Place): string {
+  const name = place.displayName?.trim();
+  const address = place.formattedAddress?.trim();
+  if (name && address && !address.toLowerCase().startsWith(name.toLowerCase())) return `${name}, ${address}`;
+  return address || name || "";
+}
+
 /** Everything worth keeping from a picked place, for the backend to store. */
 export function detailsOf(place: Place) {
   const find = (type: string) => place.addressComponents?.find((c) => c.types.includes(type))?.longText ?? undefined;
