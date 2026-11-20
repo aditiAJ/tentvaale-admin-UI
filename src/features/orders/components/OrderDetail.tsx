@@ -51,6 +51,7 @@ import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { UnitTag, unitFromWire, useProductUnits } from "@/features/master-data/units";
 
 const FLOW: OrderStatus[] = ["CONFIRMED", "DISPATCHED", "INSTALLATION", "RETURNED", "COMPLETED"];
 
@@ -724,6 +725,7 @@ function OrderLines({
   functions: Map<string, LineFunction>;
   media: ReturnType<typeof useLineMedia>;
 }) {
+  const { unitOf } = useProductUnits();
   // Movements are counted per product, so a product on two lines shows its totals once, on the first.
   const firstOf = new Set(
     order.lines.filter((line, index) => order.lines.findIndex((o) => o.productId === line.productId) === index).map((l) => l.id),
@@ -773,7 +775,10 @@ function OrderLines({
                     </div>
                   </div>
                 </TD>
-                <TD className="text-right tabular">{line.quantity}</TD>
+                <TD className="text-right tabular">
+                  {line.quantity}
+                  {line.productId ? <UnitTag unit={line.rateType ? unitFromWire(line.rateType) : unitOf(line.productId)} /> : null}
+                </TD>
                 <TD className="text-right tabular">{line.rentalDays}</TD>
                 {fulfilment ? (
                   <>

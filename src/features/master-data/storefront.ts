@@ -2,11 +2,10 @@
  * The storefront's catalogue vocabulary, so what the admin enters here is what
  * the storefront filters and displays by.
  *
- * Moods and themes are closed lists: the storefront filters on them, and a
- * value outside the list would be a filter nobody can reach, so the admin picks
- * from these and the mock refuses anything else. Occasions, colours, materials
- * and fabrics are open — the lists here are suggestions taken from the
- * storefront's own catalogue, and anything else typed is kept.
+ * These are only what each list STARTS with. The lists themselves (mood, theme fit, indoor / outdoor, colours, materials,
+ * fabrics) live in the backend and are managed in Settings → General settings; the product form reads them from there.
+ * The demo data (no backend) still uses these. Moods and themes are closed lists (the storefront filters on them);
+ * colours, materials and fabrics are open: a new one typed on a product is added to its list.
  */
 
 /** How a rate is counted: per piece, per running foot, or per square foot. */
@@ -38,7 +37,8 @@ export function ratePerDayLabel(rateType?: RateType | null): string {
 
 /** Where a product can be used, as the storefront's Indoor / outdoor spec. */
 export const PRODUCT_SETTINGS = ["Indoor", "Outdoor", "Indoor & outdoor"] as const;
-export type ProductSetting = (typeof PRODUCT_SETTINGS)[number];
+/** One of the Indoor / outdoor list in Settings, which a business can change; PRODUCT_SETTINGS is only what the list starts with. */
+export type ProductSetting = string;
 
 export const MOODS = [
   "Classic",

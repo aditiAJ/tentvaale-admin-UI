@@ -26,6 +26,7 @@ import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatCount, StatTile } from "@/components/ui/stat";
+import { UnitTag, useProductUnits } from "@/features/master-data/units";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const schema = z.object({
@@ -84,6 +85,7 @@ export function WarehouseStockPanel({
   const [formError, setFormError] = useState<string | null>(null);
   const [justSet, setJustSet] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  const { unitOf } = useProductUnits();
   const [editQuantity, setEditQuantity] = useState("");
 
   const holdings = useQuery({ queryKey: stockKey, queryFn: ({ signal }) => listWarehouseProducts(warehouse.id, signal) });
@@ -194,6 +196,7 @@ export function WarehouseStockPanel({
   };
 
   const renderLine = (entry: WarehouseProductView, indented: boolean) => {
+    const unit = unitOf(entry.productId);
     const key = keyOf(entry);
     const editing = editingKey === key;
     const unplaced = unplacedOf(entry);
@@ -235,11 +238,15 @@ export function WarehouseStockPanel({
               }}
             />
           ) : (
-            formatCount(entry.quantity)
+            <>
+              {formatCount(entry.quantity)}
+              <UnitTag unit={unit} />
+            </>
           )}
         </TD>
         <TD className="tabular hidden text-right text-muted-foreground sm:table-cell">
           {entry.placed === undefined ? "–" : formatCount(Math.min(entry.placed, entry.quantity))}
+          {entry.placed === undefined ? null : <UnitTag unit={unit} />}
         </TD>
         <TD className="tabular text-right">{entry.placed === undefined ? "–" : unplacedCell(unplaced, entry.quantity)}</TD>
         {canWrite ? (

@@ -12,6 +12,7 @@ import {
   Loader2,
   Percent,
   ScrollText,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ import { ApiError } from "@/services/api-client";
 import { getCompany, settingsKeys, updateCompany, type CompanyProfile } from "@/features/settings/api";
 import { NumberingPage } from "@/features/settings/components/NumberingPage";
 import { PoliciesPage } from "@/features/settings/components/PoliciesPage";
+import { GeneralSettings } from "@/features/settings/components/GeneralSettings";
 import { ImageUploadField } from "@/features/settings/components/ImageUploadField";
 import { PageHeader } from "@/components/page-header";
 import { Alert } from "@/components/ui/alert";
@@ -34,6 +36,19 @@ import { MAPS_KEY, cityOf, detailsOf, type Place } from "@/lib/maps";
 import { cn } from "@/lib/utils";
 
 type TabKey = "profile" | "tax" | "bank" | "numbering" | "policies";
+
+/** The two halves of Settings: the business (everything it has always held) and the signed-in person's own preferences. */
+type SectionKey = "company" | "general";
+
+const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon; description: string }[] = [
+  {
+    key: "company",
+    label: "Company settings",
+    icon: Building2,
+    description: "Your business details, tax, bank account, document numbers and policies. Quotations, invoices and receipts all print from here.",
+  },
+  { key: "general", label: "General settings", icon: SlidersHorizontal, description: "How the back office looks for you, your password, and the product options (mood, theme, colours, occasions) the product form offers." },
+];
 
 const TABS: { key: TabKey; label: string; hint: string; icon: LucideIcon; needs: "MASTER_DATA_READ" | "CONFIG_WRITE" }[] = [
   { key: "profile", label: "Business profile", hint: "Name, address, contact, logo", icon: Building2, needs: "MASTER_DATA_READ" },
@@ -113,18 +128,42 @@ export function SettingsPage() {
   const params = useSearchParams();
   const canCompany = useCan("MASTER_DATA_READ");
   const canConfig = useCan("CONFIG_WRITE");
+  // Old links (?tab=policies and the like) carry no section and open Company settings, where those tabs now are.
+  const section: SectionKey = params.get("section") === "general" ? "general" : "company";
   const tabs = TABS.filter((t) => (t.needs === "MASTER_DATA_READ" ? canCompany : canConfig));
   const requested = params.get("tab");
   const active = tabs.find((t) => t.key === requested)?.key ?? tabs[0]?.key;
 
-  const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal), enabled: canCompany });
+  const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal), enabled: canCompany && section === "company" });
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Settings" description="Your business details, tax, bank account, document numbers and policies. Quotations, invoices and receipts all print from here." />
+      <PageHeader title="Settings" description={SECTIONS.find((s) => s.key === section)?.description} />
 
-      {canCompany && company.data ? <Readiness company={company.data} onGo={(tab) => router.replace(`/settings?tab=${tab}`)} /> : null}
+      <div role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto border-b border-border">
+        {SECTIONS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={section === key}
+            onClick={() => router.replace(key === "company" ? "/settings" : "/settings?section=general")}
+            className={cn(
+              "-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm transition-colors",
+              section === key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className={cn("size-4", section === key ? "text-primary" : "")} />
+            {label}
+          </button>
+        ))}
+      </div>
 
+      {section === "general" ? <GeneralSettings /> : null}
+
+      {section === "company" && canCompany && company.data ? <Readiness company={company.data} onGo={(tab) => router.replace(`/settings?tab=${tab}`)} /> : null}
+
+      {section === "company" ? (
       <div className="grid items-start gap-5 lg:grid-cols-[260px_1fr]">
         <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
           {tabs.map((tab) => {
@@ -164,6 +203,7 @@ export function SettingsPage() {
           ) : null}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

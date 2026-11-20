@@ -33,6 +33,7 @@ import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { Skeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { formatCount, StatTile } from "@/components/ui/stat";
+import { UnitTag, useProductUnits } from "@/features/master-data/units";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const CODE_SHAPE = /^[A-Za-z0-9]{1,10}$/;
@@ -418,6 +419,7 @@ function StoredHereDialog({
   onClose: () => void;
   onOpenPlacement?: (location: StorageLocationView) => void;
 }) {
+  const { unitOf } = useProductUnits();
   const rows = useQuery({
     queryKey: [...masterDataKeys.warehouseAllocations(warehouse.id), "stored-here", location.id],
     queryFn: ({ signal }) => listAllocations(warehouse.id, { locationId: location.id, subtree: true }, signal),
@@ -474,7 +476,10 @@ function StoredHereDialog({
                       <span className="block font-mono text-[0.7rem] text-muted-foreground">{row.variantSku ?? row.sku}</span>
                     </TD>
                     <TD className="text-muted-foreground">{below(row)}</TD>
-                    <TD className="tabular text-right">{formatCount(row.quantity)}</TD>
+                    <TD className="tabular text-right">
+                      {formatCount(row.quantity)}
+                      <UnitTag unit={unitOf(row.productId)} />
+                    </TD>
                   </TR>
                 ))}
               </TBody>

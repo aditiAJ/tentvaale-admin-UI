@@ -31,6 +31,7 @@ import { Pagination, paginate } from "@/components/ui/pagination";
 import { SearchSelect, type SearchSelectOption } from "@/components/ui/search-select";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatCount } from "@/components/ui/stat";
+import { UnitTag, unitSuffix, useProductUnits } from "@/features/master-data/units";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const rateText = z
@@ -77,6 +78,7 @@ const labelOf = (line: Pick<SupplierStockView, "productName" | "variantName">) =
  */
 export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
   const canWrite = useCan("LOGISTICS_WRITE");
+  const { unitOf } = useProductUnits();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -132,6 +134,8 @@ export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
   const selected = useWatch({ control, name: "productId" });
   const selectedVariant = useWatch({ control, name: "variantId" });
   const selectedProduct = products.data?.find((product) => product.id === selected);
+  // What this product is counted and charged in; a supplier's count and rate are in the same unit.
+  const unitOfSelected = unitSuffix(selectedProduct?.rateType);
   const needsVariant = Boolean(selectedProduct?.hasVariants);
   const variantChoices = selectedProduct ? choosableVariants(selectedProduct) : [];
   const alreadyHeld = holdings.data?.find(
@@ -298,7 +302,7 @@ export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
               )}
             </Field>
             <Field
-              label="Quantity available"
+              label={unitOfSelected ? `Quantity available (${unitOfSelected})` : "Quantity available"}
               required
               error={errors.quantity?.message}
               hint={alreadyHeld ? `Currently ${alreadyHeld.quantity}. This replaces it.` : undefined}
@@ -306,7 +310,7 @@ export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
               {(props) => <Input {...props} {...register("quantity")} inputMode="numeric" placeholder="0" className="tabular" />}
             </Field>
             <Field
-              label="Rate per unit (₹)"
+              label={`Rate per ${unitOfSelected || "unit"} (₹)`}
               error={errors.rate?.message}
               hint={alreadyHeld?.rate != null ? `Now ${formatMoney({ amount: alreadyHeld.rate, currency: "INR" })}. Leave empty to keep.` : "Optional."}
             >
@@ -421,6 +425,7 @@ export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
                       ) : (
                         <span title={below ? `Below their minimum order of ${supplier.minimumOrderQuantity}` : undefined}>
                           {formatCount(line.quantity)}
+                          <UnitTag unit={unitOf(line.productId)} />
                           {below ? <span className="ml-1 text-[var(--warning)]">*</span> : null}
                         </span>
                       )}
@@ -442,7 +447,10 @@ export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
                       ) : line.rate == null ? (
                         <span className="text-muted-foreground">—</span>
                       ) : (
-                        formatMoney({ amount: line.rate, currency: "INR" })
+                        <>
+                          {formatMoney({ amount: line.rate, currency: "INR" })}
+                          <UnitTag unit={unitOf(line.productId) ? `/ ${unitOf(line.productId)}` : ""} />
+                        </>
                       )}
                     </TD>
                     <TD className="text-xs">

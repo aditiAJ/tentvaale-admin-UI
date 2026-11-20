@@ -54,10 +54,14 @@ export interface Policy {
 
 export const listPolicies = (signal?: AbortSignal) => apiFetch<Policy[]>(`${BASE}/config/policies`, { signal });
 
+/** The text of every published policy, latest version. Readable by any staff member (the quotation PDF prints it). */
+export const listPublishedPolicies = (signal?: AbortSignal) =>
+  apiFetch<Policy[]>(`${BASE}/config/policies/published`, { signal });
+
 export const policyHistory = (kind: PolicyKind, signal?: AbortSignal) =>
   apiFetch<Policy[]>(`${BASE}/config/policies/${kind}/history`, { signal });
 
-/** Publishes a new version; earlier ones stay, so quotations already sent keep their text. */
+/** Publishes a new version. It replaces the policy everywhere at once; earlier versions stay in the history. */
 export const publishPolicy = (kind: PolicyKind, input: { title: string; body: string }) =>
   apiFetch<Policy>(`${BASE}/config/policies/${kind}`, { method: "PUT", body: input });
 

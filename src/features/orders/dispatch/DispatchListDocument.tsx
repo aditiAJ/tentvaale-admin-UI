@@ -23,6 +23,8 @@ export interface DispatchEntry {
   /** "Haldi · 25 Oct 2026"; null when the quotation has no functions. */
   occasion: string | null;
   quantity: number;
+  /** What the quantity counts when it is not pieces ("SQ FT", "RFT"); null for pieces. */
+  unit?: string | null;
   /** A key of `DispatchDoc.images`; null when there is no picture. */
   image: string | null;
   /** Where in the warehouse ("Front hall > Bay 02"); null when the units are not placed anywhere. */
@@ -55,7 +57,8 @@ export interface DispatchDoc {
 
 const WARN = "#9b2c20";
 const WARN_SOFT = "#fdecea";
-const countUnits = (entries: DispatchEntry[]) => entries.reduce((sum, e) => sum + e.quantity, 0);
+// Pieces only: square feet and running feet are not units, and adding them to pieces would mean nothing.
+const countUnits = (entries: DispatchEntry[]) => entries.reduce((sum, e) => sum + (e.unit ? 0 : e.quantity), 0);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** The entries of a warehouse split by where in it they sit, in the order they come (they arrive sorted by place). */
@@ -146,7 +149,7 @@ export function DispatchListDocument({ doc, theme }: { doc: DispatchDoc; theme: 
             <Text style={x.name}>{e.name}</Text>
             <View style={x.qtyBox}>
               <Text style={x.qty}>{e.quantity}</Text>
-              <Text style={x.qtyLabel}>{e.quantity === 1 ? "UNIT" : "UNITS"}</Text>
+              <Text style={x.qtyLabel}>{e.unit ?? (e.quantity === 1 ? "UNIT" : "UNITS")}</Text>
             </View>
           </View>
           <View style={x.slotVariant}>{e.variant ? <Text style={x.chip}>{e.variant}</Text> : null}</View>

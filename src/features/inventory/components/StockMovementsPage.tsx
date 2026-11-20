@@ -24,6 +24,7 @@ import { Input, Select } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { useProductUnits } from "@/features/master-data/units";
 
 const COLUMNS = 6;
 const LIMITS = [50, 100, 200] as const;
@@ -95,6 +96,7 @@ export function StockMovementsPage({ initialOrderId = "" }: { initialOrderId?: s
     () => new Map((products.data ?? []).map((product) => [product.id, product.name])),
     [products.data],
   );
+  const { unitOf } = useProductUnits();
   const variantNames = useMemo(
     () =>
       new Map(
@@ -120,7 +122,7 @@ export function StockMovementsPage({ initialOrderId = "" }: { initialOrderId?: s
       .map((line) => {
         const product = productNames.get(line.productId) ?? line.productId;
         const variant = line.variantId ? (variantNames.get(line.variantId) ?? line.variantId) : null;
-        return `${product}${variant ? ` (${variant})` : ""} × ${line.quantity}`;
+        return `${product}${variant ? ` (${variant})` : ""} × ${line.quantity}${unitOf(line.productId) ? ` ${unitOf(line.productId)}` : ""}`;
       })
       .join(", ");
 

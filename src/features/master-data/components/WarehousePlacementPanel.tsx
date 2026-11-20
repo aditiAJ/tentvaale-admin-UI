@@ -31,6 +31,7 @@ import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatCount } from "@/components/ui/stat";
+import { UnitTag, useProductUnits } from "@/features/master-data/units";
 import { Table, TableWrapper, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 
 const lineKey = (line: { productId: string; variantId: string | null }) => `${line.productId}:${line.variantId ?? ""}`;
@@ -106,6 +107,7 @@ export function WarehousePlacementPanel({
 
   const total = useMemo(() => (rows.data ?? []).reduce((sum, row) => sum + row.quantity, 0), [rows.data]);
   const unplaced = useMemo(() => (stock.data ?? []).filter((line) => unplacedOf(line) > 0), [stock.data]);
+  const { unitOf } = useProductUnits();
   const unplacedUnits = unplaced.reduce((sum, line) => sum + unplacedOf(line), 0);
   const lineOf = (row: StockAllocationView) =>
     stock.data?.find((line) => line.productId === row.productId && (line.variantId ?? null) === (row.variantId ?? null));
@@ -247,7 +249,10 @@ export function WarehousePlacementPanel({
                   <TD>
                     <WhatIs row={row} />
                   </TD>
-                  <TD className="tabular text-right font-medium">{formatCount(row.quantity)}</TD>
+                  <TD className="tabular text-right font-medium">
+                    {formatCount(row.quantity)}
+                    <UnitTag unit={unitOf(row.productId)} />
+                  </TD>
                   {canWrite ? (
                     <TD>
                       <RowActions row={row} onChange={setChanging} onMove={setMoving} />
@@ -266,7 +271,7 @@ export function WarehousePlacementPanel({
               <WhatIs row={row} />
               <span className="tabular shrink-0 text-lg font-semibold">
                 {formatCount(row.quantity)}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">units</span>
+                <span className="ml-1 text-xs font-normal text-muted-foreground">{unitOf(row.productId) || "units"}</span>
               </span>
             </div>
             <div className="mt-2 flex items-end justify-between gap-2">

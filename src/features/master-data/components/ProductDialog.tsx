@@ -18,16 +18,11 @@ import {
 } from "@/features/master-data/api";
 import {
   ATTRIBUTE_SUGGESTIONS,
-  COLOUR_SUGGESTIONS,
-  FABRIC_SUGGESTIONS,
-  MATERIAL_SUGGESTIONS,
-  MOODS,
-  PRODUCT_SETTINGS,
   RATE_TYPE_LABEL,
   RATE_TYPES,
   ratePerDayLabel,
-  THEMES,
 } from "@/features/master-data/storefront";
+import { useCatalogueLists, withCurrent } from "@/features/master-data/catalogueLists";
 import {
   DIMENSION_UNITS,
   PRODUCT_MEDIA_LIMITS,
@@ -107,7 +102,8 @@ const schema = z.object({
   height: dimensionField,
   dimensionUnit: z.enum(DIMENSION_UNITS),
   // "" is "not said"; the product stores null for it.
-  setting: z.enum(["", ...PRODUCT_SETTINGS]),
+  // One of the Indoor / outdoor list in Settings, which a business can change, so it is not fixed here.
+  setting: z.string(),
   colours: z.array(z.string()).max(12, "At most 12 colours"),
   materials: z.array(z.string()).max(12, "At most 12 materials"),
   fabrics: z.array(z.string()).max(12, "At most 12 fabrics"),
@@ -323,6 +319,8 @@ function ProductForm({
   });
   // The company code the next SKU starts with (TENT-PRO-001).
   const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal) });
+  // The choices for mood, theme, indoor / outdoor, colours, materials and fabrics: managed in Settings → General settings.
+  const { options: listOptions } = useCatalogueLists();
   // Only for suggesting specification names other products already use.
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -972,7 +970,7 @@ function ProductForm({
                 )}
               </Field>
 
-              <Field label="Charged" required error={errors.rateType?.message} hint="How the rate is counted.">
+              <Field label="Charged" required error={errors.rateType?.message} hint="How the rate is counted. Stock, orders and dispatch for this product are counted the same way: a per sq ft product is held, ordered and sent in sq ft.">
                 {(props) => (
                   <Select {...props} {...register("rateType")}>
                     {RATE_TYPES.map((type) => (
@@ -1042,7 +1040,7 @@ function ProductForm({
             {(props) => (
               <Select {...props} {...register("setting")}>
                 <option value="">Not specified</option>
-                {PRODUCT_SETTINGS.map((setting) => (
+                {withCurrent(listOptions.setting, existing?.setting ? [existing.setting] : []).map((setting) => (
                   <option key={setting} value={setting}>
                     {setting}
                   </option>
@@ -1110,9 +1108,9 @@ function ProductForm({
 
           {(
             [
-              ["colours", "Colours", COLOUR_SUGGESTIONS, "Gold, Ivory"],
-              ["materials", "Materials", MATERIAL_SUGGESTIONS, "Teak, Brass"],
-              ["fabrics", "Upholstery fabrics", FABRIC_SUGGESTIONS, "Velvet, Satin"],
+              ["colours", "Colours", listOptions.colour, "Gold, Ivory"],
+              ["materials", "Materials", listOptions.material, "Teak, Brass"],
+              ["fabrics", "Upholstery fabrics", listOptions.fabric, "Velvet, Satin"],
             ] as const
           ).map(([name, label, suggestions, placeholder]) => (
             <Field key={name} label={label} error={errors[name]?.message}>
@@ -1137,8 +1135,8 @@ function ProductForm({
 
           {(
             [
-              ["moods", "Mood", MOODS],
-              ["themes", "Theme fit", THEMES],
+              ["moods", "Mood", listOptions.mood],
+              ["themes", "Theme fit", listOptions.theme],
             ] as const
           ).map(([name, label, options]) => (
             <Field key={name} label={label} error={errors[name]?.message}>
@@ -1150,7 +1148,8 @@ function ProductForm({
                     <ToggleChips
                       id={props.id}
                       aria-label={label}
-                      options={options}
+                      // A value this product already has stays on offer even if the list has since hidden it.
+                      options={withCurrent(options, field.value)}
                       value={field.value}
                       onChange={field.onChange}
                       disabled={busy}

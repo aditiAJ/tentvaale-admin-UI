@@ -41,6 +41,8 @@ export interface OrderLineView {
   lineTotal: Money;
   /** What the line is for, as written on the quotation. */
   remark?: string | null;
+  /** What the quantity counts; null on an order made before it was recorded (the product says, then). */
+  rateType?: "QTY" | "SQFT" | "RFT" | null;
 }
 
 /** Mirrors com.tentvaale.ordermgmt.api.OrderView. The entity is SalesOrder

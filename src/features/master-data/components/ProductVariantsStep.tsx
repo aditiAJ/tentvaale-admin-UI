@@ -1,6 +1,6 @@
 "use client";
 
-import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
+import { useFieldArray, useFormContext, useWatch, type Control } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { z } from "zod";
@@ -10,6 +10,8 @@ import { Field } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { VariantPicture } from "@/features/master-data/components/VariantPicture";
 import { suggestedRetail, suggestedWholesale } from "../retail-rate";
+import type { RateType } from "@/features/master-data/storefront";
+import { unitSuffix } from "@/features/master-data/units";
 
 /** What a variant can differ by; the facets already in the system are listed too. */
 export const VARIANT_TYPES = ["Colour", "Size", "Fabric", "Material", "Style"];
@@ -272,6 +274,9 @@ type StockPath = "stock" | `variants.${number}.stock`;
  */
 export function StockFields({ name, warehouseLabel = "Warehouse" }: { name: StockPath; warehouseLabel?: string }) {
   const { control, register, formState } = useFormContext<VariantStepValues>();
+  // What the product is charged in (chosen on the same form): its stock is counted in that, so say so beside the number.
+  const rateType = useWatch({ control: control as unknown as Control<{ rateType: RateType }>, name: "rateType" }) ?? "Qty";
+  const counted = unitSuffix(rateType);
   const lines = useFieldArray({ control, name });
   const watched = useWatch({ control, name }) ?? [];
   const warehouses = useQuery({ queryKey: masterDataKeys.warehouses, queryFn: ({ signal }) => listWarehouses(signal) });
@@ -309,7 +314,15 @@ export function StockFields({ name, warehouseLabel = "Warehouse" }: { name: Stoc
               </Select>
             )}
           </Field>
-          <Field label={index === 0 ? "Quantity" : ""} error={lineErrors?.[index]?.quantity?.message}>
+          <Field
+            label={index === 0 ? (counted ? `Quantity (${counted})` : "Quantity") : ""}
+            error={lineErrors?.[index]?.quantity?.message}
+            hint={
+              index === 0 && counted
+                ? `Counted in ${counted}: the number you enter is the ${rateType === "SqFt" ? "area" : "length"} held in this warehouse.`
+                : undefined
+            }
+          >
             {(props) => (
               <Input {...props} {...register(`${name}.${index}.quantity` as `stock.${number}.quantity`)} inputMode="numeric" placeholder="10" className="tabular" />
             )}

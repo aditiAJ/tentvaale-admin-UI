@@ -218,9 +218,7 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//, "").split(/[/?#]/)[0
 
 /** The terms as the reference prints them. */
 const TERMS = [
-  "Goods once delivered will not be taken back.",
-  "Any damage or breakage will be charged to the client.",
-  "Full terms & conditions are as per Event Selection and our standard policy.",
+  "Our terms and conditions and our cancellation, damage and delivery policies apply to this order.",
   "This is a computer generated invoice and does not require a physical signature.",
 ];
 
@@ -543,7 +541,7 @@ export function InvoiceDocument({ doc }: { doc: InvoiceDoc }) {
             <View style={s.termsBox}>
               <Icon name="terms" />
               <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={s.secHead}>TERMS & NOTES (SUMMARY)</Text>
+                <Text style={s.secHead}>TERMS & NOTES</Text>
                 {TERMS.map((line) => (
                   <View key={line} style={s.bullet}>
                     <Text style={s.bulletDot}>•</Text>

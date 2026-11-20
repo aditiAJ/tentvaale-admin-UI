@@ -1,15 +1,9 @@
-import { policyHistory, type CompanyProfile, type PolicyKind } from "@/features/settings/api";
+import { listPublishedPolicies, type CompanyProfile } from "@/features/settings/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { discountLabel } from "@/features/quotations/discount";
 import type { DocFunction, DocLine, QuotationDoc } from "./QuotationDocument";
 import { loadImageData, loadMarkData, loadLivePictures, loadQrCodes } from "./pdfAssets";
 
-const POLICY_TITLE: Record<string, string> = {
-  CANCELLATION: "Cancellation policy",
-  DAMAGE: "Damage policy",
-  DELIVERY: "Delivery policy",
-  TERMS: "Terms and conditions",
-};
 
 const amount = (money: { amount: number | string } | null | undefined) => Number(money?.amount ?? 0);
 
@@ -78,19 +72,10 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
   const images: Record<string, string> = {};
   for (const [url, data] of pictures) if (data) images[url] = data;
 
-  // The text of each policy at the version the quotation was sent with. A policy that cannot be read is left out.
-  const policyTexts = (
-    await Promise.all(
-      (q.policies ?? []).map(async (ref) => {
-        try {
-          const found = (await policyHistory(ref.kind as PolicyKind)).find((p) => p.version === ref.version);
-          return found && found.body.trim() ? { title: found.title, version: found.version, body: found.body } : null;
-        } catch {
-          return null;
-        }
-      }),
-    )
-  ).filter((p): p is { title: string; version: number; body: string } => p !== null);
+  // The policies in force now, so a policy edited in Settings shows on the very next download. A policy that cannot be read is left out.
+  const policyTexts = (await listPublishedPolicies().catch(() => []))
+    .filter((p) => p.body.trim() !== "")
+    .map((p) => ({ title: p.title, version: p.version, body: p.body }));
 
   const name = company?.name ?? "Tentvaale";
   const qr = await loadQrCodes({ name, upiId: company?.upiId ?? null, phone: company?.primaryPhone ?? null });
@@ -130,7 +115,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
       label: waived ? "Security deposit (waived)" : "Refundable security deposit (not taxed)",
       amount: waived ? amount(q.depositWaiver?.amount) : amount(q.totalSecurityDeposit),
     },
-    policies: (q.policies ?? []).map((p) => `${POLICY_TITLE[p.kind] ?? p.kind} (v${p.version})`),
+    policies: policyTexts.map((p) => p.title),
     policyTexts,
     company: {
       name,

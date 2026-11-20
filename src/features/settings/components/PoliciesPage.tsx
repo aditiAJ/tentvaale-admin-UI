@@ -26,8 +26,8 @@ const LABEL: Record<PolicyKind, string> = {
 };
 
 /**
- * The text the quotation points customers to. The storefront hosts each page; every edit is a new
- * version, and a quotation keeps linking to the version it was sent with.
+ * The one place the business's policies are written. Publishing replaces the text everywhere at once: the storefront
+ * pages and footer links, and every quotation PDF on its next download. Each edit is kept as a numbered version.
  */
 export function PoliciesPage() {
   const policies = useQuery({ queryKey: settingsKeys.policies, queryFn: ({ signal }) => listPolicies(signal) });
@@ -38,7 +38,7 @@ export function PoliciesPage() {
       <header>
         <h2 className="text-base font-semibold">Policies</h2>
         <p className="text-sm text-muted-foreground">
-          Publishing creates a new version. Quotations already sent keep the version they were sent with.
+          Publishing creates a new version and replaces the text everywhere at once: the storefront, and every quotation PDF the next time it is downloaded.
         </p>
       </header>
       {policies.data.map((policy) => (

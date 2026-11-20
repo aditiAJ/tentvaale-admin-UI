@@ -440,7 +440,7 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
           ) : null}
           {(q.policies ?? []).length > 0 ? (
             <div>
-              <dt className="text-xs text-muted-foreground">Policies sent with it</dt>
+              <dt className="text-xs text-muted-foreground">Policies (always the current ones)</dt>
               <dd className="mt-0.5 text-sm font-medium">{(q.policies ?? []).map((p) => `${p.kind.toLowerCase()} v${p.version}`).join(", ")}</dd>
             </div>
           ) : null}

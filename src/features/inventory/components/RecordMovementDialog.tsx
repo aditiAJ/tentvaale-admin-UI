@@ -35,6 +35,7 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Alert } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { unitSuffix } from "@/features/master-data/units";
 
 const FORM_ID = "record-movement";
 
@@ -523,6 +524,9 @@ function MovementFields({
                 />
                 {rowErrors?.quantity ? (
                   <p className="mt-1 text-xs text-destructive">{rowErrors.quantity.message}</p>
+                ) : null}
+                {unitSuffix(product?.rateType) ? (
+                  <p className="mt-1 text-right text-xs text-muted-foreground">{unitSuffix(product?.rateType)}</p>
                 ) : null}
               </div>
 

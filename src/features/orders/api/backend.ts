@@ -20,6 +20,7 @@ interface WireLine {
   rentalDays: number;
   lineTotal: Money;
   remark?: string | null;
+  rateType?: "QTY" | "SQFT" | "RFT" | null;
 }
 
 interface WireOrder {
@@ -55,6 +56,7 @@ function lineFromWire(line: WireLine): OrderLineView {
     rentalDays: line.rentalDays,
     lineTotal: line.lineTotal,
     remark: line.remark,
+    rateType: line.rateType ?? null,
   };
 }
 

@@ -465,17 +465,6 @@ function Row({ s, label, value, bold }: { s: Styles; label: string; value: strin
   );
 }
 
-const STATIC_TERMS: [string, string][] = [
-  ["BOOKING & CONFIRMATION", "50% advance to confirm the booking. Balance 50% before dispatch or installation."],
-  ["PAYMENT TERMS", "Payments to be made as per agreed milestones. All payments are non-refundable."],
-  ["TRANSPORTATION", "Transportation, loading & unloading are included within the city limit."],
-  ["DAMAGE & BREAKAGE", "Client to inform immediately. Charges applicable for any damage or breakage."],
-  ["INSTALLATION & DISMANTLING", "Installation & dismantling are included in the quote for the scheduled event dates."],
-  ["FORCE MAJEURE", "We are not liable for delays or non-performance due to natural calamities, strikes, or any unforeseen events beyond our control."],
-  ["CANCELLATION", "Cancellation must be informed in writing. Cancellation charges will apply as per timeline."],
-  ["OTHERS", "Any additional items or services requested on-site will be charged extra."],
-];
-
 const STATIC_INCLUDED = ["Delivery & Installation", "On-site Supervision", "Basic Tool Kit & Ancillaries", "Standard Packing & Handling"];
 
 // ---- the document --------------------------------------------------------------------------
@@ -911,26 +900,13 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
             </View>
           </View>
 
-          <Text style={[s.sectionTitle, { textAlign: "center", marginTop: 10, marginBottom: 3 }]}>TERMS &amp; CONDITIONS</Text>
-          <View style={s.termCols} wrap={false}>
-            {[STATIC_TERMS.slice(0, 4), STATIC_TERMS.slice(4)].map((column, ci) => (
-              <View key={ci} style={{ flex: 1 }}>
-                {column.map(([title, text]) => (
-                  <View style={s.term} key={title}>
-                    <View style={s.termDot}>
-                      <View style={s.termDotCore} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.termTitle}>{title}</Text>
-                      <Text style={s.termText}>{text}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
           {doc.policies.length > 0 ? (
-            <Text style={[s.muted, { fontSize: 7.5, marginTop: 6 }]}>This quotation is subject to our {doc.policies.join(", ")}.</Text>
+            <>
+              <Text style={[s.sectionTitle, { textAlign: "center", marginTop: 10, marginBottom: 3 }]}>TERMS &amp; CONDITIONS</Text>
+              <Text style={[s.termText, { textAlign: "center" }]}>
+                This quotation is subject to our {doc.policies.join(", ")}. The full text is on the pages that follow.
+              </Text>
+            </>
           ) : null}
 
           <View style={s.notes} wrap={false}>

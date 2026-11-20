@@ -2,6 +2,7 @@ import type { CompanyProfile } from "@/features/settings/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { shortDate } from "@/features/quotations/components/QuotationDocument";
 import { loadImageData, loadLivePictures, loadMarkData } from "@/features/quotations/components/pdfAssets";
+import { listProducts } from "@/features/master-data/api";
 import type { OrderView } from "@/features/orders/types";
 import type { DispatchDoc, DispatchEntry, DispatchGroup } from "./DispatchListDocument";
 import { pickPlan } from "./pickPlan";
@@ -21,9 +22,19 @@ interface Source {
   remark: string | null;
   occasion: string | null;
   image: string | null;
+  /** What the quantity counts when it is not pieces; null for pieces. */
+  unit: string | null;
 }
 
-function sourcesOf(order: OrderView, quotation: QuotationView | undefined, pictureFor: Awaited<ReturnType<typeof loadLivePictures>>): Source[] {
+const UNIT_OF = { SqFt: "SQ FT", SQFT: "SQ FT", RFt: "RFT", RFT: "RFT" } as const;
+const unitFor = (rateType: string | null | undefined) => UNIT_OF[rateType as keyof typeof UNIT_OF] ?? null;
+
+function sourcesOf(
+  order: OrderView,
+  quotation: QuotationView | undefined,
+  pictureFor: Awaited<ReturnType<typeof loadLivePictures>>,
+  rateOf: Map<string, string>,
+): Source[] {
   if (quotation && quotation.lines.length > 0) {
     return quotation.lines.map((l) => ({
       productId: l.oneTime || !l.productId ? null : Number(l.productId),
@@ -33,6 +44,7 @@ function sourcesOf(order: OrderView, quotation: QuotationView | undefined, pictu
       remark: l.remark ?? null,
       occasion: l.functionName ? [l.functionName, shortDate(l.functionDate)].filter(Boolean).join(" · ") : null,
       image: l.oneTime || !l.productId ? null : pictureFor(l.productId, l.variantId, l.imageUrl),
+      unit: unitFor(l.rateType ?? (l.productId ? rateOf.get(String(l.productId)) : null)),
     }));
   }
   return order.lines.map((l) => ({
@@ -43,6 +55,7 @@ function sourcesOf(order: OrderView, quotation: QuotationView | undefined, pictu
     remark: l.remark ?? null,
     occasion: null,
     image: l.productId ? pictureFor(l.productId, l.variantId, null) : null,
+    unit: l.productId ? unitFor(l.rateType ?? rateOf.get(String(l.productId))) : null,
   }));
 }
 
@@ -57,7 +70,9 @@ export async function buildDispatchDoc(
   quotation: QuotationView | undefined,
   company: CompanyProfile | undefined,
 ): Promise<DispatchDoc> {
-  const sources = sourcesOf(order, quotation, await loadLivePictures());
+  // What each product's quantity counts (pieces, sq ft, running ft); a product that cannot be read counts as pieces.
+  const rateOf = new Map((await listProducts(undefined, { includeInactive: true }).catch(() => [])).map((p) => [p.id, p.rateType as string]));
+  const sources = sourcesOf(order, quotation, await loadLivePictures(), rateOf);
   const stocked = sources.filter((s): s is Source & { productId: number } => s.productId !== null);
   const plan = await pickPlan(stocked.map((s) => ({ productId: s.productId, variantId: s.variantId, quantity: s.quantity })));
 
@@ -66,7 +81,7 @@ export async function buildDispatchDoc(
   const other: DispatchEntry[] = [];
   const entry = (s: Source, quantity: number, location: string | null, note: string | null): DispatchEntry => {
     const [name, variant] = splitName(s.name);
-    return { name, variant, remark: s.remark, occasion: s.occasion, quantity, image: s.image, location, note };
+    return { name, variant, remark: s.remark, occasion: s.occasion, quantity, unit: s.unit, image: s.image, location, note };
   };
 
   for (const s of sources) {
