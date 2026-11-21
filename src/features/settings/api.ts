@@ -83,7 +83,19 @@ export const listNumbering = (signal?: AbortSignal) => apiFetch<Numbering[]>(`${
 export const updateNumbering = (type: NumberedDocument, input: Pick<Numbering, "prefix" | "nextValue" | "padding" | "fyReset">) =>
   apiFetch<Numbering>(`${BASE}/config/numbering/${type}`, { method: "PUT", body: input });
 
+/** The landing page hero pictures: light, and an optional one for dark mode. Null means the storefront's own default. */
+export interface SiteHero {
+  light: string | null;
+  dark: string | null;
+}
+
+export const getHero = (signal?: AbortSignal) => apiFetch<SiteHero>(`${BASE}/master-data/company/hero`, { signal });
+
+export const updateHero = (hero: { light: string; dark: string }) =>
+  apiFetch<SiteHero>(`${BASE}/master-data/company/hero`, { method: "PUT", body: hero });
+
 export const settingsKeys = {
+  hero: ["settings", "hero"] as const,
   numbering: ["settings", "numbering"] as const,
   company: ["settings", "company"] as const,
   policies: ["settings", "policies"] as const,

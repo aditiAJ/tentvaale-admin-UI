@@ -4,6 +4,7 @@ import { useState } from "react";
 import { KeyRound, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSession } from "@/features/auth";
+import { HeroImagePanel } from "@/features/settings/components/HeroImagePanel";
 import { CatalogueListsPanel } from "@/features/settings/components/CatalogueListsPanel";
 import { ChangePasswordDialog } from "@/features/users/components/ChangePasswordDialog";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,8 @@ export function GeneralSettings() {
         </Card>
       ) : null}
       </div>
+
+      <HeroImagePanel />
 
       <CatalogueListsPanel />
 
