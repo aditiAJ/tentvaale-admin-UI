@@ -296,3 +296,16 @@ export async function changeQuotationVenue(
     }),
   );
 }
+
+/**
+ * Moves the event date, in any status except closed or expired and, with an order, until the order is dispatched. The
+ * order, the functions' days and the customer's plan move with it; nothing is repriced. 422 when it is too late.
+ */
+export async function changeQuotationEventDate(quotationId: string, eventDate: string): Promise<QuotationView> {
+  return fromWire(
+    await apiFetch<WireQuotation>(`/admin/ordering/quotations/${id(quotationId)}/event-date`, {
+      method: "PUT",
+      body: { eventDate },
+    }),
+  );
+}

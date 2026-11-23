@@ -83,6 +83,8 @@ export interface QuotationDoc {
   statusNote: string;
   customerName: string;
   customerEmail: string | null;
+  /** Shown as the contact when there is no email. */
+  customerPhone: string | null;
   /** yyyy-MM-dd */
   eventDate: string | null;
   venue: string | null;
@@ -543,7 +545,7 @@ export function QuotationDocument({ doc, theme }: { doc: QuotationDoc; theme: Do
               // Each cell is as wide as its text needs, so a name, an email or a date is never broken across lines;
               // only the venue, which has spaces to wrap at, gives way when the row is full.
               { icon: "user" as const, label: "CURATED FOR", value: doc.customerName, fit: true },
-              { icon: "mail" as const, label: "CONTACT", value: doc.customerEmail ?? "—", fit: true },
+              { icon: "mail" as const, label: "CONTACT", value: doc.customerEmail ?? doc.customerPhone ?? "—", fit: true },
               { icon: "calendar" as const, label: "EVENT DATES", value: eventDates, fit: true },
               { icon: "pin" as const, label: "VENUE", value: venue, fit: false },
             ].map((cell, index, all) => (

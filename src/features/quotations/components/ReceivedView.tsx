@@ -1,13 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, CalendarDays, CheckCircle2, Circle, Inbox, Layers, MapPin, MessageSquareWarning, Package, Users } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckCircle2, Circle, Inbox, Layers, MapPin, MessageSquareWarning, Package, Pencil, Users } from "lucide-react";
+import { useCan } from "@/features/auth";
 import { getQuotationPlan, quotationKeys } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { discountSuffix } from "@/features/quotations/discount";
 import { LinesByFunction, PriceGrid, VenueRow, formatEventDate, isPositive } from "@/features/quotations/components/QuotationParts";
 import { QuotationPlanPanel } from "@/features/quotations/components/QuotationPlanPanel";
+import { EventDateDialog } from "@/features/quotations/components/EventDateDialog";
+import { Button } from "@/components/ui/button";
 import { IS_MOCK } from "@/services/data-source";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
@@ -148,6 +152,8 @@ function Checklist({ quotation: q }: { quotation: QuotationView }) {
  */
 export function ReceivedDetail({ quotation: q, actions }: { quotation: QuotationView; actions: React.ReactNode }) {
   const revising = Boolean(q.changeRequestNote);
+  const canWrite = useCan("QUOTATION_WRITE");
+  const [editingDate, setEditingDate] = useState(false);
   const plan = useQuery({
     queryKey: quotationKeys.plan(q.id),
     queryFn: ({ signal }) => getQuotationPlan(q.id, signal),
@@ -201,8 +207,13 @@ export function ReceivedDetail({ quotation: q, actions }: { quotation: Quotation
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Date{dates.length > 1 ? "s" : ""}</dt>
-            <dd className="tabular mt-0.5 text-sm font-medium">
+            <dd className="tabular mt-0.5 flex items-center gap-1 text-sm font-medium">
               {dates.length > 1 ? `${formatEventDate(dates[0])} – ${formatEventDate(dates[1])}` : formatEventDate(dates[0])}
+              {canWrite ? (
+                <Button type="button" variant="ghost" size="icon" className="size-7" aria-label="Change event date" onClick={() => setEditingDate(true)}>
+                  <Pencil className="size-3.5" />
+                </Button>
+              ) : null}
             </dd>
           </div>
           <div>
@@ -217,6 +228,7 @@ export function ReceivedDetail({ quotation: q, actions }: { quotation: Quotation
           </div>
         </dl>
         <VenueRow venue={q.venue} />
+        {editingDate ? <EventDateDialog quotation={q} onClose={() => setEditingDate(false)} /> : null}
       </Card>
 
       <Card className="space-y-3 p-5">

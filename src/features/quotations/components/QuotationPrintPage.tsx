@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { Download, Loader2, Printer } from "lucide-react";
 import { getQuotation, quotationKeys } from "@/features/quotations/api";
 import { getCompany, settingsKeys } from "@/features/settings/api";
+import { getCustomer } from "@/features/master-data/api";
 import { BackButton } from "@/components/back-button";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,9 @@ export function QuotationPrintPage({ quotationId }: { quotationId: string }) {
           import("@/features/quotations/components/QuotationDocument"),
           import("@/features/quotations/components/buildQuotationDoc"),
         ]);
-        const doc = await buildQuotationDoc(q, c);
+        // A customer with no email is reached by phone: it is not on the quotation, so it is read from the customer.
+        const phone = q.customerEmail || !q.customerId ? null : await getCustomer(q.customerId).then((x) => x.phone, () => null);
+        const doc = await buildQuotationDoc(q, c, phone);
         const blob = await render(<QuotationDocument doc={doc} theme={theme} />).toBlob();
         if (cancelled) return;
         made = URL.createObjectURL(blob);

@@ -32,7 +32,12 @@ function statusOf(status: string): { status: string; note: string } {
  * function and category, the totals as the backend worked them out (nothing is calculated here), and the logo,
  * pictures and QR codes loaded as data. Anything that cannot be loaded is simply left out.
  */
-export async function buildQuotationDoc(q: QuotationView, company: CompanyProfile | undefined): Promise<QuotationDoc> {
+export async function buildQuotationDoc(
+  q: QuotationView,
+  company: CompanyProfile | undefined,
+  /** The customer's phone, for a customer with no email on the quotation. */
+  customerPhone: string | null = null,
+): Promise<QuotationDoc> {
   const pictureFor = await loadLivePictures();
   const groups = new Map<string, DocFunction>();
   for (const line of q.lines) {
@@ -91,6 +96,7 @@ export async function buildQuotationDoc(q: QuotationView, company: CompanyProfil
     statusNote: note,
     customerName: q.customerName,
     customerEmail: q.customerEmail,
+    customerPhone,
     eventDate: q.eventDate,
     venue: q.venue?.text ?? null,
     functions: [...groups.values()],

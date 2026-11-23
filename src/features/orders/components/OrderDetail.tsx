@@ -12,6 +12,7 @@ import {
   Clock,
   ClipboardList,
   MapPin,
+  Pencil,
   PiggyBank,
   Truck,
   Wrench,
@@ -38,6 +39,7 @@ import {
 import { useCan } from "@/features/auth";
 import { OrderBillingPanel } from "@/features/billing";
 import { VenueDialog } from "@/features/quotations/components/VenueDialog";
+import { EventDateDialog } from "@/features/quotations/components/EventDateDialog";
 import { VenueRow, formatTime } from "@/features/quotations/components/QuotationParts";
 import { MediaThumb, useLineMedia } from "@/features/master-data";
 import { ApiError } from "@/services/api-client";
@@ -121,6 +123,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const canReadQuotation = useCan("QUOTATION_READ");
   const canWriteQuotation = useCan("QUOTATION_WRITE");
   const [editingVenue, setEditingVenue] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
   /** The venue can be set or corrected until the first dispatch (the server enforces the same rule). */
   const canEditVenue = canWriteQuotation && order.status === "CONFIRMED";
   const productMedia = useLineMedia();
@@ -232,8 +235,13 @@ function OrderWorkspace({ order }: { order: OrderView }) {
           <dl className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-xs text-muted-foreground">Event date</dt>
-              <dd className="tabular mt-0.5 text-lg font-semibold">
+              <dd className="tabular mt-0.5 flex items-center gap-1 text-lg font-semibold">
                 {formatEventDate(order.eventDate)}
+                {canEditVenue && quotation.data ? (
+                  <Button type="button" variant="ghost" size="icon" className="size-7" aria-label="Change event date" onClick={() => setEditingDate(true)}>
+                    <Pencil className="size-3.5" />
+                  </Button>
+                ) : null}
               </dd>
             </div>
             <div>
@@ -286,6 +294,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
         </Card>
       ) : null}
       {editingVenue && quotation.data ? <VenueDialog quotation={quotation.data} onClose={() => setEditingVenue(false)} /> : null}
+      {editingDate && quotation.data ? <EventDateDialog quotation={quotation.data} onClose={() => setEditingDate(false)} /> : null}
 
       {canReadDeposit ? (
         <Card>

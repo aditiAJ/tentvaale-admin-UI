@@ -354,7 +354,8 @@ export interface PlannerProfileView {
  */
 export interface CustomerView {
   id: string;
-  email: string;
+  /** Null for a customer known only by a phone number (one who signed up on the storefront with a mobile number). */
+  email: string | null;
   fullName: string;
   phone: string | null;
   accountType: CustomerType;
@@ -845,7 +846,8 @@ export interface CreateFeaturedCollectionRequest {
 export type UpdateFeaturedCollectionRequest = CreateFeaturedCollectionRequest;
 
 export interface CreateCustomerRequest {
-  email: string;
+  /** Optional, but a customer needs an email or a phone number. */
+  email?: string;
   fullName: string;
   phone?: string;
   accountType: CustomerType;

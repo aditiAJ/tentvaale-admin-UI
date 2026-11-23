@@ -33,8 +33,9 @@ const schema = z.object({
   email: z
     .string()
     .trim()
-    .min(1, "Email is required")
-    .refine((value) => z.email().safeParse(value).success, "Enter a valid email address"),
+    .max(255, "Maximum 255 characters")
+    .refine((value) => value === "" || z.email().safeParse(value).success, "Enter a valid email address")
+    .transform((value) => (value === "" ? undefined : value)),
   phone: z
     .string()
     .trim()
@@ -76,6 +77,10 @@ const schema = z.object({
     .trim()
     .refine((value) => value === "" || (/^\d{1,3}(\.\d{1,2})?$/.test(value) && Number(value) <= 100), "Enter a percentage from 0 to 100")
     .transform((value) => (value === "" ? undefined : Number(value))),
+}).refine((values) => Boolean(values.email) || Boolean(values.phone), {
+  // Someone has to be reachable: customers who book by phone have no email.
+  message: "Give an email or a phone number",
+  path: ["phone"],
 });
 
 type FormInput = z.input<typeof schema>;
@@ -144,7 +149,7 @@ export function CustomerDialog({
     onSuccess: (customer) => {
       queryClient.invalidateQueries({ queryKey: masterDataKeys.customers });
       toast.success(existing ? `${customer.fullName} updated` : `${customer.fullName} added`, {
-        description: customer.email,
+        description: customer.email ?? customer.phone ?? undefined,
       });
       if (!existing && onCreated) onCreated(customer);
       else onClose();
@@ -197,7 +202,7 @@ export function CustomerDialog({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Email" required error={errors.email?.message}>
+          <Field label="Email" error={errors.email?.message}>
             {(props) => (
               <Input
                 {...props}
@@ -209,7 +214,7 @@ export function CustomerDialog({
             )}
           </Field>
 
-          <Field label="Phone" error={errors.phone?.message}>
+          <Field label="Phone" hint="An email or a phone number is needed." error={errors.phone?.message}>
             {(props) => <Input {...props} {...register("phone")} placeholder="+91 98200 11223" />}
           </Field>
         </div>

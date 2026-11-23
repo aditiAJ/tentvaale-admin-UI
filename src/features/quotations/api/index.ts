@@ -122,3 +122,9 @@ export function changeQuotationVenue(
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.changeQuotationVenue(quotationId, venue);
 }
+
+/** Moves the event date (and the order's, until it is dispatched). 422 when it is too late. */
+export function changeQuotationEventDate(quotationId: string, eventDate: string): Promise<QuotationView> {
+  if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
+  return backend.changeQuotationEventDate(quotationId, eventDate);
+}

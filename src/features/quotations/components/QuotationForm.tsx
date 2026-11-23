@@ -9,7 +9,7 @@ import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListPlus, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { createQuotation, quotationKeys, updateQuotation } from "@/features/quotations/api";
+import { changeQuotationEventDate, createQuotation, quotationKeys, updateQuotation } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { listCustomers, listProducts, masterDataKeys } from "@/features/master-data/api";
 import { ProductDialog } from "@/features/master-data/components/ProductDialog";
@@ -18,6 +18,7 @@ import { useCan } from "@/features/auth";
 import type { ProductVariantView, ProductView } from "@/features/master-data/types";
 import { dashboardKeys } from "@/features/dashboard/api";
 import { ApiError } from "@/services/api-client";
+import { IS_MOCK } from "@/services/data-source";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
 import { plannerRate, quotedMoney } from "@/lib/rate";
@@ -279,7 +280,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     value: customer.id,
     label: customer.fullName,
     hint: [customer.email, customer.phone].filter(Boolean).join(" · "),
-    keywords: `${customer.email} ${customer.phone ?? ""}`,
+    keywords: `${customer.email ?? ""} ${customer.phone ?? ""}`,
   }));
 
   // "Add customer" in the dropdown goes to the customer form and comes back here with the new customer chosen. What has been
@@ -491,11 +492,17 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
 
   const mutation = useMutation({
-    mutationFn: ({ values, customerId }: { values: FormOutput; customerId: string }) => {
+    mutationFn: async ({ values, customerId }: { values: FormOutput; customerId: string }) => {
       if (existing) {
+        // Blank keeps the date it has. A moved date goes through the same call as the pencil on the quotation page, so the
+        // functions' days and the customer's plan follow it; the lines are then saved with the new date.
+        const eventDate = values.eventDate ?? existing.eventDate ?? undefined;
+        if (!IS_MOCK && eventDate && eventDate !== existing.eventDate) {
+          await changeQuotationEventDate(existing.id, eventDate);
+        }
         return updateQuotation(existing.id, {
           customerId,
-          eventDate: existing.eventDate ?? values.eventDate,
+          eventDate,
           securityDeposit: values.securityDeposit,
           deliveryCharge: values.deliveryCharge,
           transportationCharge: values.transportationCharge,
@@ -521,7 +528,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         // The controller takes a name and email too; the mock copies them from
         // the customer record, and these are the same values.
         customerName: customer?.fullName ?? "",
-        customerEmail: customer?.email,
+        customerEmail: customer?.email ?? undefined,
         eventDate: values.eventDate,
         securityDeposit: values.securityDeposit,
         deliveryCharge: values.deliveryCharge,
@@ -719,7 +726,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
           <Field
             label="Event date"
-            hint={existing ? "Set by the customer's request and cannot be changed here." : undefined}
+            hint={existing ? "Moving it also moves the functions' days and the customer's plan." : undefined}
             error={errors.eventDate?.message}
           >
             {(props) => (
@@ -728,8 +735,6 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                 {...register("eventDate")}
                 type="date"
                 disabled={mutation.isPending}
-                readOnly={Boolean(existing)}
-                className={existing ? "bg-muted cursor-not-allowed" : undefined}
               />
             )}
           </Field>
@@ -753,7 +758,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
 
           {selectedCustomer ? (
             <p className="text-xs text-muted-foreground sm:col-span-3">
-              {selectedCustomer.email} ·{" "}
+              {selectedCustomer.email ? `${selectedCustomer.email} · ` : ""}
               {selectedCustomer.accountType === "EVENT_PLANNER" ? "Event planner" : "Customer"}
               {selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ""} ·{" "}
               <span className="font-mono">{selectedCustomer.id}</span>

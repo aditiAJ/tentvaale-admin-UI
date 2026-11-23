@@ -755,7 +755,7 @@ interface WirePlannerProfile {
 interface WireCustomer {
   id: number;
   fullName: string;
-  email: string;
+  email?: string | null;
   phone?: string | null;
   accountType: CustomerView["accountType"];
   gstin?: string | null;
@@ -788,7 +788,7 @@ function customerFromWire(customer: WireCustomer): CustomerView {
   return {
     id: String(customer.id),
     fullName: customer.fullName,
-    email: customer.email,
+    email: customer.email ?? null,
     phone: customer.phone ?? null,
     accountType: customer.accountType,
     gstin: customer.gstin ?? null,

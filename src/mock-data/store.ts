@@ -1791,7 +1791,7 @@ export async function mockCreateCustomer(
   const fields = checkCustomerRequest(request);
 
   // Email is the storefront account's natural key — it is what login uses.
-  if (nameTaken(current.customers.map((customer) => customer.email), fields.email)) {
+  if (nameTaken(current.customers.map((customer) => customer.email ?? ""), fields.email)) {
     throw businessRule(`An account already exists for ${fields.email}`);
   }
 
@@ -1814,7 +1814,7 @@ export async function mockUpdateCustomer(
   const fields = checkCustomerRequest(request);
 
   const others = current.customers.filter((customer) => customer.id !== customerId);
-  if (nameTaken(others.map((customer) => customer.email), fields.email)) {
+  if (nameTaken(others.map((customer) => customer.email ?? ""), fields.email)) {
     throw businessRule(`An account already exists for ${fields.email}`);
   }
 

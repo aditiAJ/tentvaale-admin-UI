@@ -147,7 +147,7 @@ export function CustomersPage() {
                 ? visible.map((customer) => (
                     <TR key={customer.id}>
                       <TD className="font-medium">{customer.fullName}</TD>
-                      <TD className="text-xs">{customer.email}</TD>
+                      <TD className="text-xs">{customer.email ?? "—"}</TD>
                       <TD className="tabular text-xs">
                         {customer.phone ?? (
                           <span className="text-muted-foreground">Not given</span>

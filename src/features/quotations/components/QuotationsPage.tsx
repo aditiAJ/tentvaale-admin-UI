@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, ChevronRight, FileText, Inbox, MapPin, Plus, SearchX } from "lucide-react";
+import { CalendarDays, ChevronRight, FileText, Inbox, MapPin, Pencil, Plus, SearchX } from "lucide-react";
 import { getQuotation, listQuotations, quotationKeys } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { bucketOf, isFromStorefront, type QuotationBucket } from "@/features/quotations/source";
@@ -21,6 +21,7 @@ import {
 import { QuotationActions } from "@/features/quotations/components/QuotationActions";
 import { useCan } from "@/features/auth";
 import { VenueDialog } from "@/features/quotations/components/VenueDialog";
+import { EventDateDialog } from "@/features/quotations/components/EventDateDialog";
 import { ConvertToOrderDialog } from "@/features/orders";
 import { OrderBillingPanel } from "@/features/billing";
 import { IS_MOCK } from "@/services/data-source";
@@ -395,6 +396,9 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
   const bucket = bucketOf(q);
   const canWriteVenue = useCan("QUOTATION_WRITE");
   const [editingVenue, setEditingVenue] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
+  // Any status but closed or expired; once it has an order the server also refuses after the first dispatch.
+  const canEditDate = canWriteVenue && q.status !== "REJECTED" && q.status !== "EXPIRED";
   return (
     <>
       <Card className="space-y-4 p-5">
@@ -424,7 +428,14 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
         <dl className="grid gap-x-8 gap-y-3 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="text-xs text-muted-foreground">Event date</dt>
-            <dd className="tabular mt-0.5 text-sm font-medium">{formatEventDate(q.eventDate, true)}</dd>
+            <dd className="tabular mt-0.5 flex items-center gap-1 text-sm font-medium">
+              {formatEventDate(q.eventDate, true)}
+              {canEditDate ? (
+                <Button type="button" variant="ghost" size="icon" className="size-7" aria-label="Change event date" onClick={() => setEditingDate(true)}>
+                  <Pencil className="size-3.5" />
+                </Button>
+              ) : null}
+            </dd>
           </div>
           {q.sentAt ? (
             <div>
@@ -450,6 +461,7 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
           onEdit={canWriteVenue && q.status !== "REJECTED" && q.status !== "EXPIRED" ? () => setEditingVenue(true) : undefined}
         />
         {editingVenue ? <VenueDialog quotation={q} onClose={() => setEditingVenue(false)} /> : null}
+        {editingDate ? <EventDateDialog quotation={q} onClose={() => setEditingDate(false)} /> : null}
       </Card>
 
       <section className="space-y-2">

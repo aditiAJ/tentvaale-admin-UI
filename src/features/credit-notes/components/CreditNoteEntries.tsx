@@ -153,7 +153,7 @@ export function IssueCreditNoteEntry({
               <option value="">Choose a customer</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
-                  {customer.fullName} · {customer.email}
+                  {[customer.fullName, customer.email ?? customer.phone].filter(Boolean).join(" · ")}
                 </option>
               ))}
             </Select>
