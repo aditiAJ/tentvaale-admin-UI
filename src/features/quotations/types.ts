@@ -56,6 +56,9 @@ export interface QuotationLineView {
   functionVenue?: string | null;
   /** What the line is for, in staff's words. */
   remark?: string | null;
+  /** The sides an area (per sq ft) line was typed with, in feet; absent when only the area was typed. */
+  lengthFt?: number | null;
+  widthFt?: number | null;
 }
 
 /**
@@ -126,6 +129,9 @@ export interface CreateQuotationLineRequest {
   oneTimeRateType?: RateType;
   /** What the line is for (a purpose or remark), up to 300 characters. */
   remark?: string;
+  /** An area line's sides in feet, both or neither; they must make the quantity. */
+  lengthFt?: number;
+  widthFt?: number;
 }
 
 /**
@@ -193,6 +199,8 @@ export interface UpdateQuotationLineRequest {
   oneTimeName?: string;
   oneTimeRateType?: RateType;
   remark?: string;
+  lengthFt?: number;
+  widthFt?: number;
 }
 
 /**

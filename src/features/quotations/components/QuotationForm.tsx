@@ -362,6 +362,13 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
     return productsById.get(line.productId)?.rateType ?? null;
   };
 
+  /** The sides a saved area line was typed with, for as long as it still has the area they were saved with. */
+  const savedSides = (line: { lineId?: string; quantity?: string | number } | undefined) => {
+    const saved = line?.lineId ? storedLines.get(line.lineId) : undefined;
+    if (!saved || saved.lengthFt == null || saved.widthFt == null || String(saved.quantity) !== String(line?.quantity)) return null;
+    return { length: String(saved.lengthFt), width: String(saved.widthFt) };
+  };
+
   const priceLine = (line: FormInput["lines"][number] | undefined) => {
     const rate = rateFor(line);
     if (rate === null || !line) return null;
@@ -491,6 +498,18 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   }, [plannerPercent, productsById, getValues, setValue]);
 
 
+  /**
+   * The sides to save with an area line: the ones typed, or the ones it was saved with, but only while they still make the
+   * area on the line. The nearest-to-square sides shown for an area typed on its own are a suggestion and are not saved.
+   */
+  const sidesFor = (line: FormOutput["lines"][number], index: number): { lengthFt?: number; widthFt?: number } => {
+    if (rateTypeFor(line) !== "SqFt") return {};
+    const boxes = sides[fields[index]?.id ?? ""] ?? savedSides(line);
+    if (!boxes) return {};
+    const area = areaOf(boxes.length, boxes.width);
+    return area !== null && area === Number(line.quantity) ? { lengthFt: Number(boxes.length), widthFt: Number(boxes.width) } : {};
+  };
+
   const mutation = useMutation({
     mutationFn: async ({ values, customerId }: { values: FormOutput; customerId: string }) => {
       if (existing) {
@@ -508,7 +527,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
           transportationCharge: values.transportationCharge,
           installationCharge: values.installationCharge,
           ...discountRequest(values),
-          lines: values.lines.map((line) => ({
+          lines: values.lines.map((line, index) => ({
+            ...sidesFor(line, index),
             lineId: line.lineId || undefined,
             productId: line.oneTime ? "" : line.productId,
             variantId: line.oneTime ? undefined : line.variantId || undefined,
@@ -536,7 +556,8 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
         installationCharge: values.installationCharge,
         ...discountRequest(values),
         validUntil: values.validUntil,
-        lines: values.lines.map(({ productId, variantId, quantity, rentalDays, unitRatePerDay, rateOverride, oneTime, oneTimeName, oneTimeRateType, remark }) => ({
+        lines: values.lines.map(({ productId, variantId, quantity, rentalDays, unitRatePerDay, rateOverride, oneTime, oneTimeName, oneTimeRateType, remark }, index) => ({
+          ...sidesFor(values.lines[index], index),
           productId: oneTime ? "" : productId,
           variantId: oneTime ? undefined : variantId || undefined,
           quantity,
@@ -831,7 +852,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                 // An area product is entered as length x width or as the area: each fills in the other.
                 const areaLine = rateType === "SqFt";
                 const fit = areaLine && line ? bestFit(Number(line.quantity)) : null;
-                const boxes = sides[field.id] ?? { length: fit ? String(fit[0]) : "", width: fit ? String(fit[1]) : "" };
+                const boxes = sides[field.id] ?? savedSides(line) ?? { length: fit ? String(fit[0]) : "", width: fit ? String(fit[1]) : "" };
                 const rowErrors = errors.lines?.[index];
                 const stored = line?.lineId ? storedLines.get(line.lineId) : undefined;
 

@@ -43,6 +43,8 @@ interface WireLine {
   functionStartTime?: string | null;
   functionVenue?: string | null;
   remark?: string | null;
+  lengthFt?: number | null;
+  widthFt?: number | null;
 }
 
 interface WireQuotation {
@@ -110,6 +112,8 @@ function lineFromWire(line: WireLine): QuotationLineView {
     functionStartTime: line.functionStartTime,
     functionVenue: line.functionVenue,
     remark: line.remark,
+    lengthFt: line.lengthFt ?? null,
+    widthFt: line.widthFt ?? null,
   };
 }
 
@@ -191,6 +195,8 @@ export async function createQuotation(request: CreateQuotationRequest): Promise<
         rentalDays: line.rentalDays,
         unitRatePerDay: line.unitRatePerDay,
         remark: line.remark,
+        lengthFt: line.lengthFt,
+        widthFt: line.widthFt,
       })),
     },
   });
@@ -223,6 +229,8 @@ export async function updateQuotation(
         rentalDays: line.rentalDays,
         unitRatePerDay: line.unitRatePerDay,
         remark: line.remark,
+        lengthFt: line.lengthFt,
+        widthFt: line.widthFt,
       })),
     },
   });
