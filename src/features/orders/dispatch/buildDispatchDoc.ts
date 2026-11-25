@@ -1,6 +1,6 @@
 import type { CompanyProfile } from "@/features/settings/api";
 import type { QuotationView } from "@/features/quotations/types";
-import { shortDate } from "@/features/quotations/components/QuotationDocument";
+import { shortDate, type DocCompany } from "@/features/quotations/components/QuotationDocument";
 import { loadImageData, loadLivePictures, loadMarkData } from "@/features/quotations/components/pdfAssets";
 import { listProducts } from "@/features/master-data/api";
 import type { OrderView } from "@/features/orders/types";
@@ -8,13 +8,13 @@ import type { DispatchDoc, DispatchEntry, DispatchGroup } from "./DispatchListDo
 import { pickPlan } from "./pickPlan";
 
 /** "Round Table (Red)" is the product "Round Table" in the variant "Red". */
-function splitName(name: string): [string, string | null] {
+export function splitName(name: string): [string, string | null] {
   const match = /^(.*) \((.+)\)$/.exec(name);
   return match ? [match[1], match[2]] : [name, null];
 }
 
 /** One thing to send out: from the quotation the order was made from (it knows the function and the picture), else the order. */
-interface Source {
+export interface Source {
   productId: number | null;
   variantId: number | null;
   name: string;
@@ -29,7 +29,7 @@ interface Source {
 const UNIT_OF = { SqFt: "SQ FT", SQFT: "SQ FT", RFt: "RFT", RFT: "RFT" } as const;
 const unitFor = (rateType: string | null | undefined) => UNIT_OF[rateType as keyof typeof UNIT_OF] ?? null;
 
-function sourcesOf(
+export function sourcesOf(
   order: OrderView,
   quotation: QuotationView | undefined,
   pictureFor: Awaited<ReturnType<typeof loadLivePictures>>,
@@ -120,8 +120,6 @@ export async function buildDispatchDoc(
     loadMarkData("/logo-wordmark-pdf.png"),
     Promise.all(urls.map(async (url) => [url, await loadImageData(url, 360)] as const)),
   ]);
-  // Always the TENTVAALE wordmark, the same as the quotation, not the logo uploaded in Company settings.
-  const logo = wordmark ?? (await loadMarkData("/logo-mark-pdf.png"));
   const images: Record<string, string> = {};
   for (const [url, data] of pictures) if (data) images[url] = data;
 
@@ -134,21 +132,26 @@ export async function buildDispatchDoc(
     customerName: order.customerName,
     status: order.status,
     groups,
-    company: {
-      name: company?.name ?? "Tentvaale",
-      address: [company?.addressLine, company?.city, company?.state, company?.postalCode].filter(Boolean).join(", ") || null,
-      gstin: company?.gstin ?? null,
-      pan: company?.pan ?? null,
-      phone: company?.primaryPhone ?? null,
-      email: company?.publicEmail ?? null,
-      website: company?.websiteUrl ?? null,
-      bankName: company?.bankName ?? null,
-      bankAccount: company?.bankAccount ?? null,
-      bankIfsc: company?.bankIfsc ?? null,
-      upiId: company?.upiId ?? null,
-      logo,
-    },
+    company: await docCompany(company, wordmark),
     images,
     picturesMissing: urls.length - Object.keys(images).length,
+  };
+}
+
+/** The company block every order paper prints. Always the TENTVAALE wordmark, the same as the quotation, not the logo uploaded in Company settings. */
+export async function docCompany(company: CompanyProfile | undefined, wordmark: string | null): Promise<DocCompany> {
+  return {
+    name: company?.name ?? "Tentvaale",
+    address: [company?.addressLine, company?.city, company?.state, company?.postalCode].filter(Boolean).join(", ") || null,
+    gstin: company?.gstin ?? null,
+    pan: company?.pan ?? null,
+    phone: company?.primaryPhone ?? null,
+    email: company?.publicEmail ?? null,
+    website: company?.websiteUrl ?? null,
+    bankName: company?.bankName ?? null,
+    bankAccount: company?.bankAccount ?? null,
+    bankIfsc: company?.bankIfsc ?? null,
+    upiId: company?.upiId ?? null,
+    logo: wordmark ?? (await loadMarkData("/logo-mark-pdf.png")),
   };
 }

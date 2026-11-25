@@ -11,6 +11,7 @@ import {
   CircleCheck,
   Clock,
   ClipboardList,
+  FileText,
   MapPin,
   Pencil,
   PiggyBank,
@@ -200,10 +201,16 @@ function OrderWorkspace({ order }: { order: OrderView }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {order.status !== "CANCELLED" ? (
-              <Link href={`/orders/dispatch?id=${order.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
-                <ClipboardList />
-                Dispatch list
-              </Link>
+              <>
+                <Link href={`/orders/dispatch?id=${order.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  <ClipboardList />
+                  Dispatch list
+                </Link>
+                <Link href={`/orders/challan?id=${order.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  <FileText />
+                  Delivery challan
+                </Link>
+              </>
             ) : null}
             {order.status === "CONFIRMED" && canWriteOrder ? (
               <Button size="sm" variant="outline" onClick={() => setActing("cancel")}>

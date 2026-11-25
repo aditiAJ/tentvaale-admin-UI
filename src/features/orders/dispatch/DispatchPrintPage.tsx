@@ -13,10 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * An order's dispatch list as a real PDF (A4, page numbers) in the quotation's look: a card per item with its picture,
- * grouped by warehouse. Previewed here, then downloaded or printed.
+ * An order's dispatch list or delivery challan as a real PDF (A4, page numbers) in the quotation's look. The dispatch list is a
+ * card per item with its picture, grouped by warehouse; the challan is the whole order with boxes to tick and places to sign.
+ * Previewed here, then downloaded or printed.
  */
-export function DispatchPrintPage({ orderId }: { orderId: string }) {
+export function DispatchPrintPage({ orderId, paper = "dispatch" }: { orderId: string; paper?: "dispatch" | "challan" }) {
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === "dark" ? "dark" : "light";
   const order = useQuery({
@@ -40,7 +41,7 @@ export function DispatchPrintPage({ orderId }: { orderId: string }) {
   const c = company.data;
   // The quotation is only waited for when there is one; an order without one is listed from its own lines.
   const ready = Boolean(o) && !company.isPending && (quotationId === "" || !quotation.isPending);
-  const key = `${o?.id}:${o?.status}:${theme}`;
+  const key = `${paper}:${o?.id}:${o?.status}:${theme}`;
 
   useEffect(() => {
     if (!ready || !o) return;
@@ -49,16 +50,29 @@ export function DispatchPrintPage({ orderId }: { orderId: string }) {
     void (async () => {
       try {
         // Loaded here only: the PDF engine is large and runs in the browser.
-        const [{ pdf: render }, { DispatchListDocument }, { buildDispatchDoc }] = await Promise.all([
-          import("@react-pdf/renderer"),
-          import("@/features/orders/dispatch/DispatchListDocument"),
-          import("@/features/orders/dispatch/buildDispatchDoc"),
-        ]);
-        const doc = await buildDispatchDoc(o, q, c);
-        const blob = await render(<DispatchListDocument doc={doc} theme={theme} />).toBlob();
+        const { pdf: render } = await import("@react-pdf/renderer");
+        let blob: Blob;
+        let missing: number;
+        if (paper === "challan") {
+          const [{ ChallanDocument }, { buildChallanDoc }] = await Promise.all([
+            import("@/features/orders/challan/ChallanDocument"),
+            import("@/features/orders/challan/buildChallanDoc"),
+          ]);
+          const doc = await buildChallanDoc(o, q, c);
+          blob = await render(<ChallanDocument doc={doc} theme={theme} />).toBlob();
+          missing = doc.picturesMissing;
+        } else {
+          const [{ DispatchListDocument }, { buildDispatchDoc }] = await Promise.all([
+            import("@/features/orders/dispatch/DispatchListDocument"),
+            import("@/features/orders/dispatch/buildDispatchDoc"),
+          ]);
+          const doc = await buildDispatchDoc(o, q, c);
+          blob = await render(<DispatchListDocument doc={doc} theme={theme} />).toBlob();
+          missing = doc.picturesMissing;
+        }
         if (cancelled) return;
         made = URL.createObjectURL(blob);
-        setPdf({ key, url: made, missing: doc.picturesMissing });
+        setPdf({ key, url: made, missing });
         setFailed(null);
       } catch (error) {
         if (!cancelled) setFailed(error instanceof Error ? error.message : "The PDF could not be made.");
@@ -68,7 +82,7 @@ export function DispatchPrintPage({ orderId }: { orderId: string }) {
       cancelled = true;
       if (made) URL.revokeObjectURL(made);
     };
-  }, [ready, o, q, c, theme, key]);
+  }, [ready, o, q, c, theme, key, paper]);
 
   const failure = (title: string) => (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -81,7 +95,7 @@ export function DispatchPrintPage({ orderId }: { orderId: string }) {
   if (order.isError || !o) return failure("The order could not be loaded.");
 
   const current = pdf?.key === key ? pdf.url : null;
-  const fileName = `Dispatch-${o.orderNumber}.pdf`;
+  const fileName = `${paper === "challan" ? "Challan" : "Dispatch"}-${o.orderNumber}.pdf`;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -121,7 +135,7 @@ export function DispatchPrintPage({ orderId }: { orderId: string }) {
         <iframe title={fileName} src={current} className="h-[80vh] w-full rounded-lg border border-border bg-card" />
       ) : failed ? null : (
         <div className="flex h-[60vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Making the dispatch list…
+          <Loader2 className="size-4 animate-spin" /> Making the {paper === "challan" ? "delivery challan" : "dispatch list"}…
         </div>
       )}
     </div>
