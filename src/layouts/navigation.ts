@@ -3,6 +3,7 @@ import {
   Bell,
   Boxes,
   Building2,
+  CalendarDays,
   CreditCard,
   ClipboardList,
   FileText,
@@ -157,6 +158,13 @@ export const NAVIGATION: NavSection[] = [
   {
     label: "Operations",
     items: [
+      {
+        label: "Event calendar",
+        href: "/event-calendar",
+        icon: CalendarDays,
+        permission: "ORDER_READ",
+        status: "ready",
+      },
       {
         label: "Stock movement",
         href: "/inventory/stock-movements",
