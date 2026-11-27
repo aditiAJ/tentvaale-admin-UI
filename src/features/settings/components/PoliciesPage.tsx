@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCan } from "@/features/auth";
 import { ApiError } from "@/services/api-client";
 import {
   listPolicies,
@@ -49,6 +50,7 @@ export function PoliciesPage() {
 }
 
 function PolicyEditor({ policy }: { policy: Policy }) {
+  const canEdit = useCan("SETTINGS_EDIT");
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(policy.title);
   const [body, setBody] = useState(policy.version === 0 ? "" : policy.body);
@@ -80,17 +82,21 @@ function PolicyEditor({ policy }: { policy: Policy }) {
         </span>
       </div>
       {error ? <Alert tone="error" title={error} /> : null}
-      <Field label="Title" required>
-        {(props) => <Input {...props} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />}
-      </Field>
-      <Field label="Text" required>
-        {(props) => <Textarea {...props} rows={8} value={body} onChange={(e) => setBody(e.target.value)} />}
-      </Field>
+      <fieldset disabled={!canEdit} className="space-y-3">
+        <Field label="Title" required>
+          {(props) => <Input {...props} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />}
+        </Field>
+        <Field label="Text" required>
+          {(props) => <Textarea {...props} rows={8} value={body} onChange={(e) => setBody(e.target.value)} />}
+        </Field>
+      </fieldset>
       <div className="flex items-center gap-3">
-        <Button onClick={() => publish.mutate()} disabled={publish.isPending || title.trim() === "" || body.trim() === ""}>
-          {publish.isPending ? <Loader2 className="animate-spin" /> : null}
-          Publish new version
-        </Button>
+        {canEdit ? (
+          <Button onClick={() => publish.mutate()} disabled={publish.isPending || title.trim() === "" || body.trim() === ""}>
+            {publish.isPending ? <Loader2 className="animate-spin" /> : null}
+            Publish new version
+          </Button>
+        ) : null}
         <button type="button" className="text-sm text-primary hover:underline" onClick={() => setShowHistory((v) => !v)}>
           {showHistory ? "Hide history" : "Version history"}
         </button>

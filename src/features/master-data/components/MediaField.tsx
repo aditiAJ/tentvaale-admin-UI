@@ -4,12 +4,10 @@ import { useRef, useState } from "react";
 import { Film, ImagePlus, Loader2, Star, Upload, X } from "lucide-react";
 import type { MediaAsset, MediaLimits } from "@/features/master-data/types";
 import {
-  compressProductImage,
   formatBytes,
   IMAGE_TYPES,
   MAX_PRODUCT_IMAGE_PICK_BYTES,
   MediaError,
-  PRODUCT_IMAGE_TARGET_BYTES,
   readMedia,
   VIDEO_TYPES,
 } from "@/features/master-data/media";
@@ -109,22 +107,14 @@ export function MediaField({
     const added: MediaAsset[] = [];
     if (!IS_MOCK) {
       // Live backend: images go to storage in one request, each file with its own outcome.
-      // A product photo over the backend's 2 MB cap is compressed here first rather than
-      // rejected outright — the admin can pick up to 5 MB and never see the 2 MB limit at all
-      // unless compression genuinely can't get it under that (an unusually busy/large photo).
+      // uploadMedia makes each image small enough to send; only the limit on what may be picked is checked here.
       const toSend: File[] = [];
       for (const [file, kind] of accepted) {
-        if (kind === "IMAGE") {
-          // Every image is shrunk first, not just product photos: a phone photo of several MB sent as is can be
-          // refused by the server or the proxy in front of it ("Request Entity Too Large").
-          if (acceptsVideo && file.size > MAX_PRODUCT_IMAGE_PICK_BYTES) {
-            problems.push(`${file.name}: over ${formatBytes(MAX_PRODUCT_IMAGE_PICK_BYTES)}; choose a smaller photo`);
-            continue;
-          }
-          toSend.push(await compressProductImage(file, PRODUCT_IMAGE_TARGET_BYTES));
-        } else {
-          toSend.push(file);
+        if (kind === "IMAGE" && acceptsVideo && file.size > MAX_PRODUCT_IMAGE_PICK_BYTES) {
+          problems.push(`${file.name}: over ${formatBytes(MAX_PRODUCT_IMAGE_PICK_BYTES)}; choose a smaller photo`);
+          continue;
         }
+        toSend.push(file);
       }
       const warnings: string[] = [];
       try {

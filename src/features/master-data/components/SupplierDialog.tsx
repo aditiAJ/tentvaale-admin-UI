@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -72,6 +73,7 @@ export function SupplierDialog({
   existing?: SupplierView;
   onClose: () => void;
 }) {
+  const canSwitchOff = useCan("SUPPLIER_DELETE");
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
   // Switching a supplier off asks first; the values wait here until the answer is yes.
@@ -266,7 +268,8 @@ export function SupplierDialog({
           {(props) => <Textarea {...props} {...register("notes")} rows={3} />}
         </Field>
 
-        {existing ? (
+        {/* Switching off ends the record, so it is only offered with Delete; switching back on is an edit. */}
+        {existing && (!existing.active || canSwitchOff) ? (
           <ActiveToggle
             {...register("active")}
             label="Active"

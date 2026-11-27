@@ -59,11 +59,13 @@ export function OrderBillingPanel({
 }) {
   const forQuotation = !orderId;
   const targetId = (orderId ?? quotationId) as string;
-  const canWrite = useCan("PAYMENT_WRITE");
+  const canAdd = useCan("PAYMENT_ADD");
+  const canEdit = useCan("PAYMENT_EDIT");
+  const canSchedule = useCan("PAYMENT_SCHEDULE");
   const canVerify = useCan("PAYMENT_VERIFY");
   const canVoid = useCan("PAYMENT_VOID");
-  const canReadInvoices = useCan("INVOICE_READ");
-  const canWriteInvoices = useCan("INVOICE_WRITE");
+  const canReadInvoices = useCan("INVOICE_VIEW");
+  const canWriteInvoices = useCan("INVOICE_ISSUE");
   const queryClient = useQueryClient();
   const balance = useQuery({
     queryKey: forQuotation ? billingKeys.quotation(targetId) : billingKeys.order(targetId),
@@ -158,7 +160,7 @@ export function OrderBillingPanel({
                   <PaymentRow
                     key={p.id}
                     payment={p}
-                    canWrite={canWrite}
+                    canEdit={canEdit}
                     canVerify={canVerify}
                     canVoid={canVoid}
                     voidBlockedReason={
@@ -196,12 +198,10 @@ export function OrderBillingPanel({
           </div>
         ) : null}
 
-        {canWrite ? (
-          <>
-            <RecordPaymentForm targetId={targetId} forQuotation={forQuotation} balance={b} canVerify={canVerify} onDone={refresh} />
-            {forQuotation ? null : <ScheduleForm orderId={targetId} onDone={refresh} />}
-          </>
+        {canAdd ? (
+          <RecordPaymentForm targetId={targetId} forQuotation={forQuotation} balance={b} canVerify={canVerify} onDone={refresh} />
         ) : null}
+        {canSchedule && !forQuotation ? <ScheduleForm orderId={targetId} onDone={refresh} /> : null}
 
         {canReadInvoices && !forQuotation && documents.data ? (
           <InvoiceBlock invoice={invoiceDoc} paidInFull={paidInFull} />
@@ -294,14 +294,14 @@ function Figure({ label, value, strong }: { label: string; value: string; strong
 
 function PaymentRow({
   payment,
-  canWrite,
+  canEdit,
   canVerify,
   canVoid,
   voidBlockedReason,
   onChanged,
 }: {
   payment: Payment;
-  canWrite: boolean;
+  canEdit: boolean;
   canVerify: boolean;
   canVoid: boolean;
   voidBlockedReason?: string;
@@ -327,7 +327,7 @@ function PaymentRow({
       <TD>
         <PaymentRowActions
           payment={payment}
-          canWrite={canWrite}
+          canEdit={canEdit}
           canVerify={canVerify}
           canVoid={canVoid}
           voidBlockedReason={voidBlockedReason}

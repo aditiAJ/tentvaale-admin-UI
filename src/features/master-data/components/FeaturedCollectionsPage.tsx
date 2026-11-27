@@ -52,7 +52,9 @@ function ProductChip({ product }: { product: FeaturedCollectionProduct }) {
  * together, and chips read as that set better than a column would.
  */
 export function FeaturedCollectionsPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("COLLECTION_ADD");
+  const canEdit = useCan("COLLECTION_EDIT");
+  const canDelete = useCan("COLLECTION_DELETE");
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FeaturedCollectionView | null>(null);
@@ -63,7 +65,7 @@ export function FeaturedCollectionsPage() {
     queryFn: ({ signal }) => listFeaturedCollections(signal),
   });
 
-  const newButton = canWrite ? (
+  const newButton = canAdd ? (
     <Button onClick={() => setCreating(true)}>
       <Plus />
       New collection
@@ -159,8 +161,9 @@ export function FeaturedCollectionsPage() {
                 </ul>
               </CardContent>
 
-              {canWrite ? (
+              {canEdit || canDelete ? (
                 <div className="flex justify-end gap-1 border-t border-border px-4 py-2">
+                  {(collection.active ? canDelete : canEdit) ? (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -170,6 +173,8 @@ export function FeaturedCollectionsPage() {
                     {collection.active ? <EyeOff /> : <Eye />}
                     {collection.active ? "Deactivate" : "Activate"}
                   </Button>
+                  ) : null}
+                  {canEdit ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -179,6 +184,7 @@ export function FeaturedCollectionsPage() {
                     <Pencil />
                     Edit
                   </Button>
+                  ) : null}
                 </div>
               ) : null}
             </Card>

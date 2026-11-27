@@ -77,7 +77,7 @@ export function WarehouseStockPanel({
   /** Opens "Where it is kept" with this line ready to place. */
   onPlace?: (entry: WarehouseProductView) => void;
 }) {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canWrite = useCan("WAREHOUSE_STOCK");
   const queryClient = useQueryClient();
   const stockKey = masterDataKeys.warehouseProducts(warehouse.id);
   const [search, setSearch] = useState("");

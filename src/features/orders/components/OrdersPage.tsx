@@ -247,8 +247,8 @@ function OrderList({
  * come from the same per-order reads the detail makes, so opening the order finds them already loaded.
  */
 function OrderCard({ order, href }: { order: OrderView; href: string }) {
-  const canReadStock = useCan("INVENTORY_READ");
-  const canReadDeposit = useCan("DEPOSIT_READ");
+  const canReadStock = useCan("STOCK_VIEW");
+  const canReadDeposit = useCan("DEPOSIT_VIEW");
 
   const movements = useQuery({
     queryKey: inventoryKeys.movementsByOrder(order.id),

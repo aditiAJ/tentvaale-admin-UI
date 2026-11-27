@@ -82,7 +82,8 @@ const COMPARE: Record<SortKey, (a: SupplierView, b: SupplierView) => number> = {
 const dash = <span className="text-muted-foreground">—</span>;
 
 function SupplierList() {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canAdd = useCan("SUPPLIER_ADD");
+  const canEdit = useCan("SUPPLIER_EDIT");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SupplierView | null>(null);
   const [search, setSearch] = useState("");
@@ -127,7 +128,7 @@ function SupplierList() {
         title="Suppliers"
         description="Outside rental partners you can draw stock from when your own runs out."
         actions={
-          canWrite ? (
+          canAdd ? (
             <Button onClick={() => setCreating(true)}>
               <Plus />
               New supplier
@@ -277,7 +278,7 @@ function SupplierList() {
                         </TD>
                         <TD>
                           <div className="flex justify-end gap-1">
-                            {canWrite ? (
+                            {canEdit ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -324,7 +325,7 @@ function SupplierList() {
             title="No suppliers yet"
             description="Add the outside partners you rent from, then record what each can provide."
             action={
-              canWrite ? (
+              canAdd ? (
                 <Button onClick={() => setCreating(true)}>
                   <Plus />
                   New supplier

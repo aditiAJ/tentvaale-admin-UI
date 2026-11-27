@@ -14,7 +14,7 @@ export default async function Page({
   const { id, status } = await searchParams;
 
   return (
-    <RequirePermission permission="ORDER_READ">
+    <RequirePermission permission="ORDER_VIEW">
       <OrdersPage
         orderId={typeof id === "string" ? id : ""}
         status={typeof status === "string" ? status : ""}

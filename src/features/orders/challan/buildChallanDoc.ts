@@ -1,5 +1,5 @@
 import type { CompanyProfile } from "@/features/settings/api";
-import type { QuotationView } from "@/features/quotations/types";
+import type { DispatchDetails } from "@/features/quotations/types";
 import { loadImageData, loadLivePictures, loadMarkData } from "@/features/quotations/components/pdfAssets";
 import { getCustomer, listProducts } from "@/features/master-data/api";
 import type { OrderView } from "@/features/orders/types";
@@ -9,7 +9,7 @@ import type { ChallanDoc } from "./ChallanDocument";
 /** What the delivery challan prints: every line of the order, in the order the quotation has them, with the customer's details. */
 export async function buildChallanDoc(
   order: OrderView,
-  quotation: QuotationView | undefined,
+  quotation: DispatchDetails | undefined,
   company: CompanyProfile | undefined,
 ): Promise<ChallanDoc> {
   // What each product's quantity counts (pieces, sq ft, running ft); a product that cannot be read counts as pieces.

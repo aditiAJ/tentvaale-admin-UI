@@ -93,7 +93,7 @@ let seeding: Promise<void> | null = null;
  */
 export function useCatalogueLists() {
   const queryClient = useQueryClient();
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("CATEGORY_ADD");
   const query = useQuery({
     queryKey: catalogueListKeys.all,
     queryFn: ({ signal }) => fetchLists(signal),

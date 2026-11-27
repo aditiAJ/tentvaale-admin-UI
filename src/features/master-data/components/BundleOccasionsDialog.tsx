@@ -31,10 +31,15 @@ type View = "all" | "shown" | "hidden";
  * Every write refreshes the bundle list too, since bundles show occasion names.
  */
 export function BundleOccasionsDialog({
-  canWrite,
+  canAdd,
+  canEdit,
+  canHide,
   onClose,
 }: {
-  canWrite: boolean;
+  canAdd: boolean;
+  /** Rename, reorder, and show a hidden one again. */
+  canEdit: boolean;
+  canHide: boolean;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -145,7 +150,7 @@ export function BundleOccasionsDialog({
       }
     >
       <div className="space-y-3">
-        {canWrite ? (
+        {canAdd ? (
           <div className="flex items-center gap-2">
             <Input
               value={newName}
@@ -237,7 +242,7 @@ export function BundleOccasionsDialog({
               const editing = renaming?.id === occasion.id;
               return (
                 <li key={occasion.id} className="flex items-center gap-2 px-2 py-2">
-                  {canWrite && !filtered ? (
+                  {canEdit && !filtered ? (
                     <div className="flex shrink-0 flex-col">
                       <Button
                         variant="ghost"
@@ -293,7 +298,7 @@ export function BundleOccasionsDialog({
                     </div>
                   )}
 
-                  {canWrite && editing ? (
+                  {canEdit && editing ? (
                     <div className="flex shrink-0">
                       <Button
                         variant="ghost"
@@ -321,8 +326,9 @@ export function BundleOccasionsDialog({
                   ) : null}
 
                   {!editing ? (
-                    canWrite ? (
+                    canEdit || canHide ? (
                       <div className="flex shrink-0 items-center gap-1">
+                        {(occasion.active ? canHide : canEdit) ? (
                         <button
                           type="button"
                           onClick={() => toggle.mutate(occasion)}
@@ -339,6 +345,10 @@ export function BundleOccasionsDialog({
                           {occasion.active ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
                           {occasion.active ? "Shown" : "Hidden"}
                         </button>
+                        ) : (
+                          <Badge className="shrink-0">{occasion.active ? "Shown" : "Hidden"}</Badge>
+                        )}
+                        {canEdit ? (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -353,6 +363,7 @@ export function BundleOccasionsDialog({
                         >
                           <Pencil />
                         </Button>
+                        ) : null}
                       </div>
                     ) : (
                       <Badge className="shrink-0">{occasion.active ? "Shown" : "Hidden"}</Badge>

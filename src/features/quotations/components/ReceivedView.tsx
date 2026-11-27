@@ -1,10 +1,10 @@
 "use client";
 
+import { useQuotationRights } from "@/features/quotations/rights";
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, CalendarDays, CheckCircle2, Circle, Inbox, Layers, MapPin, MessageSquareWarning, Package, Pencil, Users } from "lucide-react";
-import { useCan } from "@/features/auth";
 import { getQuotationPlan, quotationKeys } from "@/features/quotations/api";
 import type { QuotationView } from "@/features/quotations/types";
 import { discountSuffix } from "@/features/quotations/discount";
@@ -152,7 +152,7 @@ function Checklist({ quotation: q }: { quotation: QuotationView }) {
  */
 export function ReceivedDetail({ quotation: q, actions }: { quotation: QuotationView; actions: React.ReactNode }) {
   const revising = Boolean(q.changeRequestNote);
-  const canWrite = useCan("QUOTATION_WRITE");
+  const canWrite = useQuotationRights().mayMove(q.status);
   const [editingDate, setEditingDate] = useState(false);
   const plan = useQuery({
     queryKey: quotationKeys.plan(q.id),

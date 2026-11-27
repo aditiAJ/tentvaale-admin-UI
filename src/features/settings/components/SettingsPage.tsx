@@ -50,12 +50,12 @@ const SECTIONS: { key: SectionKey; label: string; icon: LucideIcon; description:
   { key: "general", label: "General settings", icon: SlidersHorizontal, description: "How the back office looks for you, your password, and the product options (mood, theme, colours, occasions) the product form offers." },
 ];
 
-const TABS: { key: TabKey; label: string; hint: string; icon: LucideIcon; needs: "MASTER_DATA_READ" | "CONFIG_WRITE" }[] = [
-  { key: "profile", label: "Business profile", hint: "Name, address, contact, logo", icon: Building2, needs: "MASTER_DATA_READ" },
-  { key: "tax", label: "Tax & GST", hint: "GSTIN, PAN, state, GST rate", icon: Percent, needs: "MASTER_DATA_READ" },
-  { key: "bank", label: "Bank & payments", hint: "Bank account and UPI", icon: Landmark, needs: "MASTER_DATA_READ" },
-  { key: "numbering", label: "Numbering", hint: "Quotation, order, invoice numbers", icon: Hash, needs: "CONFIG_WRITE" },
-  { key: "policies", label: "Policies", hint: "Terms, cancellation, damage, delivery", icon: ScrollText, needs: "CONFIG_WRITE" },
+const TABS: { key: TabKey; label: string; hint: string; icon: LucideIcon }[] = [
+  { key: "profile", label: "Business profile", hint: "Name, address, contact, logo", icon: Building2 },
+  { key: "tax", label: "Tax & GST", hint: "GSTIN, PAN, state, GST rate", icon: Percent },
+  { key: "bank", label: "Bank & payments", hint: "Bank account and UPI", icon: Landmark },
+  { key: "numbering", label: "Numbering", hint: "Quotation, order, invoice numbers", icon: Hash },
+  { key: "policies", label: "Policies", hint: "Terms, cancellation, damage, delivery", icon: ScrollText },
 ];
 
 /** The company details as the form holds them: text, so a half-typed number is never lost. */
@@ -126,11 +126,12 @@ const FIELDS_OF: Record<"profile" | "tax" | "bank", (keyof Draft)[]> = {
 export function SettingsPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const canCompany = useCan("MASTER_DATA_READ");
-  const canConfig = useCan("CONFIG_WRITE");
+  // Seeing the company settings is one box; changing any of them another. General settings are everyone's own.
+  const canCompany = useCan("SETTINGS_VIEW");
   // Old links (?tab=policies and the like) carry no section and open Company settings, where those tabs now are.
-  const section: SectionKey = params.get("section") === "general" ? "general" : "company";
-  const tabs = TABS.filter((t) => (t.needs === "MASTER_DATA_READ" ? canCompany : canConfig));
+  const section: SectionKey = !canCompany || params.get("section") === "general" ? "general" : "company";
+  const sections = SECTIONS.filter((s) => s.key === "general" || canCompany);
+  const tabs = TABS;
   const requested = params.get("tab");
   const active = tabs.find((t) => t.key === requested)?.key ?? tabs[0]?.key;
 
@@ -141,7 +142,7 @@ export function SettingsPage() {
       <PageHeader title="Settings" description={SECTIONS.find((s) => s.key === section)?.description} />
 
       <div role="tablist" aria-label="Settings sections" className="flex gap-1 overflow-x-auto border-b border-border">
-        {SECTIONS.map(({ key, label, icon: Icon }) => (
+        {sections.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             type="button"
@@ -256,7 +257,7 @@ function Section({ title, shownOn, children }: { title: string; shownOn: string;
 }
 
 function CompanyTabs({ initial, tab }: { initial: CompanyProfile; tab: "profile" | "tax" | "bank" }) {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("SETTINGS_EDIT");
   const queryClient = useQueryClient();
   const base = useMemo(() => draftOf(initial), [initial]);
   const [draft, setDraft] = useState<Draft>(base);

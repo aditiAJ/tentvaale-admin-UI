@@ -3,7 +3,7 @@ import { RequirePermission } from "@/components/require-permission";
 
 export default function Page() {
   return (
-    <RequirePermission permission="INVENTORY_READ">
+    <RequirePermission permission="STOCK_VIEW">
       <AvailabilityPage />
     </RequirePermission>
   );

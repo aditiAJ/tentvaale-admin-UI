@@ -26,7 +26,7 @@ import {
   type OrderAction,
 } from "@/features/orders/components/OrderActionDialog";
 import { ORDER_STATUS_VARIANT, DEPOSIT_VARIANT, formatEventDate } from "@/features/orders/display";
-import { getQuotation, quotationKeys } from "@/features/quotations/api";
+import { dispatchDetailsKey, getDispatchDetails, getQuotation, quotationKeys } from "@/features/quotations/api";
 import { inventoryKeys, listStockMovementsByOrder } from "@/features/inventory/api";
 import type { MovementDirection } from "@/features/inventory/types";
 import { orderFulfilment, type OrderFulfilment } from "@/features/inventory/fulfilment";
@@ -115,18 +115,19 @@ function OrderWorkspace({ order }: { order: OrderView }) {
   const [moving, setMoving] = useState<MovementDirection | null>(null);
   const [acting, setActing] = useState<OrderAction | null>(null);
   const [settling, setSettling] = useState<SettleAction | null>(null);
-  const canWriteOrder = useCan("ORDER_WRITE");
-  const canReadStock = useCan("INVENTORY_READ");
-  const canWriteStock = useCan("INVENTORY_WRITE");
-  const canReadDeposit = useCan("DEPOSIT_READ");
-  const canReadPayments = useCan("PAYMENT_READ");
-  const canWriteDeposit = useCan("DEPOSIT_WRITE");
-  const canReadQuotation = useCan("QUOTATION_READ");
-  const canWriteQuotation = useCan("QUOTATION_WRITE");
+  const canProgress = useCan("ORDER_PROGRESS");
+  const canCancel = useCan("ORDER_CANCEL");
+  const canChangeOrder = useCan("ORDER_EDIT");
+  const canReadStock = useCan("STOCK_VIEW");
+  const canWriteStock = useCan("STOCK_MOVE");
+  const canReadDeposit = useCan("DEPOSIT_VIEW");
+  const canReadPayments = useCan("PAYMENT_VIEW");
+  const canWriteDeposit = useCan("DEPOSIT_SETTLE");
+  const canReadQuotation = useCan("QUOTATION_VIEW");
   const [editingVenue, setEditingVenue] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   /** The venue can be set or corrected until the first dispatch (the server enforces the same rule). */
-  const canEditVenue = canWriteQuotation && order.status === "CONFIRMED";
+  const canEditVenue = canChangeOrder && order.status === "CONFIRMED";
   const productMedia = useLineMedia();
 
   // The workspace's list and counts are keyed apart from this order, so a
@@ -153,6 +154,14 @@ function OrderWorkspace({ order }: { order: OrderView }) {
     queryKey: quotationKeys.byId(order.quotationId ?? ""),
     queryFn: ({ signal }) => getQuotation(order.quotationId ?? "", signal),
     enabled: canReadQuotation && Boolean(order.quotationId),
+    retry: false,
+  });
+
+  // Venue and functions, without prices: for everyone who may see the order.
+  const details = useQuery({
+    queryKey: dispatchDetailsKey(order.id),
+    queryFn: ({ signal }) => getDispatchDetails(order.id, order.quotationId ?? "", signal),
+    enabled: Boolean(order.quotationId),
     retry: false,
   });
 
@@ -189,12 +198,16 @@ function OrderWorkspace({ order }: { order: OrderView }) {
               {order.quotationId ? (
                 <span>
                   {order.customerEmail ? "· " : ""}From quotation{" "}
-                  <Link
-                    href={`/quotations?id=${order.quotationId}`}
-                    className="font-mono text-foreground hover:underline"
-                  >
-                    {quotation.data?.quotationNumber ?? order.quotationId}
-                  </Link>
+                  {canReadQuotation ? (
+                    <Link
+                      href={`/quotations?id=${order.quotationId}`}
+                      className="font-mono text-foreground hover:underline"
+                    >
+                      {details.data?.quotationNumber ?? order.quotationId}
+                    </Link>
+                  ) : (
+                    <span className="font-mono text-foreground">{details.data?.quotationNumber ?? order.quotationId}</span>
+                  )}
                 </span>
               ) : null}
             </p>
@@ -212,7 +225,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
                 </Link>
               </>
             ) : null}
-            {order.status === "CONFIRMED" && canWriteOrder ? (
+            {order.status === "CONFIRMED" && canCancel ? (
               <Button size="sm" variant="outline" onClick={() => setActing("cancel")}>
                 <X />
                 Cancel order
@@ -230,7 +243,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
             deposit={deposit.data}
             canReadDeposit={canReadDeposit}
             can={{
-              writeOrder: canWriteOrder,
+              progressOrder: canProgress,
               writeStock: canWriteStock,
               writeDeposit: canWriteDeposit,
             }}
@@ -294,10 +307,10 @@ function OrderWorkspace({ order }: { order: OrderView }) {
         </CardContent>
       </Card>
 
-      {quotation.data && (quotation.data.venue || canEditVenue) ? (
+      {details.data && (details.data.venue || (canEditVenue && quotation.data)) ? (
         <Card className="space-y-3 p-5">
           <h3 className="text-sm font-semibold">Event</h3>
-          <VenueRow venue={quotation.data.venue} onEdit={canEditVenue ? () => setEditingVenue(true) : undefined} />
+          <VenueRow venue={details.data.venue} onEdit={canEditVenue && quotation.data ? () => setEditingVenue(true) : undefined} />
         </Card>
       ) : null}
       {editingVenue && quotation.data ? <VenueDialog quotation={quotation.data} onClose={() => setEditingVenue(false)} /> : null}
@@ -373,7 +386,7 @@ function OrderWorkspace({ order }: { order: OrderView }) {
             </Link>
           ) : null}
         </div>
-        <OrderLines order={order} fulfilment={fulfilment} functions={functionsOf(order, quotation.data?.lines)} media={productMedia} />
+        <OrderLines order={order} fulfilment={fulfilment} functions={functionsOf(order, details.data?.lines)} media={productMedia} />
       </section>
 
       {moving ? (
@@ -424,7 +437,7 @@ function NextStep({
   fulfilment: OrderFulfilment | null;
   deposit: DepositLedgerView | undefined;
   canReadDeposit: boolean;
-  can: { writeOrder: boolean; writeStock: boolean; writeDeposit: boolean };
+  can: { progressOrder: boolean; writeStock: boolean; writeDeposit: boolean };
   onMove: (direction: MovementDirection) => void;
   onAct: (action: OrderAction) => void;
   onSettle: (action: SettleAction) => void;
@@ -485,10 +498,10 @@ function NextStep({
             .filter(Boolean)
             .join(" · ")
         : null;
-      actions = can.writeStock || can.writeOrder ? (
+      actions = can.writeStock || can.progressOrder ? (
         <>
           {/* No return here: goods only come back once installation has started (owner's rule, 2026-10-15). */}
-          {can.writeOrder ? (
+          {can.progressOrder ? (
             <Button size="sm" onClick={() => onAct("start-installation")}>
               <Wrench />
               Start installation
@@ -513,7 +526,7 @@ function NextStep({
         icon = <CircleCheck />;
         heading = "Ready to complete";
         detail = deposit ? `Deposit ${deposit.status.toLowerCase()}` : null;
-        actions = can.writeOrder ? (
+        actions = can.progressOrder ? (
           <Button size="sm" onClick={() => onAct("complete")}>
             <Check />
             Complete order

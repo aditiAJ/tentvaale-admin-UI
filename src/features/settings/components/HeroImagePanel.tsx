@@ -36,7 +36,7 @@ export function HeroImagePanel() {
 }
 
 function HeroEditor({ saved }: { saved: SiteHero }) {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canWrite = useCan("SETTINGS_EDIT");
   const queryClient = useQueryClient();
   const [light, setLight] = useState(saved.light ?? "");
   const [dark, setDark] = useState(saved.dark ?? "");

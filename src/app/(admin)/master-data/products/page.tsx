@@ -13,7 +13,7 @@ export default async function Page({
   const { category, sub } = await searchParams;
 
   return (
-    <RequirePermission permission="MASTER_DATA_READ">
+    <RequirePermission permission="PRODUCT_VIEW">
       <ProductsPage
         initialCategoryId={typeof category === "string" ? category : ""}
         initialSubCategoryId={typeof sub === "string" ? sub : ""}

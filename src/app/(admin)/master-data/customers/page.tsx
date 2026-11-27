@@ -4,7 +4,7 @@ import { RequirePermission } from "@/components/require-permission";
 
 export default function Page() {
   return (
-    <RequirePermission permission="MASTER_DATA_READ">
+    <RequirePermission permission="CUSTOMER_VIEW">
       {/* useSearchParams (the "Add customer" hand-off from a quotation) needs a Suspense boundary above it. */}
       <Suspense>
         <CustomersPage />

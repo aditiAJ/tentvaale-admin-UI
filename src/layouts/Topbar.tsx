@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ChevronDown, KeyRound, LogOut, Menu, Moon, RotateCcw, Sun, UserRound } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSession } from "@/features/auth";
+import { roleLabel } from "@/services/permissions";
 import { IS_MOCK } from "@/services/data-source";
 import { resetMockData } from "@/mock-data/store";
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
           </Button>
         ) : null}
 
-        {session ? <Badge variant="outline">{session.role}</Badge> : null}
+        {session ? <Badge variant="outline">{roleLabel(session.role)}</Badge> : null}
 
         <Button
           variant="ghost"

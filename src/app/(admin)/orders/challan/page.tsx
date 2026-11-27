@@ -9,7 +9,7 @@ export default async function Page({
 }) {
   const { id } = await searchParams;
   return (
-    <RequirePermission permission="ORDER_READ">
+    <RequirePermission permission="ORDER_VIEW">
       <DispatchPrintPage orderId={typeof id === "string" ? id : ""} paper="challan" />
     </RequirePermission>
   );

@@ -70,9 +70,10 @@ interface ListedNote {
  * picker used.
  */
 export function CreditNotesPage({ noteId, status }: { noteId: string; status: string }) {
-  const canWrite = useCan("CREDIT_NOTE_WRITE");
-  // Withdrawing what is left of a note is administrator-only.
-  const canReverse = useCan("CREDIT_NOTE_REVERSE");
+  const canIssue = useCan("CREDIT_NOTE_ISSUE");
+  // Cancelling an unused note, or withdrawing what is left of one, ends it.
+  const canEnd = useCan("CREDIT_NOTE_CANCEL");
+  const canWrite = canIssue || canEnd;
   const filter = FILTERS.find((candidate) => candidate.key === status.toLowerCase()) ?? FILTERS[0];
   const [search, setSearch] = useState("");
   const [issuing, setIssuing] = useState(false);
@@ -133,10 +134,10 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
   const open = noteId ? listed?.find(({ note }) => note.id === noteId) : undefined;
 
   const actionsFor = {
-    onApply: (note: CreditNoteView) => setApplying(note),
-    onCancel: (note: CreditNoteView) => setActing({ action: "cancel", note }),
-    // Absent for anyone but an administrator, so the button is not offered at all.
-    onReverse: canReverse
+    // Each is absent for someone without the right, so its button is not offered at all.
+    onApply: canIssue ? (note: CreditNoteView) => setApplying(note) : undefined,
+    onCancel: canEnd ? (note: CreditNoteView) => setActing({ action: "cancel", note }) : undefined,
+    onReverse: canEnd
       ? (note: CreditNoteView) => setActing({ action: "reverse", note })
       : undefined,
   };
@@ -147,7 +148,7 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
         title="Credit notes"
         description="Credit issued to customers, and what is left of it."
         actions={
-          canWrite ? (
+          canIssue ? (
             <Button onClick={() => setIssuing(true)} disabled={!customers.data}>
               <Plus />
               Issue credit note
@@ -174,8 +175,8 @@ export function CreditNotesPage({ noteId, status }: { noteId: string; status: st
               orderNumber={orderNumber}
               backHref={workspaceHref(filter.key)}
               canWrite={canWrite}
-              onApply={() => actionsFor.onApply(open.note)}
-              onCancel={() => actionsFor.onCancel(open.note)}
+              onApply={actionsFor.onApply ? () => actionsFor.onApply?.(open.note) : undefined}
+              onCancel={actionsFor.onCancel ? () => actionsFor.onCancel?.(open.note) : undefined}
               onReverse={actionsFor.onReverse ? () => actionsFor.onReverse?.(open.note) : undefined}
             />
           ) : isPending ? (
@@ -256,8 +257,8 @@ function CreditNoteList({
   onSearch: (value: string) => void;
   orderNumber: (orderId: string) => string;
   canWrite: boolean;
-  onApply: (note: CreditNoteView) => void;
-  onCancel: (note: CreditNoteView) => void;
+  onApply?: (note: CreditNoteView) => void;
+  onCancel?: (note: CreditNoteView) => void;
   onReverse?: (note: CreditNoteView) => void;
 }) {
   const deferredSearch = useDeferredValue(search);
@@ -354,8 +355,8 @@ function CreditNoteList({
                   href={workspaceHref(filter.key, note.id)}
                   orderNumber={orderNumber}
                   canWrite={canWrite}
-                  onApply={() => onApply(note)}
-                  onCancel={() => onCancel(note)}
+                  onApply={onApply ? () => onApply(note) : undefined}
+                  onCancel={onCancel ? () => onCancel(note) : undefined}
                   onReverse={onReverse ? () => onReverse(note) : undefined}
                 />
               </li>
@@ -387,8 +388,8 @@ function CreditNoteRow({
   href: string;
   orderNumber: (orderId: string) => string;
   canWrite: boolean;
-  onApply: () => void;
-  onCancel: () => void;
+  onApply?: () => void;
+  onCancel?: () => void;
   onReverse?: () => void;
 }) {
   const currency = note.amount.currency;
@@ -457,10 +458,12 @@ function CreditNoteRow({
 
       {canWrite && live ? (
         <div className="-mt-1.5 flex gap-1 px-4 pb-3">
-          <Button size="sm" variant="outline" onClick={onApply} aria-label={`Apply ${note.creditNoteNumber}`}>
-            Apply
-          </Button>
-          {unused ? (
+          {onApply ? (
+            <Button size="sm" variant="outline" onClick={onApply} aria-label={`Apply ${note.creditNoteNumber}`}>
+              Apply
+            </Button>
+          ) : null}
+          {unused && onCancel ? (
             <Button size="sm" variant="ghost" onClick={onCancel} aria-label={`Cancel ${note.creditNoteNumber}`}>
               Cancel
             </Button>

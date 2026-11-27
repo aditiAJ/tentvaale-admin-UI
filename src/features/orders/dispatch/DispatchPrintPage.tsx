@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { Download, Loader2, Printer } from "lucide-react";
 import { getOrder, orderKeys } from "@/features/orders/api";
-import { getQuotation, quotationKeys } from "@/features/quotations/api";
+import { dispatchDetailsKey, getDispatchDetails } from "@/features/quotations/api";
 import { getCompany, settingsKeys } from "@/features/settings/api";
 import { BackButton } from "@/components/back-button";
 import { Alert } from "@/components/ui/alert";
@@ -27,10 +27,12 @@ export function DispatchPrintPage({ orderId, paper = "dispatch" }: { orderId: st
     staleTime: 0,
   });
   const quotationId = order.data?.quotationId ?? "";
+  // Venue and functions come from the quotation, through an answer without prices that anyone who sees the order gets.
   const quotation = useQuery({
-    queryKey: quotationKeys.byId(quotationId),
-    queryFn: ({ signal }) => getQuotation(quotationId, signal),
+    queryKey: dispatchDetailsKey(orderId),
+    queryFn: ({ signal }) => getDispatchDetails(orderId, quotationId, signal),
     enabled: quotationId !== "",
+    staleTime: 0,
   });
   const company = useQuery({ queryKey: settingsKeys.company, queryFn: ({ signal }) => getCompany(signal) });
   const [pdf, setPdf] = useState<{ key: string; url: string; missing: number } | null>(null);

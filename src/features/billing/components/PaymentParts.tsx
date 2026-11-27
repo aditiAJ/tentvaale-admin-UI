@@ -70,14 +70,14 @@ export function PaymentStatusCell({ payment }: { payment: Payment }) {
  */
 export function PaymentRowActions({
   payment,
-  canWrite,
+  canEdit,
   canVerify,
   canVoid,
   voidBlockedReason,
   onChanged,
 }: {
   payment: Payment;
-  canWrite: boolean;
+  canEdit: boolean;
   canVerify: boolean;
   canVoid: boolean;
   /** Why this payment cannot be voided right now (e.g. the order was dispatched), shown as the button's hint. */
@@ -107,7 +107,7 @@ export function PaymentRowActions({
           </Button>
         </>
       ) : null}
-      {canWrite && payment.status === "RECORDED" ? (
+      {canEdit && payment.status === "RECORDED" ? (
         <Button size="sm" variant="outline" onClick={() => setDialog("edit")}>
           <Pencil /> Edit
         </Button>

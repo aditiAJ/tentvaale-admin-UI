@@ -30,9 +30,16 @@ export const MAX_VIDEO_BYTES = 50 * MB;
 const IMAGE_MAX_EDGE = 1024;
 const IMAGE_QUALITY = 0.8;
 
-/** What the admin may pick for a product photo; the backend's hard cap it must land under. */
+/** What the admin may pick for a product photo. */
 export const MAX_PRODUCT_IMAGE_PICK_BYTES = 5 * MB;
-export const PRODUCT_IMAGE_TARGET_BYTES = 2 * MB;
+/**
+ * What an image is shrunk to before it is sent. Under 1 MB with room for the form around it, because that is all a
+ * web server in front of the app (nginx) accepts unless it is told otherwise; well under the backend's own 2 MB.
+ */
+export const UPLOAD_TARGET_BYTES = 900 * 1024;
+/** The backend's product photo rules: no side under 800 pixels or over 3000. */
+const UPLOAD_MIN_EDGE = 800;
+const UPLOAD_START_EDGE = 2000;
 
 /** A refusal written for the admin, shown under the media field. */
 export class MediaError extends Error {}
@@ -83,16 +90,15 @@ async function downscaleImage(file: File): Promise<string> {
 }
 
 /**
- * Re-encodes a product photo under `targetBytes` before it reaches the backend's hard cap
- * (MediaUploadService.MAX_PRODUCT_IMAGE_BYTES) — a no-op if it already fits. JPEGs step down
- * quality first (lossless to the eye at these sizes); PNGs step down dimensions instead, since
- * canvas has no quality knob for PNG and a product cutout's transparency must survive. Gives up
- * after a few steps and returns the original file, letting the backend's own check reject it
- * with its usual message rather than silently shipping something unreadable.
+ * Makes an image small enough to send (see UPLOAD_TARGET_BYTES); anything already small enough, and anything that is
+ * not a PNG, JPEG or WebP, is returned as it is. A picture with no transparency becomes a JPEG, which is many times
+ * smaller than a PNG of the same photo; a cut-out stays a PNG, so it can only get smaller by getting fewer pixels.
+ * The shorter side never goes under 800 pixels (or its own size when it is smaller), so a product photo stays
+ * acceptable. When even that is not small enough, the smallest version made is sent.
  */
-export async function compressProductImage(file: File, targetBytes: number): Promise<File> {
+export async function shrinkImageForUpload(file: File, targetBytes = UPLOAD_TARGET_BYTES): Promise<File> {
   if (file.size <= targetBytes) return file;
-  if (file.type !== "image/jpeg" && file.type !== "image/png") return file;
+  if (!(IMAGE_TYPES as readonly string[]).includes(file.type)) return file;
 
   let bitmap: ImageBitmap;
   try {
@@ -102,50 +108,57 @@ export async function compressProductImage(file: File, targetBytes: number): Pro
   }
 
   const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     bitmap.close();
     return file;
   }
 
-  const draw = (width: number, height: number) => {
-    canvas.width = width;
-    canvas.height = height;
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(bitmap, 0, 0, width, height);
+  const long = Math.max(bitmap.width, bitmap.height);
+  const short = Math.min(bitmap.width, bitmap.height);
+  const floor = Math.min(1, UPLOAD_MIN_EDGE / short);
+  const draw = (wanted: number, background?: string) => {
+    // The 3000 pixel ceiling wins over the floor (it only matters for a very long, thin picture).
+    const scale = Math.min(Math.max(wanted, floor), 3000 / long);
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   };
   const toBlob = (type: string, quality?: number) =>
     new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
 
-  let best: Blob | null = null;
-  if (file.type === "image/jpeg") {
-    draw(bitmap.width, bitmap.height);
-    for (const quality of [0.85, 0.7, 0.55, 0.4]) {
-      const blob = await toBlob("image/jpeg", quality);
-      if (blob) best = blob;
-      if (blob && blob.size <= targetBytes) break;
-    }
-    if (best && best.size > targetBytes) {
-      for (const scale of [0.8, 0.6, 0.45]) {
-        draw(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
-        const blob = await toBlob("image/jpeg", 0.6);
-        if (blob) best = blob;
-        if (blob && blob.size <= targetBytes) break;
+  const start = Math.min(1, UPLOAD_START_EDGE / long);
+  let transparent = false;
+  if (file.type !== "image/jpeg") {
+    draw(start);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < pixels.length; i += 4) {
+      if (pixels[i] < 250) {
+        transparent = true;
+        break;
       }
     }
-  } else {
-    // PNG: no quality parameter, and transparency must survive — shrink dimensions instead.
-    for (const scale of [0.85, 0.65, 0.5, 0.35]) {
-      draw(Math.round(bitmap.width * scale), Math.round(bitmap.height * scale));
-      const blob = await toBlob("image/png");
-      if (blob) best = blob;
-      if (blob && blob.size <= targetBytes) break;
+  }
+  const type = transparent ? "image/png" : "image/jpeg";
+
+  let best: Blob | null = null;
+  search: for (const step of [1, 0.8, 0.65, 0.5, 0.35]) {
+    draw(start * step, transparent ? undefined : "#ffffff");
+    for (const quality of transparent ? [undefined] : [0.85, 0.72, 0.6]) {
+      const blob = await toBlob(type, quality);
+      if (blob && (!best || blob.size < best.size)) best = blob;
+      if (blob && blob.size <= targetBytes) break search;
     }
   }
 
   bitmap.close();
   if (!best || best.size >= file.size) return file;
-  return new File([best], file.name, { type: file.type });
+  const name = file.name.replace(/\.[^.]+$/, "") + (transparent ? ".png" : ".jpg");
+  return new File([best], name, { type });
 }
 
 export async function readMedia(

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { KeyRound, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSession } from "@/features/auth";
+import { roleLabel } from "@/services/permissions";
 import { HeroImagePanel } from "@/features/settings/components/HeroImagePanel";
 import { CatalogueListsPanel } from "@/features/settings/components/CatalogueListsPanel";
 import { ChangePasswordDialog } from "@/features/users/components/ChangePasswordDialog";
@@ -59,7 +60,7 @@ export function GeneralSettings() {
         <Card className="space-y-4 p-5">
           <div>
             <h2 className="text-sm font-semibold">Your account</h2>
-            <p className="text-xs text-muted-foreground">Signed in as {session.role}.</p>
+            <p className="text-xs text-muted-foreground">Signed in as {roleLabel(session.role)}.</p>
           </div>
           <Button variant="outline" onClick={() => setChangingPassword(true)}>
             <KeyRound /> Change password

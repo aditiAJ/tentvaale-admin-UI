@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,6 +48,7 @@ type FormOutput = z.output<typeof schema>;
 
 /** Add or edit one truck — see WarehouseDialog for why it is one dialog. */
 export function TruckDialog({ existing, onClose }: { existing?: TruckView; onClose: () => void }) {
+  const canSwitchOff = useCan("TRUCK_DELETE");
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -190,7 +192,8 @@ export function TruckDialog({ existing, onClose }: { existing?: TruckView; onClo
             label="In maintenance"
             hint="Stays on the fleet but is shown as not available to send out."
           />
-          {existing ? (
+          {/* Switching off ends the record, so it is only offered with Delete; switching back on is an edit. */}
+          {existing && (!existing.active || canSwitchOff) ? (
             <ActiveToggle
               {...register("active")}
               label="Active"

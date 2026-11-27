@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useFieldArray, useFormContext, useWatch, type Control } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
@@ -138,6 +139,8 @@ export function ProductVariantsStep() {
   const { control, register, getValues, setValue, formState } = useFormContext<VariantStepValues>();
   const errors = formState.errors;
   const variants = useFieldArray({ control, name: "variants" });
+  // Removing a saved variant, or switching it off, ends it: that is the product's Delete box.
+  const canDelete = useCan("PRODUCT_DELETE");
   const facets = useQuery({
     queryKey: ["master-data", "facet-options"],
     queryFn: ({ signal }) => listFacetOptions(signal),
@@ -170,15 +173,18 @@ export function ProductVariantsStep() {
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold text-muted-foreground">Variant {index + 1}</p>
                 <div className="flex items-center gap-2">
-                  {existingId ? (
+                  {existingId && (canDelete || field.active === false) ? (
                     <label className="flex items-center gap-1.5 text-xs">
                       <input type="checkbox" className="size-3.5" {...register(`variants.${index}.active`)} />
                       Offered to customers
                     </label>
                   ) : null}
-                  <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)} aria-label={`Remove variant ${index + 1}`}>
-                    <Trash2 />
-                  </Button>
+                  {/* A row not saved yet can always be taken out again. */}
+                  {canDelete || !existingId ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)} aria-label={`Remove variant ${index + 1}`}>
+                      <Trash2 />
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
@@ -283,13 +289,18 @@ export function StockFields({ name, warehouseLabel = "Warehouse" }: { name: Stoc
   const options = (warehouses.data ?? []).filter((warehouse) => warehouse.active !== false);
   const loading = warehouses.isPending;
 
+  // Quantities are warehouse stock: without that box they are shown, not changed. The server checks the same.
+  const canStock = useCan("WAREHOUSE_STOCK");
   const errors = formState.errors;
   const lineErrors = name === "stock" ? errors.stock : errors.variants?.[Number(name.split(".")[1])]?.stock;
   const last = watched[watched.length - 1];
   const lastFilled = Boolean(last) && last.warehouseId !== "" && last.quantity.trim() !== "";
 
   return (
-    <div className="space-y-2">
+    <fieldset disabled={!canStock} className="space-y-2">
+      {canStock ? null : (
+        <p className="text-xs text-muted-foreground">Stock quantities can only be changed with the Update stock access.</p>
+      )}
       {lines.fields.map((field, index) => (
         <div key={field.id} className="grid items-start gap-2 sm:grid-cols-[2fr_1fr_auto]">
           <Field label={index === 0 ? warehouseLabel : ""} error={lineErrors?.[index]?.warehouseId?.message}>
@@ -342,6 +353,6 @@ export function StockFields({ name, warehouseLabel = "Warehouse" }: { name: Stoc
           Another warehouse
         </Button>
       ) : null}
-    </div>
+    </fieldset>
   );
 }

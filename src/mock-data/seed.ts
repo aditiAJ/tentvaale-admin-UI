@@ -42,7 +42,8 @@ export const COMPANY_ID = "22222222-2222-2222-2222-222222222222";
 /** One password for every seeded account. This build has no real security. */
 export const DEMO_PASSWORD = "tentvaale";
 
-interface SeedUser extends AdminUserView {
+/** Demo users start with their role's defaults; `ticked` appears once an Administrator changes them. */
+interface SeedUser extends Omit<AdminUserView, "permissions"> {
   password: string;
 }
 

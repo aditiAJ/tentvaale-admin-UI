@@ -52,7 +52,7 @@ function useSettled(value: string, delayMs = 300): string {
  * it is cleared.
  */
 export function StockMovementsPage({ initialOrderId = "" }: { initialOrderId?: string }) {
-  const canWrite = useCan("INVENTORY_WRITE");
+  const canWrite = useCan("STOCK_MOVE");
 
   const [orderId, setOrderId] = useState(initialOrderId);
   const [search, setSearch] = useState("");

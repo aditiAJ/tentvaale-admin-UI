@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -57,6 +58,7 @@ export function PaymentTermsDialog({
   existing?: PaymentTermsView;
   onClose: () => void;
 }) {
+  const canSwitchOff = useCan("PAYMENT_SETUP_DELETE");
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -145,7 +147,8 @@ export function PaymentTermsDialog({
         <Field label="Description" error={errors.description?.message}>
           {(props) => <Input {...props} {...register("description")} placeholder="Optional" />}
         </Field>
-        {existing ? (
+        {/* Switching off ends the record, so it is only offered with Delete; switching back on is an edit. */}
+        {existing && (!existing.active || canSwitchOff) ? (
           <ActiveToggle
             {...register("active")}
             label="Active"

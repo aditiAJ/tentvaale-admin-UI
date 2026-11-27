@@ -77,7 +77,7 @@ const labelOf = (line: Pick<SupplierStockView, "productName" | "variantName">) =
  * Supplier stock is kept apart from owned stock and is never shown on the storefront.
  */
 export function SupplierStockPanel({ supplier }: { supplier: SupplierView }) {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canWrite = useCan("SUPPLIER_STOCK");
   const { unitOf } = useProductUnits();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);

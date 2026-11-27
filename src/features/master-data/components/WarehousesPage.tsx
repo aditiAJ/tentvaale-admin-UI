@@ -36,7 +36,10 @@ const TABS = [
  * A product added to a warehouse appears in that warehouse's tab straight away.
  */
 export function WarehousesPage() {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canAdd = useCan("WAREHOUSE_ADD");
+  const canEdit = useCan("WAREHOUSE_EDIT");
+  const canDelete = useCan("WAREHOUSE_DELETE");
+  const canUpdateStock = useCan("WAREHOUSE_STOCK");
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<WarehouseView | null>(null);
@@ -84,13 +87,16 @@ export function WarehousesPage() {
         title="Warehouses"
         description="Where stock is held between events. Pick a warehouse to see and change what it holds."
         actions={
-          canWrite ? (
+          canAdd || canEdit ? (
             <>
+              {/* Which rows of the file are allowed is checked row by row by the server. */}
               <WarehouseImportButton />
+              {canAdd ? (
               <Button onClick={() => setCreating(true)}>
                 <Plus />
                 New warehouse
               </Button>
+              ) : null}
             </>
           ) : null
         }
@@ -123,7 +129,7 @@ export function WarehousesPage() {
             icon={<Warehouse />}
             title="No warehouses yet"
             action={
-              canWrite ? (
+              canAdd ? (
                 <Button onClick={() => setCreating(true)}>
                   <Plus />
                   New warehouse
@@ -217,9 +223,9 @@ export function WarehousesPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{selected.description}</p>
                 ) : null}
               </div>
-              {canWrite ? (
+              {canUpdateStock || canEdit || canDelete ? (
                 <div className="flex items-center gap-2">
-                  {tab === "stock" ? (
+                  {tab === "stock" && canUpdateStock ? (
                   <Button
                     size="sm"
                     variant={addingFor === selected.id ? "outline" : "default"}
@@ -232,8 +238,8 @@ export function WarehousesPage() {
                   ) : null}
                   <RowActions
                     label={selected.name}
-                    onEdit={() => setEditing(selected)}
-                    onRemove={() => setRemoving(selected)}
+                    onEdit={canEdit ? () => setEditing(selected) : undefined}
+                    onRemove={canDelete ? () => setRemoving(selected) : undefined}
                   />
                 </div>
               ) : null}

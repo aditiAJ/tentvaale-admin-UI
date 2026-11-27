@@ -1,25 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Plus, UserCheck, UserMinus, Users } from "lucide-react";
+import { KeyRound, Plus, SlidersHorizontal, UserCheck, UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
-  changeUserRole,
   deactivateUser,
+  getAccessOptions,
   listUsers,
   reactivateUser,
   userKeys,
 } from "@/features/users/api";
 import type { AdminUserView } from "@/features/users/types";
-import { CreateUserDialog } from "@/features/users/components/CreateUserDialog";
+import { differsFromDefault, sortUsers } from "@/features/users/access";
+import { ROLE_STYLE } from "@/features/users/components/roleStyle";
+import { UserDialog } from "@/features/users/components/CreateUserDialog";
 import { ResetPasswordDialog } from "@/features/users/components/ResetPasswordDialog";
 import { useSession } from "@/features/auth";
 import { ApiError } from "@/services/api-client";
-import { ROLES, ROLE_DESCRIPTIONS, type Role } from "@/services/permissions";
+import { ROLE_DESCRIPTIONS, roleLabel, type Permission } from "@/services/permissions";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
@@ -35,6 +37,12 @@ export function UsersPage() {
   const canWrite = can("USER_WRITE");
 
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<AdminUserView | null>(null);
+  // Kept stable: the dialog moves the focus whenever its close handler changes.
+  const closeUserDialog = useCallback(() => {
+    setCreating(false);
+    setEditing(null);
+  }, []);
   const [resetting, setResetting] = useState<AdminUserView | null>(null);
   const [deactivating, setDeactivating] = useState<AdminUserView | null>(null);
 
@@ -57,14 +65,20 @@ export function UsersPage() {
   const onMutationError = (mutationError: unknown, fallback: string) =>
     toast.error(mutationError instanceof ApiError ? mutationError.message : fallback);
 
-  const roleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: Role }) => changeUserRole(userId, role),
-    onSuccess: (user) => {
-      queryClient.invalidateQueries({ queryKey: userKeys.all });
-      toast.success(`${user.username} is now ${user.role}`);
-    },
-    onError: (mutationError) => onMutationError(mutationError, "Could not change the role."),
+  const accessOptions = useQuery({
+    queryKey: userKeys.accessOptions,
+    queryFn: ({ signal }) => getAccessOptions(signal),
+    staleTime: 5 * 60_000,
   });
+  const allBoxes = useMemo(
+    () => new Set<Permission>(accessOptions.data?.modules.flatMap((m) => m.boxes.map((b) => b.permission)) ?? []),
+    [accessOptions.data],
+  );
+  const users = useMemo(() => sortUsers(data ?? []), [data]);
+  const activeCount = users.filter((user) => user.active).length;
+  const isChanged = (user: AdminUserView) =>
+    user.role !== "ADMIN" && accessOptions.data !== undefined
+    && differsFromDefault(user.permissions, accessOptions.data.roleDefaults[user.role], allBoxes);
 
   const deactivateMutation = useMutation({
     mutationFn: (userId: string) => deactivateUser(userId),
@@ -80,15 +94,15 @@ export function UsersPage() {
     mutationFn: (userId: string) => reactivateUser(userId),
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: userKeys.all });
-      toast.success(`${user.username} is active again as ${user.role}`);
+      toast.success(`${user.username} is active again as ${roleLabel(user.role)}`);
     },
     onError: (mutationError) => onMutationError(mutationError, "Could not reactivate the user."),
   });
 
-  function reasonRoleLocked(user: AdminUserView): string | null {
-    if (!canWrite) return "You do not have permission to change roles.";
+  function reasonAccessLocked(user: AdminUserView): string | null {
+    if (!canWrite) return "You do not have permission to change access.";
     if (!user.active) return "Inactive users cannot be changed.";
-    if (user.id === session?.userId) return "You cannot change your own role.";
+    if (user.id === session?.userId) return "You cannot change your own access.";
     if (user.id === lastActiveAdminId) return "The only active ADMIN cannot be demoted.";
     return null;
   }
@@ -105,7 +119,7 @@ export function UsersPage() {
     <div className="space-y-4">
       <PageHeader
         title="Users"
-        description="Back-office accounts in your company. Roles grant permissions; endpoints check permissions, never roles."
+        description="Back-office accounts in your company. Each person can do what is ticked for them."
         actions={
           canWrite ? (
             <Button onClick={() => setCreating(true)}>
@@ -116,72 +130,115 @@ export function UsersPage() {
         }
       />
 
-      <Card>
+      <Card className="overflow-hidden">
+        {users.length > 0 ? (
+          <p className="border-b border-border px-4 py-2.5 text-xs text-muted-foreground">
+            {users.length} {users.length === 1 ? "user" : "users"}, {activeCount} active
+          </p>
+        ) : null}
         <TableWrapper>
           <Table>
-            <THead>
+            <THead className="bg-muted/50">
               <tr>
-                <TH>Username</TH>
-                <TH>Email</TH>
+                <TH className="pl-4">User</TH>
                 <TH>Role</TH>
+                <TH>Access</TH>
                 <TH>Status</TH>
-                <TH className="text-right">Actions</TH>
+                <TH className="pr-4 text-right">Actions</TH>
               </tr>
             </THead>
             <TBody>
               {isPending ? <TableSkeleton columns={COLUMNS} /> : null}
 
-              {(data ?? []).map((user) => {
-                const roleLocked = reasonRoleLocked(user);
+              {users.map((user) => {
+                const accessLocked = reasonAccessLocked(user);
                 const deactivateLocked = reasonDeactivateLocked(user);
                 const isSelf = user.id === session?.userId;
+                const isAdmin = user.role === "ADMIN";
+                const RoleIcon = ROLE_STYLE[user.role]?.icon;
+                const ticked = user.permissions.filter((p) => allBoxes.has(p)).length;
 
                 return (
                   <TR key={user.id} className={user.active ? undefined : "opacity-60"}>
-                    <TD>
-                      <span className="font-medium">{user.username}</span>
-                      {isSelf ? (
-                        <Badge variant="outline" className="ml-2">
-                          You
-                        </Badge>
-                      ) : null}
+                    <TD className="py-3 pl-4">
+                      <div className="flex items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold uppercase",
+                            isAdmin ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary",
+                          )}
+                        >
+                          {user.username.charAt(0)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2 font-medium">
+                            {user.username}
+                            {isSelf ? <Badge variant="outline">You</Badge> : null}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                        </div>
+                      </div>
                     </TD>
-                    <TD className="text-muted-foreground">{user.email}</TD>
-                    <TD>
-                      <Select
-                        aria-label={`Role for ${user.username}`}
-                        value={user.role}
-                        disabled={roleLocked !== null || roleMutation.isPending}
-                        title={roleLocked ?? ROLE_DESCRIPTIONS[user.role]}
-                        onChange={(event) =>
-                          roleMutation.mutate({
-                            userId: user.id,
-                            role: event.target.value as Role,
-                          })
-                        }
-                        className="h-8 w-36"
+                    <TD className="py-3">
+                      <span
+                        title={ROLE_DESCRIPTIONS[user.role]}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium whitespace-nowrap",
+                          isAdmin ? "border-primary/40 bg-primary/10" : "border-border bg-card",
+                        )}
                       >
-                        {ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {role}
-                          </option>
-                        ))}
-                      </Select>
+                        {RoleIcon ? <RoleIcon className="size-3.5 text-primary" aria-hidden="true" /> : null}
+                        {roleLabel(user.role)}
+                      </span>
                     </TD>
-                    <TD>
+                    <TD className="py-3">
+                      {isAdmin ? (
+                        <span className="text-sm font-medium">Full access</span>
+                      ) : allBoxes.size === 0 ? (
+                        <span className="text-muted-foreground">…</span>
+                      ) : (
+                        <div className="w-40 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="tabular text-muted-foreground">
+                              {ticked} of {allBoxes.size}
+                            </span>
+                            {isChanged(user) ? (
+                              <Badge variant="warning" title="Ticks differ from what this role starts with">
+                                Customised
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <span className="block h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                            <span className="block h-full rounded-full bg-primary" style={{ width: `${(ticked / allBoxes.size) * 100}%` }} />
+                          </span>
+                        </div>
+                      )}
+                    </TD>
+                    <TD className="py-3">
                       {user.active ? (
                         <Badge variant="success">Active</Badge>
                       ) : (
                         <Badge variant="default">Inactive</Badge>
                       )}
                     </TD>
-                    <TD>
+                    <TD className="py-3 pr-4">
                       <div className="flex justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={accessLocked !== null}
+                          title={accessLocked ?? undefined}
+                          onClick={() => setEditing(user)}
+                        >
+                          <SlidersHorizontal />
+                          Edit access
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           disabled={!canWrite || !user.active}
-                          title={canWrite ? undefined : "You do not have permission to reset passwords."}
+                          title={canWrite ? "Reset password" : "You do not have permission to reset passwords."}
                           onClick={() => setResetting(user)}
                         >
                           <KeyRound />
@@ -191,6 +248,7 @@ export function UsersPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="text-destructive hover:text-destructive"
                             disabled={deactivateLocked !== null}
                             title={deactivateLocked ?? undefined}
                             onClick={() => setDeactivating(user)}
@@ -240,7 +298,7 @@ export function UsersPage() {
         ) : null}
       </Card>
 
-      {creating ? <CreateUserDialog onClose={() => setCreating(false)} /> : null}
+      {creating || editing ? <UserDialog user={editing ?? undefined} onClose={closeUserDialog} /> : null}
       {resetting ? (
         <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />
       ) : null}

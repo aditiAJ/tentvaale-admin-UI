@@ -32,7 +32,9 @@ type StatusFilter = "all" | "active" | "inactive";
 const GRID = "grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
 export function CategoriesPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("CATEGORY_ADD");
+  const canEdit = useCan("CATEGORY_EDIT");
+  const canDelete = useCan("CATEGORY_DELETE");
   const canRead = useCan("MASTER_DATA_READ");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -99,7 +101,7 @@ export function CategoriesPage() {
     );
   }, [data, term, status]);
 
-  const newButton = canWrite ? (
+  const newButton = canAdd ? (
     <Button onClick={() => setCreating(true)}>
       <Plus />
       New category
@@ -261,16 +263,18 @@ export function CategoriesPage() {
               layout={layout}
               canViewProducts={canRead}
               counts={counts?.get(category.id) ?? (counts ? NO_COUNTS : null)}
-              onEdit={canWrite ? () => setEditing(category) : undefined}
+              onEdit={canEdit ? () => setEditing(category) : undefined}
               onDeactivate={
-                canWrite && category.active ? () => setDeactivating(category) : undefined
+                canDelete && category.active ? () => setDeactivating(category) : undefined
               }
               onActivate={
-                canWrite && !category.active ? () => setActivating(category) : undefined
+                canEdit && !category.active ? () => setActivating(category) : undefined
               }
-              onToggleSub={canWrite ? (sub) => setSwitching({ category, sub }) : undefined}
+              onToggleSub={canEdit || canDelete ? (sub) => setSwitching({ category, sub }) : undefined}
+              // Switching one off ends it; switching it back on is an edit.
+              mayToggleSub={(sub) => (sub.active ? canDelete : canEdit)}
               onArchive={
-                canWrite
+                canDelete
                   ? () =>
                       setArchiving({
                         kind: "categories",
@@ -282,7 +286,7 @@ export function CategoriesPage() {
                   : undefined
               }
               onArchiveSub={
-                canWrite
+                canDelete
                   ? (sub) =>
                       setArchiving({
                         kind: "sub-categories",

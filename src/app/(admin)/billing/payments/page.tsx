@@ -3,7 +3,7 @@ import { RequirePermission } from "@/components/require-permission";
 
 export default function Page() {
   return (
-    <RequirePermission permission="PAYMENT_READ">
+    <RequirePermission permission="PAYMENT_VIEW">
       <PaymentQueuePage />
     </RequirePermission>
   );

@@ -67,7 +67,7 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
 export function NotificationsPage() {
   const [limit, setLimit] = useState(LIMITS[0]);
   const [channel, setChannel] = useState("");
-  const canRetry = useCan("CONFIG_WRITE");
+  const canRetry = useCan("NOTIFICATION_RETRY");
   const queryClient = useQueryClient();
   const retry = useMutation({
     mutationFn: (id: string) => retryNotification(id),

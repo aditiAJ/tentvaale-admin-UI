@@ -1,7 +1,7 @@
 export {
   listUsers,
   createUser,
-  changeUserRole,
+  changeUserAccess,
   deactivateUser,
   resetUserPassword,
   userKeys,

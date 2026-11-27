@@ -4,12 +4,7 @@ import { useRef, useState } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { uploadMedia } from "@/features/master-data/api/backend";
-import {
-  MAX_PRODUCT_IMAGE_PICK_BYTES,
-  PRODUCT_IMAGE_TARGET_BYTES,
-  compressProductImage,
-  formatBytes,
-} from "@/features/master-data/media";
+import { MAX_PRODUCT_IMAGE_PICK_BYTES, formatBytes } from "@/features/master-data/media";
 import type { VariantStepValues } from "@/features/master-data/components/ProductVariantsStep";
 import { Button } from "@/components/ui/button";
 import { FadeImg } from "@/components/ui/fade-img";
@@ -17,7 +12,7 @@ import { FadeImg } from "@/components/ui/fade-img";
 /**
  * One variant's own picture (the gold chair, the silver chair). The storefront shows it in place of the product's pictures
  * when a customer picks this variant; a variant without one keeps showing the product's. Uploaded straight away like a
- * product photo (PNG or JPEG, compressed to the 2 MB limit first) and kept in the form until the product is saved.
+ * product photo (PNG or JPEG, made smaller on the way) and kept in the form until the product is saved.
  */
 export function VariantPicture({ index }: { index: number }) {
   const { control, setValue } = useFormContext<VariantStepValues>();
@@ -42,7 +37,7 @@ export function VariantPicture({ index }: { index: number }) {
     }
     setBusy(true);
     try {
-      const [result] = await uploadMedia([await compressProductImage(file, PRODUCT_IMAGE_TARGET_BYTES)], "product");
+      const [result] = await uploadMedia([file], "product");
       if (result?.ok && result.url) {
         setValue(`variants.${index}.imageUrl`, result.url, { shouldDirty: true });
         setValue(`variants.${index}.thumbnailUrl`, result.thumbnailUrl ?? "", { shouldDirty: true });

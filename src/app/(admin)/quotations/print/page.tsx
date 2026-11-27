@@ -9,7 +9,7 @@ export default async function Page({
 }) {
   const { id } = await searchParams;
   return (
-    <RequirePermission permission="QUOTATION_READ">
+    <RequirePermission permission="QUOTATION_VIEW">
       <QuotationPrintPage quotationId={typeof id === "string" ? id : ""} />
     </RequirePermission>
   );

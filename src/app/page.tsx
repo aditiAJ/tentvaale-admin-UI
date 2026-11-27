@@ -9,9 +9,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
 /**
- * There is no dashboard to land on yet, and roles differ in what they may open
- * — WAREHOUSE cannot see Users, and a role without MASTER_DATA_READ cannot see
- * Products. So the landing route resolves the first screen this particular user
+ * People differ in what they may open, so there is no one page everyone can
+ * land on. The landing route resolves the first screen this particular user
  * is allowed to open instead of hard-coding one that would 403 for some of them.
  */
 export default function HomePage() {
@@ -33,8 +32,8 @@ export default function HomePage() {
     return (
       <div className="flex min-h-dvh items-center justify-center p-6">
         <EmptyState
-          title="Nothing is available for your role yet"
-          description={`Your role (${session.role}) grants no permission that maps to a screen built so far. The modules it covers are still waiting on backend endpoints.`}
+          title="Nothing is available for your account yet"
+          description="No screen has been given to your account. An Administrator can add one on the Users screen."
           action={
             <Button variant="outline" onClick={signOut}>
               Sign out

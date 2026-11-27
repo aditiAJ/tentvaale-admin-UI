@@ -102,7 +102,13 @@ const GRID = "grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
  * order or a customer's plan cannot be deleted; the server says why and it stays here.
  */
 export function ArchivePanel({ scope }: { scope: "products" | "categories" }) {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  // Each is read for both modules, then picked: hooks cannot be called conditionally.
+  const productEdit = useCan("PRODUCT_EDIT");
+  const productDelete = useCan("PRODUCT_DELETE");
+  const categoryEdit = useCan("CATEGORY_EDIT");
+  const categoryDelete = useCan("CATEGORY_DELETE");
+  const canRestore = scope === "products" ? productEdit : categoryEdit;
+  const canDelete = scope === "products" ? productDelete : categoryDelete;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const query = useDeferredValue(search);
@@ -131,8 +137,9 @@ export function ArchivePanel({ scope }: { scope: "products" | "categories" }) {
     : (data?.categories.length ?? 0) + (data?.subCategories.length ?? 0);
 
   const actions = (kind: ArchiveKind, id: number, name: string, alsoRemoves: string | null) =>
-    canWrite ? (
+    canRestore || canDelete ? (
       <>
+        {canRestore ? (
         <Button
           variant="outline"
           size="sm"
@@ -147,6 +154,8 @@ export function ArchivePanel({ scope }: { scope: "products" | "categories" }) {
           )}
           Restore
         </Button>
+        ) : null}
+        {canDelete ? (
         <Button
           variant="ghost"
           size="sm"
@@ -157,6 +166,7 @@ export function ArchivePanel({ scope }: { scope: "products" | "categories" }) {
           <Trash2 />
           Delete forever
         </Button>
+        ) : null}
       </>
     ) : null;
 

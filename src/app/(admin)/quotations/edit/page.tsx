@@ -11,7 +11,7 @@ export default async function Page({
   const { id } = await searchParams;
 
   return (
-    <RequirePermission permission="QUOTATION_WRITE">
+    <RequirePermission permission={["QUOTATION_EDIT_DRAFT", "QUOTATION_EDIT_SENT"]}>
       <Suspense>
         <EditQuotationPage quotationId={typeof id === "string" ? id : ""} />
       </Suspense>

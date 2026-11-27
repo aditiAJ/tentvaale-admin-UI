@@ -17,7 +17,7 @@ export default async function Page({
   const { id, status } = await searchParams;
 
   return (
-    <RequirePermission permission="QUOTATION_READ">
+    <RequirePermission permission="QUOTATION_VIEW">
       <QuotationsPage
         quotationId={typeof id === "string" ? id : ""}
         status={typeof status === "string" ? status : ""}

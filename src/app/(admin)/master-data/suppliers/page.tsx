@@ -13,7 +13,7 @@ export default async function Page({
   const { supplier } = await searchParams;
 
   return (
-    <RequirePermission permission="MASTER_DATA_READ">
+    <RequirePermission permission="SUPPLIER_VIEW">
       <SuppliersPage selectedId={typeof supplier === "string" && supplier ? supplier : undefined} />
     </RequirePermission>
   );

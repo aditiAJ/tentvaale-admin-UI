@@ -45,6 +45,8 @@ export function VenueDialog({ quotation, onClose }: { quotation: QuotationView; 
       queryClient.setQueryData(quotationKeys.byId(quotation.id), updated);
       queryClient.invalidateQueries({ queryKey: quotationKeys.list });
       queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      // The order page and printouts read the venue from the dispatch details.
+      queryClient.invalidateQueries({ queryKey: ["orders", "dispatch-details"] });
       toast.success(`Venue saved on ${updated.quotationNumber}. The customer has been told.`);
       onClose();
     },

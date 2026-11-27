@@ -36,7 +36,9 @@ const OCCASIONS = "occasions";
  * Nothing is deleted, so no product loses a detail.
  */
 export function CatalogueListsPanel() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("CATEGORY_ADD");
+  const canEdit = useCan("CATEGORY_EDIT");
+  const canHide = useCan("CATEGORY_DELETE");
   const { facets, isPending, isError } = useCatalogueLists();
   const [selected, setSelected] = useState<string>(CATALOGUE_LISTS[0].code);
   const [occasions, setOccasions] = useState(false);
@@ -76,10 +78,10 @@ export function CatalogueListsPanel() {
 
         <div className="min-w-0">
           {list && facet ? (
-            <ListDetail key={list.code} list={list} facet={facet} canWrite={canWrite} />
+            <ListDetail key={list.code} list={list} facet={facet} canAdd={canAdd} canEdit={canEdit} canHide={canHide} />
           ) : list ? (
             <Card className="p-5 text-sm text-muted-foreground">
-              {isPending ? "Loading…" : "This list is not set up yet. A person who may edit master data sets it up the first time they open the product form."}
+              {isPending ? "Loading…" : "This list is not set up yet. A person who may add categories sets it up the first time they open the product form."}
             </Card>
           ) : (
             <Card className="space-y-3 p-5">
@@ -100,7 +102,9 @@ export function CatalogueListsPanel() {
         </div>
       </div>
 
-      {occasions ? <BundleOccasionsDialog canWrite={canWrite} onClose={() => setOccasions(false)} /> : null}
+      {occasions ? (
+        <BundleOccasionsDialog canAdd={canAdd} canEdit={canEdit} canHide={canHide} onClose={() => setOccasions(false)} />
+      ) : null}
     </section>
   );
 }
@@ -122,7 +126,19 @@ function PickerButton({ active, onClick, title, hint }: { active: boolean; onCli
   );
 }
 
-function ListDetail({ list, facet, canWrite }: { list: CatalogueList; facet: ListFacet; canWrite: boolean }) {
+function ListDetail({
+  list,
+  facet,
+  canAdd,
+  canEdit,
+  canHide,
+}: {
+  list: CatalogueList;
+  facet: ListFacet;
+  canAdd: boolean;
+  canEdit: boolean;
+  canHide: boolean;
+}) {
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const values = sortedValues(facet);
@@ -164,7 +180,7 @@ function ListDetail({ list, facet, canWrite }: { list: CatalogueList; facet: Lis
           </p>
         </div>
 
-        {canWrite ? (
+        {canAdd ? (
           <form
             className="flex w-full gap-2 sm:w-72"
             onSubmit={(event) => {
@@ -193,12 +209,12 @@ function ListDetail({ list, facet, canWrite }: { list: CatalogueList; facet: Lis
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {values.map((value) => (
-            <ValueTile key={value.id} value={value} canWrite={canWrite} onChanged={refresh} onError={fail} />
+            <ValueTile key={value.id} value={value} canEdit={canEdit} canHide={canHide} onChanged={refresh} onError={fail} />
           ))}
         </ul>
       )}
 
-      {canWrite && missing.length > 0 ? (
+      {canAdd && missing.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           <span>
             {missing.length} standard {missing.length === 1 ? "choice is" : "choices are"} not in this list ({missing.slice(0, 3).join(", ")}
@@ -215,12 +231,14 @@ function ListDetail({ list, facet, canWrite }: { list: CatalogueList; facet: Lis
 
 function ValueTile({
   value,
-  canWrite,
+  canEdit,
+  canHide,
   onChanged,
   onError,
 }: {
   value: ListValue;
-  canWrite: boolean;
+  canEdit: boolean;
+  canHide: boolean;
   onChanged: () => unknown;
   onError: (e: unknown) => void;
 }) {
@@ -269,11 +287,13 @@ function ValueTile({
         {value.value}
       </span>
       {!value.active ? <span className="shrink-0 text-[11px] text-muted-foreground">Hidden</span> : null}
-      {canWrite ? (
-        <>
-          <Button size="icon" variant="ghost" className="size-8" aria-label={`Rename ${value.value}`} onClick={() => setEditing(value.value)}>
-            <Pencil />
-          </Button>
+      {canEdit ? (
+        <Button size="icon" variant="ghost" className="size-8" aria-label={`Rename ${value.value}`} onClick={() => setEditing(value.value)}>
+          <Pencil />
+        </Button>
+      ) : null}
+      {/* Hiding ends the choice, so it needs Delete; offering it again is an edit. */}
+      {(value.active ? canHide : canEdit) ? (
           <Button
             size="icon"
             variant="ghost"
@@ -285,7 +305,6 @@ function ValueTile({
           >
             {value.active ? <EyeOff /> : <Eye />}
           </Button>
-        </>
       ) : null}
     </li>
   );

@@ -177,8 +177,9 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
   const [leaving, setLeaving] = useState<(() => void) | null>(null);
   // "Add new product" from a line: which line, and what had been typed in its box (the new product's name to start with).
   const [newProductFor, setNewProductFor] = useState<{ index: number; name: string } | null>(null);
-  // Creating a product needs master-data rights; someone who can only write quotations is not offered it.
-  const canCreateProducts = useCan("MASTER_DATA_WRITE");
+  // Offered only to someone who may add a product, or a customer.
+  const canCreateProducts = useCan("PRODUCT_ADD");
+  const canAddCustomer = useCan("CUSTOMER_ADD");
 
   const products = useQuery({
     queryKey: masterDataKeys.products,
@@ -740,7 +741,7 @@ export function QuotationForm({ existing }: { existing?: QuotationView }) {
                   setValue("customerId", id, { shouldValidate: true, shouldDirty: true });
                   setValue("customerName", customers.data?.find((customer) => customer.id === id)?.fullName ?? "");
                 }}
-                actions={[{ label: "Add customer", onSelect: addCustomer }]}
+                actions={canAddCustomer ? [{ label: "Add customer", onSelect: addCustomer }] : []}
               />
             )}
           </Field>

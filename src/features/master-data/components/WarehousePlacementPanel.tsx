@@ -66,7 +66,7 @@ export function WarehousePlacementPanel({
   filterRequest?: StorageLocationView | null;
   onFilterRequestHandled?: () => void;
 }) {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canWrite = useCan("WAREHOUSE_STOCK");
   const canEdit = canWrite && warehouse.active !== false;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");

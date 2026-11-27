@@ -3,7 +3,7 @@ import { RequirePermission } from "@/components/require-permission";
 
 export default function Page() {
   return (
-    <RequirePermission permission="ORDER_READ">
+    <RequirePermission permission="ORDER_VIEW">
       <EventCalendarPage />
     </RequirePermission>
   );

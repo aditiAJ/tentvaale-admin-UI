@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -107,6 +108,8 @@ export function CustomerDialog({
 }) {
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
+  // Discounts are pricing: only someone who may edit customers chooses them. Others get the usual ones.
+  const canSetDiscounts = useCan("CUSTOMER_EDIT");
 
   const {
     register,
@@ -232,7 +235,7 @@ export function CustomerDialog({
             )}
           </Field>
 
-          {accountType === "EVENT_PLANNER" ? (
+          {!canSetDiscounts ? null : accountType === "EVENT_PLANNER" ? (
             <Field
               label="Planner discount (%)"
               error={errors.plannerDiscountPercent?.message}

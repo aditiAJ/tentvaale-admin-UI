@@ -1,5 +1,5 @@
 import type { CompanyProfile } from "@/features/settings/api";
-import type { QuotationView } from "@/features/quotations/types";
+import type { DispatchDetails } from "@/features/quotations/types";
 import { shortDate, type DocCompany } from "@/features/quotations/components/QuotationDocument";
 import { loadImageData, loadLivePictures, loadMarkData } from "@/features/quotations/components/pdfAssets";
 import { listProducts } from "@/features/master-data/api";
@@ -31,7 +31,7 @@ const unitFor = (rateType: string | null | undefined) => UNIT_OF[rateType as key
 
 export function sourcesOf(
   order: OrderView,
-  quotation: QuotationView | undefined,
+  quotation: DispatchDetails | undefined,
   pictureFor: Awaited<ReturnType<typeof loadLivePictures>>,
   rateOf: Map<string, string>,
 ): Source[] {
@@ -67,7 +67,7 @@ const NO_WAREHOUSE = "No warehouse assigned to this product";
  */
 export async function buildDispatchDoc(
   order: OrderView,
-  quotation: QuotationView | undefined,
+  quotation: DispatchDetails | undefined,
   company: CompanyProfile | undefined,
 ): Promise<DispatchDoc> {
   // What each product's quantity counts (pieces, sq ft, running ft); a product that cannot be read counts as pieces.

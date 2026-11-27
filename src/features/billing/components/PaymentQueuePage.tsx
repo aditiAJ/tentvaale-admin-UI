@@ -33,7 +33,7 @@ type StatusChoice = PaymentStatus | "";
  * an order.
  */
 export function PaymentQueuePage() {
-  const canWrite = useCan("PAYMENT_WRITE");
+  const canEdit = useCan("PAYMENT_EDIT");
   const canVerify = useCan("PAYMENT_VERIFY");
   const canVoid = useCan("PAYMENT_VOID");
   const queryClient = useQueryClient();
@@ -181,7 +181,7 @@ export function PaymentQueuePage() {
                   <TD>
                     <PaymentRowActions
                       payment={p}
-                      canWrite={canWrite}
+                      canEdit={canEdit}
                       canVerify={canVerify}
                       canVoid={canVoid}
                       onChanged={refresh}

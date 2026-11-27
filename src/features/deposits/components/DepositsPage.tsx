@@ -45,7 +45,7 @@ const ACTION_FOR: Record<string, { action: SettleAction; label: string; destruct
 
 /** `initialOrderId` comes from `?orderId=`, so an order can link to its deposit. */
 export function DepositsPage({ initialOrderId = "" }: { initialOrderId?: string }) {
-  const canWrite = useCan("DEPOSIT_WRITE");
+  const canWrite = useCan("DEPOSIT_SETTLE");
   const [orderId, setOrderId] = useState(initialOrderId);
   const [settling, setSettling] = useState<SettleAction | null>(null);
 
@@ -218,7 +218,7 @@ export function DepositsPage({ initialOrderId = "" }: { initialOrderId?: string 
                         key={next}
                         variant={step.destructive ? "destructive" : "default"}
                         disabled={!canWrite}
-                        title={canWrite ? undefined : "Needs the DEPOSIT_WRITE permission."}
+                        title={canWrite ? undefined : "Your account does not include refunding or forfeiting deposits."}
                         onClick={() => setSettling(step.action)}
                       >
                         {step.label}

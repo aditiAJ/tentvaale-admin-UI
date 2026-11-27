@@ -46,6 +46,7 @@ export function CategoryCard({
   onDeactivate,
   onActivate,
   onToggleSub,
+  mayToggleSub,
   onArchive,
   onArchiveSub,
 }: {
@@ -63,6 +64,8 @@ export function CategoryCard({
   onActivate?: () => void;
   /** Switches one sub-category on or off. Absent for a user who cannot write master data. */
   onToggleSub?: (sub: SubCategoryView) => void;
+  /** Whether this one may be switched the way it would go. */
+  mayToggleSub?: (sub: SubCategoryView) => boolean;
   /** Puts the category (and what is under it) in the Archive. Absent for a user who cannot write master data. */
   onArchive?: () => void;
   /** Puts one sub-category (and its products) in the Archive. */
@@ -202,7 +205,7 @@ export function CategoryCard({
                   count={counts?.bySub.get(sub.id)}
                   highlight={matches(sub.name)}
                   on={isOn(sub)}
-                  onToggle={onToggleSub ? () => onToggleSub(sub) : undefined}
+                  onToggle={onToggleSub && (mayToggleSub?.(sub) ?? true) ? () => onToggleSub(sub) : undefined}
                   onArchive={onArchiveSub ? () => onArchiveSub(sub) : undefined}
                 />
               </li>
@@ -267,7 +270,7 @@ export function CategoryCard({
                   media={counts?.subMedia.get(sub.id)}
                   highlight={matches(sub.name)}
                   on={isOn(sub)}
-                  onToggle={onToggleSub ? () => onToggleSub(sub) : undefined}
+                  onToggle={onToggleSub && (mayToggleSub?.(sub) ?? true) ? () => onToggleSub(sub) : undefined}
                   onArchive={onArchiveSub ? () => onArchiveSub(sub) : undefined}
                 />
               </li>

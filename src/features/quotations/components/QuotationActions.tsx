@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuotationRights } from "@/features/quotations/rights";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -33,7 +34,7 @@ type Pending = "send" | "accept" | "behalf" | "reject" | "waive" | null;
  * The actions a quotation offers, and to whom.
  *
  * The lifecycle is DRAFT, SENT, ACCEPTED, CONVERTED (plus REJECTED, shown as "Closed", and EXPIRED, which end it):
- * sales drafts, edits and sends; only an Admin accepts or closes (QUOTATION_APPROVE); only an
+ * drafting, sending, accepting and closing are separate rights; only an
  * ACCEPTED quotation converts. Editing a SENT quotation sends it back to DRAFT, so the edit link
  * warns first. Each button is shown only when the status allows it and the user holds the
  * permission; the backend enforces the same rules and its refusal is shown verbatim.
@@ -51,10 +52,13 @@ export function QuotationActions({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<Pending>(null);
-  const canWrite = useCan("QUOTATION_WRITE");
-  const canApprove = useCan("QUOTATION_APPROVE");
-  const canConvert = useCan("ORDER_WRITE");
-  const canWaive = useCan("DEPOSIT_WAIVE");
+  const rights = useQuotationRights();
+  const canAdd = useCan("QUOTATION_ADD");
+  const canSend = useCan("QUOTATION_SEND");
+  const canAccept = useCan("QUOTATION_ACCEPT");
+  const canClose = useCan("QUOTATION_CLOSE");
+  const canConvert = useCan("ORDER_CONVERT");
+  const canWaive = useCan("QUOTATION_WAIVE_DEPOSIT");
   const { status } = quotation;
   const size = received ? "default" : "sm";
   // An order from a storefront request is placed by the customer, so staff do not convert it.
@@ -87,7 +91,7 @@ export function QuotationActions({
         Print / PDF
       </Link>
 
-      {canWrite && editable ? (
+      {editable && rights.mayEditLines(status) ? (
         <Link
           href={`/quotations/edit?id=${quotation.id}`}
           className={buttonVariants({ variant: "outline", size })}
@@ -102,33 +106,35 @@ export function QuotationActions({
         </Link>
       ) : null}
 
-      {canWrite && status === "DRAFT" ? (
+      {canSend && status === "DRAFT" ? (
         <Button size={size} onClick={() => setPending("send")}>
           <Send />
           {received ? "Send to customer" : "Send"}
         </Button>
       ) : null}
 
-      {canApprove && status === "SENT" ? (
-        <>
-          <Button size={size} onClick={() => setPending("accept")}>
-            <Check />
-            Accept
-          </Button>
-          <Button variant="outline" size={size} onClick={() => setPending("reject")}>
-            <X />
-            Close quotation
-          </Button>
-          <Button variant="outline" size={size} onClick={() => setPending("behalf")}
-            title="Accept for the customer and create the order in one step">
-            <Check />
-            Accept on behalf of customer
-          </Button>
-        </>
+      {canAccept && status === "SENT" ? (
+        <Button size={size} onClick={() => setPending("accept")}>
+          <Check />
+          Accept
+        </Button>
+      ) : null}
+      {canClose && status === "SENT" ? (
+        <Button variant="outline" size={size} onClick={() => setPending("reject")}>
+          <X />
+          Close quotation
+        </Button>
+      ) : null}
+      {canAccept && status === "SENT" ? (
+        <Button variant="outline" size={size} onClick={() => setPending("behalf")}
+          title="Accept for the customer and create the order in one step">
+          <Check />
+          Accept on behalf of customer
+        </Button>
       ) : null}
 
       {/* A draft can be closed too (MOM-15): staff stop work on it without ever sending it. */}
-      {canApprove && status === "DRAFT" ? (
+      {canClose && status === "DRAFT" ? (
         <Button variant="outline" size={size} onClick={() => setPending("reject")}
           title="End this draft without sending it. It cannot be reopened.">
           <X />
@@ -154,7 +160,7 @@ export function QuotationActions({
         </Button>
       ) : null}
 
-      {canWrite ? (
+      {canAdd ? (
         <Button
           variant="ghost"
           size={size}

@@ -11,6 +11,8 @@ interface DialogProps {
   title: string;
   description?: string;
   className?: string;
+  /** For a tall dialog whose middle should scroll on its own, between a fixed title and fixed buttons. */
+  bodyClassName?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }
@@ -30,6 +32,7 @@ export function Dialog({
   title,
   description,
   className,
+  bodyClassName,
   children,
   footer,
 }: DialogProps) {
@@ -91,7 +94,7 @@ export function Dialog({
             <X />
           </Button>
         </div>
-        <div className="px-4 py-4">{children}</div>
+        <div className={cn("px-4 py-4", bodyClassName)}>{children}</div>
         {footer ? (
           <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3">{footer}</div>
         ) : null}

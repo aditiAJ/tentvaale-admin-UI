@@ -44,7 +44,7 @@ export function listStockMovementsByOrder(
 }
 
 /**
- * Records a dispatch or a return. Needs INVENTORY_WRITE, and answers 201 with
+ * Records a dispatch or a return. Needs STOCK_MOVE, and answers 201 with
  * the movement.
  *
  * 404 when the order, warehouse, product or variant does not exist; 422 when

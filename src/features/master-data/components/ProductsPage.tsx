@@ -75,7 +75,9 @@ export function ProductsPage({
   /** Or to one sub-category, which wins over its category. */
   initialSubCategoryId?: string;
 } = {}) {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("PRODUCT_ADD");
+  const canEdit = useCan("PRODUCT_EDIT");
+  const canDelete = useCan("PRODUCT_DELETE");
   const [filters, setFilters] = useState<ProductFilters>(() => ({
     ...EMPTY_FILTERS,
     categoryIds: initialCategoryId && !initialSubCategoryId ? [initialCategoryId] : [],
@@ -150,7 +152,8 @@ export function ProductsPage({
           <>
             {showArchive ? null : (
               <>
-                {canWrite ? <ProductImportButton /> : null}
+                {/* Which rows of the file are allowed is checked row by row by the server. */}
+                {canAdd || canEdit ? <ProductImportButton /> : null}
                 <ProductExportButton shownIds={visible.map((product) => product.id)} categories={categories.data ?? []} />
               </>
             )}
@@ -158,7 +161,7 @@ export function ProductsPage({
               {showArchive ? <ArrowLeft /> : <Archive />}
               {showArchive ? "Back to products" : "Archive"}
             </Button>
-            {canWrite ? (
+            {canAdd ? (
               <Button onClick={() => setCreating(true)}>
                 <Plus />
                 New product
@@ -327,7 +330,7 @@ export function ProductsPage({
                         View variants
                       </Button>
                       <div className="flex gap-1">
-                        {canWrite ? (
+                        {canEdit ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -338,7 +341,7 @@ export function ProductsPage({
                             <Pencil />
                           </Button>
                         ) : null}
-                        {canWrite ? (
+                        {(inactive ? canEdit : canDelete) ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -349,7 +352,7 @@ export function ProductsPage({
                             {inactive ? <Eye /> : <EyeOff />}
                           </Button>
                         ) : null}
-                        {canWrite ? (
+                        {canDelete ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -395,7 +398,7 @@ export function ProductsPage({
                     : "Add the first item in this company's rental catalogue."
                 }
                 action={
-                  !data?.length && canWrite ? (
+                  !data?.length && canAdd ? (
                     <Button onClick={() => setCreating(true)}>
                       <Plus />
                       New product
@@ -415,7 +418,7 @@ export function ProductsPage({
           product={viewing}
           onClose={() => setViewing(null)}
           onEdit={
-            canWrite
+            canEdit
               ? () => {
                   setEditing(viewing);
                   setViewing(null);

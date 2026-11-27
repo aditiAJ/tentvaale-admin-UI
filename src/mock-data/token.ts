@@ -12,44 +12,6 @@ import { PRINCIPAL_ADMIN, type Permission, type Role } from "@/services/permissi
  * expiry, permission gating — keeps running unchanged under the mock.
  */
 
-/** Roles map to permissions here only because there is no server to ask. */
-const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  ADMIN: [
-    "MASTER_DATA_READ", "MASTER_DATA_WRITE", "LOGISTICS_WRITE",
-    "QUOTATION_READ", "QUOTATION_WRITE",
-    "ORDER_READ", "ORDER_WRITE",
-    "INVENTORY_READ", "INVENTORY_WRITE",
-    "CREDIT_NOTE_READ", "CREDIT_NOTE_WRITE",
-    "DEPOSIT_READ", "DEPOSIT_WRITE",
-    "REPORTING_READ", "NOTIFICATION_READ",
-    "CONFIG_WRITE", "USER_READ", "USER_WRITE",
-  ],
-  SALES: [
-    "MASTER_DATA_READ",
-    "QUOTATION_READ", "QUOTATION_WRITE",
-    "ORDER_READ", "ORDER_WRITE",
-    "INVENTORY_READ",
-    "CREDIT_NOTE_READ",
-    "DEPOSIT_READ",
-    "REPORTING_READ", "NOTIFICATION_READ",
-  ],
-  OPERATIONS: [
-    "MASTER_DATA_READ", "LOGISTICS_WRITE",
-    "ORDER_READ",
-    "INVENTORY_READ", "INVENTORY_WRITE",
-    "PAYMENT_READ",
-    "REPORTING_READ",
-  ],
-  WAREHOUSE: ["MASTER_DATA_READ", "ORDER_READ", "INVENTORY_READ", "INVENTORY_WRITE"],
-  ACCOUNTS: [
-    "MASTER_DATA_READ",
-    "QUOTATION_READ", "ORDER_READ",
-    "CREDIT_NOTE_READ", "CREDIT_NOTE_WRITE",
-    "DEPOSIT_READ", "DEPOSIT_WRITE",
-    "REPORTING_READ", "NOTIFICATION_READ",
-  ],
-};
-
 function base64url(value: string): string {
   // btoa needs latin1, so UTF-8 is escaped first — usernames and company names
   // can carry non-ASCII.
@@ -63,6 +25,8 @@ interface MintArgs {
   companyId: string;
   username: string;
   role: Role;
+  /** Everything the user may do, as the server would put it in the token. */
+  permissions: Permission[];
   /** Matches the backend's 12-hour admin token lifetime. */
   ttlSeconds?: number;
 }
@@ -72,6 +36,7 @@ export function mintMockToken({
   companyId,
   username,
   role,
+  permissions,
   ttlSeconds = 12 * 60 * 60,
 }: MintArgs): string {
   const now = Math.floor(Date.now() / 1000);
@@ -83,7 +48,7 @@ export function mintMockToken({
       cid: companyId,
       name: username,
       role,
-      auth: [PRINCIPAL_ADMIN, ...ROLE_PERMISSIONS[role]],
+      auth: [PRINCIPAL_ADMIN, ...permissions],
       iat: now,
       exp: now + ttlSeconds,
     }),

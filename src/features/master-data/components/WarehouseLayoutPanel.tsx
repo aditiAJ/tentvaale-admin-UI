@@ -72,7 +72,10 @@ export function WarehouseLayoutPanel({
   /** Shows "Where it is kept" narrowed to this location (and everything inside it). */
   onOpenPlacement?: (location: StorageLocationView) => void;
 }) {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  // Adding a place is part of keeping stock; changing or removing one is changing the warehouse.
+  const canAddPlace = useCan("WAREHOUSE_STOCK");
+  const canEditPlace = useCan("WAREHOUSE_EDIT");
+  const canDeletePlace = useCan("WAREHOUSE_DELETE");
   const queryClient = useQueryClient();
   const layoutKey = masterDataKeys.warehouseLayout(warehouse.id);
   const [search, setSearch] = useState("");
@@ -104,9 +107,11 @@ export function WarehouseLayoutPanel({
 
   const list = term ? found : zones;
   const s = summary.data;
-  const canAdd = canWrite && warehouse.active !== false;
+  const canAdd = canAddPlace && warehouse.active !== false;
   const handlers: RowHandlers = {
-    canWrite,
+    canAddPlace,
+    canEditPlace,
+    canDeletePlace,
     onAdd: setEditing,
     onEdit: (l) => setEditing({ mode: "edit", location: l }),
     onRemove: setRemoving,
@@ -268,7 +273,9 @@ export function WarehouseLayoutPanel({
 }
 
 interface RowHandlers {
-  canWrite: boolean;
+  canAddPlace: boolean;
+  canEditPlace: boolean;
+  canDeletePlace: boolean;
   onAdd: (editing: Editing) => void;
   onEdit: (location: StorageLocationView) => void;
   onRemove: (location: StorageLocationView) => void;
@@ -319,7 +326,9 @@ function LocationRow({
   flat = false,
   open,
   onToggle,
-  canWrite,
+  canAddPlace,
+  canEditPlace,
+  canDeletePlace,
   onAdd,
   onEdit,
   onRemove,
@@ -385,23 +394,23 @@ function LocationRow({
             <span className="hidden md:inline">What&apos;s here</span>
           </Button>
         ) : null}
-        {canWrite ? (
-          <>
-            {canHaveChildren && location.active ? (
+            {canAddPlace && canHaveChildren && location.active ? (
               <Button size="sm" variant="ghost" aria-label={`Add inside ${location.fullCode}`} title="Add a place inside this one" onClick={() => onAdd({ mode: "create", parent: location })}>
                 <Plus />
                 <span className="hidden md:inline">Add inside</span>
               </Button>
             ) : null}
-            <Button size="sm" variant="ghost" aria-label={`Edit ${location.fullCode}`} title="Edit" onClick={() => onEdit(location)}>
-              <Pencil />
-              <span className="hidden md:inline">Edit</span>
-            </Button>
-            <Button size="icon" variant="ghost" aria-label={`Delete ${location.fullCode}`} title="Delete" onClick={() => onRemove(location)}>
-              <Trash2 />
-            </Button>
-          </>
-        ) : null}
+            {canEditPlace ? (
+              <Button size="sm" variant="ghost" aria-label={`Edit ${location.fullCode}`} title="Edit" onClick={() => onEdit(location)}>
+                <Pencil />
+                <span className="hidden md:inline">Edit</span>
+              </Button>
+            ) : null}
+            {canDeletePlace ? (
+              <Button size="icon" variant="ghost" aria-label={`Delete ${location.fullCode}`} title="Delete" onClick={() => onRemove(location)}>
+                <Trash2 />
+              </Button>
+            ) : null}
       </div>
     </div>
   );
@@ -521,6 +530,7 @@ function LocationDialog({
   const [name, setName] = useState(existing?.name ?? "");
   const [code, setCode] = useState(existing?.code ?? "");
   const [active, setActive] = useState(existing?.active ?? true);
+  const canSwitchOff = useCan("WAREHOUSE_DELETE");
   const [error, setError] = useState<string | null>(null);
   // The server fixes a code once the location has sub-locations or has held stock.
   const codeLocked = Boolean(existing && (existing.childCount > 0 || existing.units > 0));
@@ -625,7 +635,8 @@ function LocationDialog({
             {(props) => <Input {...props} value={name} onChange={(event) => setName(event.target.value)} />}
           </Field>
         </div>
-        {existing ? (
+        {/* Switching off ends the place, so it is only offered with Delete; switching back on is an edit. */}
+        {existing && (!existing.active || canSwitchOff) ? (
           <label className="flex items-start gap-2.5 text-sm">
             <input
               type="checkbox"

@@ -23,7 +23,8 @@ function schedule(terms: PaymentTermsView): string {
 
 /** Payment modes and payment-terms templates: the setup quotations and orders choose from. */
 export function PaymentSetupPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("PAYMENT_SETUP_ADD");
+  const canEdit = useCan("PAYMENT_SETUP_EDIT");
   const [newMode, setNewMode] = useState(false);
   const [editingMode, setEditingMode] = useState<PaymentModeView | null>(null);
   const [newTerms, setNewTerms] = useState(false);
@@ -50,7 +51,7 @@ export function PaymentSetupPage() {
           <h2 id="modes-heading" className="text-sm font-semibold">
             Payment modes
           </h2>
-          {canWrite ? (
+          {canAdd ? (
             <Button size="sm" onClick={() => setNewMode(true)}>
               <Plus />
               New payment mode
@@ -63,18 +64,18 @@ export function PaymentSetupPage() {
               <THead>
                 <tr>
                   <TH>Name</TH>
-                  {canWrite ? <TH className="text-right">Actions</TH> : null}
+                  {canEdit ? <TH className="text-right">Actions</TH> : null}
                 </tr>
               </THead>
               <TBody>
-                {modes.isPending ? <TableSkeleton columns={canWrite ? 2 : 1} /> : null}
+                {modes.isPending ? <TableSkeleton columns={canEdit ? 2 : 1} /> : null}
                 {modes.data?.map((mode) => (
                   <TR key={mode.id}>
                     <TD className="font-medium">
                       {mode.name}
                       {!mode.active ? <Badge className="ml-2">Inactive</Badge> : null}
                     </TD>
-                    {canWrite ? (
+                    {canEdit ? (
                       <TD>
                         <div className="flex justify-end">
                           <Button
@@ -116,7 +117,7 @@ export function PaymentSetupPage() {
           <h2 id="terms-heading" className="text-sm font-semibold">
             Payment terms
           </h2>
-          {canWrite ? (
+          {canAdd ? (
             <Button size="sm" onClick={() => setNewTerms(true)}>
               <Plus />
               New payment terms
@@ -130,11 +131,11 @@ export function PaymentSetupPage() {
                 <tr>
                   <TH>Name</TH>
                   <TH>Schedule</TH>
-                  {canWrite ? <TH className="text-right">Actions</TH> : null}
+                  {canEdit ? <TH className="text-right">Actions</TH> : null}
                 </tr>
               </THead>
               <TBody>
-                {terms.isPending ? <TableSkeleton columns={canWrite ? 3 : 2} /> : null}
+                {terms.isPending ? <TableSkeleton columns={canEdit ? 3 : 2} /> : null}
                 {terms.data?.map((template) => (
                   <TR key={template.id}>
                     <TD className="font-medium">
@@ -145,7 +146,7 @@ export function PaymentSetupPage() {
                       ) : null}
                     </TD>
                     <TD className="text-xs">{schedule(template)}</TD>
-                    {canWrite ? (
+                    {canEdit ? (
                       <TD>
                         <div className="flex justify-end">
                           <Button

@@ -119,6 +119,8 @@ export async function apiFetch<T>(
 function defaultMessage(status: number, statusText: string): string {
   if (status === 403) return "You do not have permission to do that.";
   if (status === 404) return "Not found.";
+  // Only a web server in front of the app answers this way; the app's own refusals carry their own message.
+  if (status === 413) return "The web server refused this file as too large. Its upload limit needs to be raised.";
   if (status === 429) return "Too many attempts. Please wait a moment and try again.";
   if (status === 502 || status === 503 || status === 504) return "The server is not reachable right now. Please try again in a moment.";
   if (status >= 500) return "The server could not complete the request.";

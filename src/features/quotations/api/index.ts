@@ -1,4 +1,6 @@
 import { ApiError } from "@/services/api-client";
+import { dispatchLine } from "@/features/quotations/dispatchLine";
+import type { DispatchDetails } from "@/features/quotations/types";
 import { IS_MOCK } from "@/services/data-source";
 import {
   mockCreateQuotation,
@@ -21,14 +23,22 @@ import type {
  * browser-local data for the calls it always had; the workflow actions (send, accept, reject,
  * duplicate) exist only on the real backend.
  *
- * Who may do what is the backend's call and the screens mirror it: sales drafts, edits and sends
- * (QUOTATION_WRITE); only an Admin accepts or rejects (QUOTATION_APPROVE); only an ACCEPTED
+ * Who may do what is the backend's call and the screens mirror it: adding, editing, sending,
+ * accepting and closing are each their own access, and only an ACCEPTED
  * quotation converts to an order. Failures arrive as ApiError with the server's own sentence
  * (422 a rule, 403 not allowed, 409 someone changed it at the same time).
  */
 const NEEDS_BACKEND = "This needs the real backend. Set NEXT_PUBLIC_DATA_SOURCE=api.";
 
 /** 404 when the id is unknown or belongs to another company. */
+export async function getDispatchDetails(orderId: string, quotationId: string, signal?: AbortSignal): Promise<DispatchDetails> {
+  if (IS_MOCK) {
+    const { quotationNumber, eventDate, venue, lines } = await mockGetQuotation(quotationId);
+    return { quotationNumber, eventDate, venue, lines: lines.map(dispatchLine) };
+  }
+  return backend.getDispatchDetails(orderId, signal);
+}
+
 export function getQuotation(quotationId: string, signal?: AbortSignal): Promise<QuotationView> {
   if (IS_MOCK) return mockGetQuotation(quotationId);
   return backend.getQuotation(quotationId, signal);
@@ -64,7 +74,7 @@ export function sendQuotation(quotationId: string): Promise<QuotationView> {
   return backend.sendQuotation(quotationId);
 }
 
-/** SENT to ACCEPTED. 403 unless the caller holds QUOTATION_APPROVE (Admin). */
+/** SENT to ACCEPTED. 403 unless the caller holds QUOTATION_ACCEPT. */
 export function acceptQuotation(quotationId: string): Promise<QuotationView> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.acceptQuotation(quotationId);
@@ -72,7 +82,7 @@ export function acceptQuotation(quotationId: string): Promise<QuotationView> {
 
 /**
  * "Close Quotation": DRAFT or SENT to REJECTED (shown as "Closed"; final). The reason is required. 403 unless the
- * caller holds QUOTATION_APPROVE.
+ * caller holds QUOTATION_CLOSE.
  */
 export function rejectQuotation(quotationId: string, reason: string): Promise<QuotationView> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
@@ -91,19 +101,22 @@ export function listQuotationVersions(quotationId: string, signal?: AbortSignal)
   return backend.listQuotationVersions(quotationId, signal);
 }
 
+/** Under "orders", so whatever refreshes the orders refreshes these too. */
+export const dispatchDetailsKey = (orderId: string) => ["orders", "dispatch-details", orderId] as const;
+
 export const quotationKeys = {
   byId: (quotationId: string) => ["quotations", quotationId] as const,
   list: ["quotations", "list"] as const,
   plan: (quotationId: string) => ["quotations", quotationId, "plan"] as const,
 };
 
-/** Needs DEPOSIT_WAIVE (Admin): the deposit is not collected and the reason is on record. */
+/** Needs QUOTATION_WAIVE_DEPOSIT: the deposit is not collected and the reason is on record. */
 export function waiveDeposit(quotationId: string, reason: string): Promise<QuotationView> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.waiveDeposit(quotationId, reason);
 }
 
-/** SENT to an order in one step, for the customer. Needs QUOTATION_APPROVE (Admin). */
+/** SENT to an order in one step, for the customer. Needs QUOTATION_ACCEPT. */
 export function acceptOnBehalf(quotationId: string): Promise<{ id: string; orderNumber: string }> {
   if (IS_MOCK) return Promise.reject(new ApiError(NEEDS_BACKEND, 422));
   return backend.acceptOnBehalf(quotationId);

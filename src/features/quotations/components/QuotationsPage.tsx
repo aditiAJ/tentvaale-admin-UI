@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuotationRights } from "@/features/quotations/rights";
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -78,7 +79,7 @@ function hrefFor(status: string, id?: string) {
  * linked to and reloaded.
  */
 export function QuotationsPage({ quotationId, status }: { quotationId: string; status: string }) {
-  const canWrite = useCan("QUOTATION_WRITE");
+  const canWrite = useCan("QUOTATION_ADD");
   const [search, setSearch] = useState("");
 
   // Fresh on every visit: a quotation raised, edited or converted a moment ago changes what the list shows.
@@ -357,7 +358,7 @@ function QuotationList({
 /** `backHref` is where Back goes when there is no screen of ours behind this one: the list it was opened from. */
 function QuotationDetail({ quotationId, backHref }: { quotationId: string; backHref: string }) {
   const [converting, setConverting] = useState(false);
-  const canReadPayments = useCan("PAYMENT_READ");
+  const canReadPayments = useCan("PAYMENT_VIEW");
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: quotationKeys.byId(quotationId),
@@ -394,11 +395,11 @@ function QuotationDetail({ quotationId, backHref }: { quotationId: string; backH
 
 function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: QuotationView; onConvert: () => void; showBilling: boolean }) {
   const bucket = bucketOf(q);
-  const canWriteVenue = useCan("QUOTATION_WRITE");
+  const rights = useQuotationRights();
   const [editingVenue, setEditingVenue] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   // Any status but closed or expired; once it has an order the server also refuses after the first dispatch.
-  const canEditDate = canWriteVenue && q.status !== "REJECTED" && q.status !== "EXPIRED";
+  const canEditDate = rights.mayMove(q.status) && q.status !== "REJECTED" && q.status !== "EXPIRED";
   return (
     <>
       <Card className="space-y-4 p-5">
@@ -458,7 +459,7 @@ function FlowDetail({ quotation: q, onConvert, showBilling }: { quotation: Quota
         </dl>
         <VenueRow
           venue={q.venue}
-          onEdit={canWriteVenue && q.status !== "REJECTED" && q.status !== "EXPIRED" ? () => setEditingVenue(true) : undefined}
+          onEdit={canEditDate ? () => setEditingVenue(true) : undefined}
         />
         {editingVenue ? <VenueDialog quotation={q} onClose={() => setEditingVenue(false)} /> : null}
         {editingDate ? <EventDateDialog quotation={q} onClose={() => setEditingDate(false)} /> : null}

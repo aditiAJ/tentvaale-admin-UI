@@ -72,6 +72,9 @@ import type { AdminDashboardView } from "@/features/dashboard/types";
 import type { NotificationLogView } from "@/features/notifications/types";
 import { ALLOWED_NEXT, type DepositLedgerView } from "@/features/deposits/types";
 import { mintMockToken } from "@/mock-data/token";
+import { MOCK_ACCESS_OPTIONS, mockAccess } from "@/mock-data/access";
+import type { AccessOptions } from "@/features/users/types";
+import type { Permission } from "@/services/permissions";
 import {
   COMPANY_ID,
   SEED_BUNDLES,
@@ -138,13 +141,15 @@ import {
 // the fields quotation pricing and the products table now read.
 // v4: MockState gained `warehouseProducts`. A v3 payload has no such array, and
 // reading a warehouse's products from it would throw rather than come back empty.
-const STORAGE_KEY = "tentvaale.admin.mock.v18";
+const STORAGE_KEY = "tentvaale.admin.mock.v19";
 
 /** Enough delay to make loading states real, little enough to feel instant. */
 const LATENCY_MS = 220;
 
-interface MockUser extends AdminUserView {
+interface MockUser extends Omit<AdminUserView, "permissions"> {
   password: string;
+  /** The ticked boxes; absent until changed, meaning the role's defaults. */
+  ticked?: Permission[];
 }
 
 interface MockState {
@@ -288,6 +293,7 @@ export async function mockLogin(username: string, password: string) {
       companyId: match.companyId,
       username: match.username,
       role: match.role,
+      permissions: accessOf(match),
     }),
   };
 }
@@ -2863,7 +2869,15 @@ const toUserView = (user: MockUser): AdminUserView => ({
   email: user.email,
   role: user.role,
   active: user.active,
+  permissions: accessOf(user),
 });
+
+const accessOf = (user: MockUser) => mockAccess(user.role, user.ticked ?? MOCK_ACCESS_OPTIONS.roleDefaults[user.role]);
+
+export async function mockGetAccessOptions(): Promise<AccessOptions> {
+  await delay();
+  return MOCK_ACCESS_OPTIONS;
+}
 
 export async function mockListUsers(): Promise<AdminUserView[]> {
   await delay();
@@ -2884,6 +2898,7 @@ export async function mockCreateUser(request: CreateAdminUserRequest): Promise<A
     username: request.username,
     email: request.email,
     role: request.role,
+    ticked: request.permissions,
     active: true,
     password: request.password,
   };
@@ -2910,17 +2925,21 @@ function requireAnotherAdminRemains(userId: string, action: string): void {
   }
 }
 
-export async function mockChangeUserRole(userId: string, role: Role): Promise<AdminUserView> {
+export async function mockChangeUserAccess(userId: string, role: Role, ticked: Permission[]): Promise<AdminUserView> {
   await delay();
   const acting = caller();
   const user = requireUser(userId);
 
   if (user.role === "ADMIN" && role !== "ADMIN") requireAnotherAdminRemains(userId, "demote");
   if (userId === acting.userId && role !== "ADMIN") {
-    throw businessRule("You cannot change your own role; ask another administrator");
+    throw businessRule("You cannot change your own access; ask another administrator");
+  }
+  if (role !== "ADMIN" && ticked.length === 0) {
+    throw businessRule("Tick at least one box, or deactivate the user instead");
   }
 
   user.role = role;
+  user.ticked = role === "ADMIN" ? undefined : ticked;
   persist();
   return toUserView(user);
 }

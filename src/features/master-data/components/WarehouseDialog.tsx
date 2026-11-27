@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,6 +64,7 @@ export function WarehouseDialog({
   existing?: WarehouseView;
   onClose: () => void;
 }) {
+  const canSwitchOff = useCan("WAREHOUSE_DELETE");
   const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
   // Every location code starts with the warehouse code, so the server fixes it once a layout exists.
@@ -233,7 +235,8 @@ export function WarehouseDialog({
           {(props) => <Textarea {...props} {...register("description")} />}
         </Field>
 
-        {existing ? (
+        {/* Switching off ends the record, so it is only offered with Delete; switching back on is an edit. */}
+        {existing && (!existing.active || canSwitchOff) ? (
           <ActiveToggle
             {...register("active")}
             label="Active"

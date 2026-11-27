@@ -55,7 +55,12 @@ function matches(bundle: BundleView, term: string): boolean {
 }
 
 export function BundlesPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("BUNDLE_ADD");
+  const canEdit = useCan("BUNDLE_EDIT");
+  const canDelete = useCan("BUNDLE_DELETE");
+  const canAddOccasion = useCan("CATEGORY_ADD");
+  const canEditOccasion = useCan("CATEGORY_EDIT");
+  const canHideOccasion = useCan("CATEGORY_DELETE");
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<BundleView | null>(null);
@@ -133,7 +138,7 @@ export function BundlesPage() {
               <Tags />
               Occasions
             </Button>
-            {canWrite ? (
+            {canAdd ? (
               <Button onClick={() => setCreating(true)}>
                 <Plus />
                 New bundle
@@ -357,8 +362,10 @@ export function BundlesPage() {
                     <Info />
                     Details
                   </Button>
-                  {canWrite ? (
+                  {canEdit || canDelete ? (
                     <div className="flex gap-1">
+                      {canEdit ? (
+                      <>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -379,6 +386,9 @@ export function BundlesPage() {
                       >
                         <Pencil />
                       </Button>
+                      </>
+                      ) : null}
+                      {(inactive ? canEdit : canDelete) ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -388,6 +398,8 @@ export function BundlesPage() {
                       >
                         {inactive ? <Eye /> : <EyeOff />}
                       </Button>
+                      ) : null}
+                      {canDelete ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -397,6 +409,7 @@ export function BundlesPage() {
                       >
                         <Trash2 />
                       </Button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -425,7 +438,7 @@ export function BundlesPage() {
             title={data?.length ? "No bundles match those filters" : "No bundles yet"}
             description={data?.length ? "Try a different search, status or occasion." : undefined}
             action={
-              !data?.length && canWrite ? (
+              !data?.length && canAdd ? (
                 <Button onClick={() => setCreating(true)}>
                   <Plus />
                   New bundle
@@ -442,7 +455,7 @@ export function BundlesPage() {
           productMedia={productMedia}
           onClose={() => setViewing(null)}
           onEdit={
-            canWrite
+            canEdit
               ? () => {
                   setEditing(viewing);
                   setViewing(null);
@@ -452,7 +465,12 @@ export function BundlesPage() {
         />
       ) : null}
       {managingOccasions ? (
-        <BundleOccasionsDialog canWrite={canWrite} onClose={() => setManagingOccasions(false)} />
+        <BundleOccasionsDialog
+          canAdd={canAddOccasion}
+          canEdit={canEditOccasion}
+          canHide={canHideOccasion}
+          onClose={() => setManagingOccasions(false)}
+        />
       ) : null}
       {creating ? <BundleDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <BundleDialog existing={editing} onClose={() => setEditing(null)} /> : null}

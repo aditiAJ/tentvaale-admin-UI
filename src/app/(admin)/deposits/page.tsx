@@ -10,7 +10,7 @@ export default async function Page({
   const { orderId } = await searchParams;
 
   return (
-    <RequirePermission permission="DEPOSIT_READ">
+    <RequirePermission permission="DEPOSIT_VIEW">
       <DepositsPage initialOrderId={typeof orderId === "string" ? orderId : ""} />
     </RequirePermission>
   );

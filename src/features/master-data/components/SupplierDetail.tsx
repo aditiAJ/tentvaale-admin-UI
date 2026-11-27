@@ -35,7 +35,7 @@ const LIST = "/master-data/suppliers";
  * of every change. Opened from the list by `?supplier=<id>`, so Back returns to the list as it was.
  */
 export function SupplierDetail({ supplierId }: { supplierId: string }) {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canEdit = useCan("SUPPLIER_EDIT");
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState(false);
 
@@ -94,7 +94,7 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
         actions={
           <>
             {!supplier.active ? <Badge>Inactive</Badge> : null}
-            {canWrite ? (
+            {canEdit ? (
               <Button variant="outline" onClick={() => setEditing(true)}>
                 <Pencil />
                 Edit

@@ -13,7 +13,7 @@ export default async function Page({
   const { id, status } = await searchParams;
 
   return (
-    <RequirePermission permission="CREDIT_NOTE_READ">
+    <RequirePermission permission="CREDIT_NOTE_VIEW">
       <CreditNotesPage
         noteId={typeof id === "string" ? id : ""}
         status={typeof status === "string" ? status : ""}

@@ -1,4 +1,6 @@
 import { apiFetch } from "@/services/api-client";
+import { dispatchLine } from "@/features/quotations/dispatchLine";
+import type { DispatchDetails } from "@/features/quotations/types";
 import type { Money } from "@/lib/money";
 import type { RateType } from "@/features/master-data/storefront";
 import type {
@@ -114,6 +116,22 @@ function lineFromWire(line: WireLine): QuotationLineView {
     remark: line.remark,
     lengthFt: line.lengthFt ?? null,
     widthFt: line.widthFt ?? null,
+  };
+}
+
+export async function getDispatchDetails(orderId: string, signal?: AbortSignal): Promise<DispatchDetails> {
+  const wire = await apiFetch<{
+    quotationNumber: string;
+    eventDate?: string | null;
+    venue?: DispatchDetails["venue"];
+    lines: WireLine[];
+  }>(`/admin/orders/${encodeURIComponent(orderId)}/dispatch-details`, { signal });
+  return {
+    quotationNumber: wire.quotationNumber,
+    eventDate: wire.eventDate ?? null,
+    venue: wire.venue ?? null,
+    // The price fields are not sent; the line is read like any other and only the dispatch fields are kept.
+    lines: wire.lines.map(lineFromWire).map(dispatchLine),
   };
 }
 
@@ -242,12 +260,12 @@ export async function sendQuotation(quotationId: string): Promise<QuotationView>
   return fromWire(await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/send`, { method: "POST" }));
 }
 
-/** SENT to ACCEPTED. Needs QUOTATION_APPROVE, which only an Admin holds. */
+/** SENT to ACCEPTED. Needs QUOTATION_ACCEPT. */
 export async function acceptQuotation(quotationId: string): Promise<QuotationView> {
   return fromWire(await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/accept`, { method: "POST" }));
 }
 
-/** "Close Quotation": DRAFT or SENT to REJECTED (shown as "Closed"), with a reason. Needs QUOTATION_APPROVE. */
+/** "Close Quotation": DRAFT or SENT to REJECTED (shown as "Closed"), with a reason. Needs QUOTATION_CLOSE. */
 export async function rejectQuotation(quotationId: string, reason: string): Promise<QuotationView> {
   return fromWire(
     await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/reject`, {
@@ -269,14 +287,14 @@ export function listQuotationVersions(quotationId: string, signal?: AbortSignal)
   return apiFetch<QuotationVersionView[]>(`${BASE}/${id(quotationId)}/versions`, { signal });
 }
 
-/** The deposit is not collected; the reason is kept. Needs DEPOSIT_WAIVE (Admin). */
+/** The deposit is not collected; the reason is kept. Needs QUOTATION_WAIVE_DEPOSIT. */
 export async function waiveDeposit(quotationId: string, reason: string): Promise<QuotationView> {
   return fromWire(
     await apiFetch<WireQuotation>(`${BASE}/${id(quotationId)}/waive-deposit`, { method: "POST", body: { reason } }),
   );
 }
 
-/** Accepts a sent quotation for the customer and creates the order at once. Needs QUOTATION_APPROVE. */
+/** Accepts a sent quotation for the customer and creates the order at once. Needs QUOTATION_ACCEPT. */
 export async function acceptOnBehalf(quotationId: string): Promise<{ id: string; orderNumber: string }> {
   return apiFetch<{ id: string; orderNumber: string }>("/admin/orders/accept-on-behalf", {
     method: "POST",

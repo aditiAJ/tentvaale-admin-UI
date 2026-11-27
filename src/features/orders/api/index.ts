@@ -27,7 +27,7 @@ export function getOrder(orderId: string, signal?: AbortSignal): Promise<OrderVi
 }
 
 /**
- * Converts a quotation into a confirmed order. Needs ORDER_WRITE, and only an ACCEPTED quotation
+ * Converts a quotation into a confirmed order. Needs ORDER_CONVERT, and only an ACCEPTED quotation
  * converts (422 otherwise). It also marks the quotation CONVERTED and holds the deposit in the
  * same step, so the caller's copy of the quotation is stale as soon as this resolves.
  */

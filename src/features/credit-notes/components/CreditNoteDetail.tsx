@@ -45,8 +45,8 @@ export function CreditNoteDetail({
   /** Where Back goes when there is no screen of ours behind this one: the list it was opened from. */
   backHref: string;
   canWrite: boolean;
-  onApply: () => void;
-  onCancel: () => void;
+  onApply?: () => void;
+  onCancel?: () => void;
   /** Absent for anyone but an administrator: the button is then not offered. */
   onReverse?: () => void;
 }) {
@@ -112,10 +112,12 @@ export function CreditNoteDetail({
 
           {canWrite && live ? (
             <div className="flex flex-wrap gap-1">
-              <Button size="sm" onClick={onApply}>
-                Apply
-              </Button>
-              {unused ? (
+              {onApply ? (
+                <Button size="sm" onClick={onApply}>
+                  Apply
+                </Button>
+              ) : null}
+              {unused && onCancel ? (
                 <Button size="sm" variant="outline" onClick={onCancel}>
                   Cancel note
                 </Button>

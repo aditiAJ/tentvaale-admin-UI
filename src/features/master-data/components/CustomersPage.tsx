@@ -53,7 +53,11 @@ function PricingLabel({ customer }: { customer: CustomerView }) {
 }
 
 export function CustomersPage() {
-  const canWrite = useCan("MASTER_DATA_WRITE");
+  const canAdd = useCan("CUSTOMER_ADD");
+  const canEdit = useCan("CUSTOMER_EDIT");
+  const canDelete = useCan("CUSTOMER_DELETE");
+  const canApprovePlanners = useCan("CUSTOMER_APPROVE_PLANNER");
+  const hasRowActions = canEdit || canDelete;
   const [search, setSearch] = useState("");
   const router = useRouter();
   // Opened from a quotation's customer dropdown ("Add customer"): the form is already open, and saving or cancelling returns
@@ -64,7 +68,8 @@ export function CustomersPage() {
     params.get("new") === "1"
       ? { returnTo: safeInternalPath(params.get("returnTo")), name: params.get("name") ?? "" }
       : null;
-  const [creating, setCreating] = useState(from !== null);
+  // The "?new=1" link opens the form only for someone who may add a customer.
+  const [creating, setCreating] = useState(from !== null && canAdd);
   /** Back to the page the dialog was opened from (it may already carry a query, like `?id=`), with what it needs to carry on. */
   const goBack = (returnTo: string, extra: Record<string, string>) => {
     const url = new URL(returnTo, "http://same-origin.invalid");
@@ -90,7 +95,7 @@ export function CustomersPage() {
     return (data ?? []).filter((customer) => matches(customer, term));
   }, [data, deferredSearch]);
 
-  const columns = canWrite ? 7 : 6;
+  const columns = hasRowActions ? 7 : 6;
 
   return (
     <div className="space-y-4">
@@ -98,7 +103,7 @@ export function CustomersPage() {
         title="Customers"
         description="The people and event planners you quote and book orders for."
         actions={
-          canWrite ? (
+          canAdd ? (
             <Button onClick={() => setCreating(true)}>
               <Plus />
               New customer
@@ -107,7 +112,7 @@ export function CustomersPage() {
         }
       />
 
-      <PlannerApplicationsPanel canWrite={canWrite} />
+      <PlannerApplicationsPanel canWrite={canApprovePlanners} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1 sm:max-w-xs">
@@ -137,7 +142,7 @@ export function CustomersPage() {
                 <TH>Type</TH>
                 <TH>Pricing</TH>
                 <TH>ID</TH>
-                {canWrite ? <TH className="text-right">Actions</TH> : null}
+                {hasRowActions ? <TH className="text-right">Actions</TH> : null}
               </tr>
             </THead>
             <TBody>
@@ -167,12 +172,13 @@ export function CustomersPage() {
                       <TD className="max-w-40 truncate font-mono text-xs text-muted-foreground" title={customer.id}>
                         {customer.id}
                       </TD>
-                      {canWrite ? (
+                      {hasRowActions ? (
                         <TD>
                           {/* Delete is offered, but the backend refuses a customer that a
                               quotation, order or credit note was raised against (they store
                               only a copied name, with no foreign key to notice), and says so. */}
                           <div className="flex justify-end">
+                            {canEdit ? (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -182,6 +188,8 @@ export function CustomersPage() {
                             >
                               <Pencil />
                             </Button>
+                            ) : null}
+                            {canDelete ? (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -191,6 +199,7 @@ export function CustomersPage() {
                             >
                               <Trash2 />
                             </Button>
+                            ) : null}
                           </div>
                         </TD>
                       ) : null}
@@ -218,7 +227,7 @@ export function CustomersPage() {
             icon={<Users />}
             title={data?.length ? "No customers match that search" : "No customers yet"}
             action={
-              !data?.length && canWrite ? (
+              !data?.length && canAdd ? (
                 <Button onClick={() => setCreating(true)}>
                   <Plus />
                   New customer

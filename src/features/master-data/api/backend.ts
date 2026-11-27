@@ -1,6 +1,7 @@
 import { apiDownload, apiFetch, ApiError } from "@/services/api-client";
 import { getAuthToken } from "@/services/auth-token";
 import { readSession } from "@/services/jwt";
+import { shrinkImageForUpload } from "@/features/master-data/media";
 import type { ArchiveKind, ArchiveView } from "@/features/master-data/types";
 import type { ProductSetting, RateType } from "@/features/master-data/storefront";
 import type { ImportOutcome, ImportPreview } from "@/features/master-data/productImport";
@@ -523,15 +524,36 @@ export interface UploadResult {
 
 /**
  * Sends images to the backend (stored in R2, with a thumbnail); every file has its own result. `product` applies
- * the product media rules (PNG or JPEG, 800 to 3000 pixels, or one MP4 under 10 MB, 30 s, 1080p). The backend
- * still hard-rejects a product image over 2 MB — MediaField compresses to under that first (see media.ts's
- * compressProductImage), so a caller here should already be under the cap.
+ * the product media rules (PNG or JPEG, 800 to 3000 pixels, or one MP4 under 10 MB, 30 s, 1080p).
+ *
+ * Every upload goes through here, so this is where images are made small enough to send. One file per request:
+ * files sent together add up, and the web server in front limits the size of the whole request. A file that fails
+ * comes back as its own failed result, so the others are still kept.
  */
-export function uploadMedia(files: File[], purpose: "general" | "product" = "general"): Promise<UploadResult[]> {
-  const form = new FormData();
-  files.forEach((file) => form.append("files", file));
-  form.append("purpose", purpose);
-  return apiFetch<UploadResult[]>(`${BASE}/media/upload`, { method: "POST", body: form });
+export async function uploadMedia(files: File[], purpose: "general" | "product" = "general"): Promise<UploadResult[]> {
+  const results: UploadResult[] = [];
+  for (const picked of files) {
+    const form = new FormData();
+    form.append("files", await shrinkImageForUpload(picked));
+    form.append("purpose", purpose);
+    try {
+      results.push(...(await apiFetch<UploadResult[]>(`${BASE}/media/upload`, { method: "POST", body: form })));
+    } catch (caught) {
+      results.push({
+        fileName: picked.name,
+        ok: false,
+        error: caught instanceof Error ? caught.message : "The upload failed.",
+        url: null,
+        thumbnailUrl: null,
+        contentType: null,
+        sizeBytes: picked.size,
+        width: null,
+        height: null,
+        warning: null,
+      });
+    }
+  }
+  return results;
 }
 
 function storefrontDetailsBody(request: CreateProductRequest) {

@@ -9,7 +9,7 @@ export default async function Page({
 }) {
   const { id } = await searchParams;
   return (
-    <RequirePermission permission="INVOICE_READ">
+    <RequirePermission permission="INVOICE_VIEW">
       <DocumentPage documentId={typeof id === "string" ? id : ""} />
     </RequirePermission>
   );

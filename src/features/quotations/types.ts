@@ -293,3 +293,21 @@ export interface QuotationPlan {
   }[];
   generalItems: QuotationPlanItem[];
 }
+
+/** One line as the people loading it need it: what, how many and for which function. No price. */
+export type DispatchLine = Pick<
+  QuotationLineView,
+  | "id" | "productId" | "variantId" | "productName" | "rateType" | "quantity" | "rentalDays" | "oneTime"
+  | "imageUrl" | "functionName" | "functionDate" | "functionStartTime" | "functionVenue" | "remark"
+>;
+
+/**
+ * Mirrors the backend's dispatch details (GET /admin/orders/{id}/dispatch-details): what the order page, the dispatch
+ * list and the delivery challan take from an order's quotation. Anyone who may see the order may see it.
+ */
+export interface DispatchDetails {
+  quotationNumber: string;
+  eventDate: string | null;
+  venue: QuotationView["venue"];
+  lines: DispatchLine[];
+}

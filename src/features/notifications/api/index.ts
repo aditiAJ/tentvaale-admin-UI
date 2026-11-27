@@ -18,7 +18,7 @@ export function listNotificationsBySubject(subjectReference: string, signal?: Ab
   );
 }
 
-/** Tries a failed email again now. Needs CONFIG_WRITE (Admin). */
+/** Tries a failed email again now. Needs NOTIFICATION_RETRY. */
 export function retryNotification(id: string) {
   return apiFetch<void>(`/admin/notifications/log/${encodeURIComponent(id)}/retry`, { method: "POST" });
 }

@@ -20,31 +20,24 @@ export function RowActions({
 }: {
   /** The record's own name, used to distinguish one row's buttons from another's. */
   label: string;
-  onEdit: () => void;
-  onRemove: () => void;
+  /** Left out when the user may not, and the button is not drawn. */
+  onEdit?: () => void;
+  onRemove?: () => void;
   removeLabel?: string;
   removeIcon?: React.ReactNode;
 }) {
   return (
     <div className="flex justify-end gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onEdit}
-        aria-label={`Edit ${label}`}
-        title="Edit"
-      >
-        <Pencil />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onRemove}
-        aria-label={`${removeLabel} ${label}`}
-        title={removeLabel}
-      >
-        {removeIcon ?? <Trash2 />}
-      </Button>
+      {onEdit ? (
+        <Button variant="ghost" size="icon" onClick={onEdit} aria-label={`Edit ${label}`} title="Edit">
+          <Pencil />
+        </Button>
+      ) : null}
+      {onRemove ? (
+        <Button variant="ghost" size="icon" onClick={onRemove} aria-label={`${removeLabel} ${label}`} title={removeLabel}>
+          {removeIcon ?? <Trash2 />}
+        </Button>
+      ) : null}
     </div>
   );
 }

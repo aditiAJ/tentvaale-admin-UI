@@ -17,17 +17,18 @@ export function RequirePermission({
   permission,
   children,
 }: {
-  permission: Permission;
+  /** One permission, or several of which any one is enough. */
+  permission: Permission | Permission[];
   children: React.ReactNode;
 }) {
-  const { can, session } = useSession();
+  const { can } = useSession();
 
-  if (!can(permission)) {
+  if (![permission].flat().some(can)) {
     return (
       <EmptyState
         icon={<ShieldAlert />}
         title="You do not have access to this page"
-        description={`It needs the ${permission} permission, which your role (${session?.role ?? "unknown"}) does not grant. An administrator can change your role.`}
+        description="Your account does not include this. An Administrator can add it on the Users screen."
       />
     );
   }

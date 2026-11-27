@@ -1,7 +1,8 @@
 import { apiFetch } from "@/services/api-client";
 import { IS_MOCK } from "@/services/data-source";
 import {
-  mockChangeUserRole,
+  mockChangeUserAccess,
+  mockGetAccessOptions,
   mockChangeOwnPassword,
   mockCreateUser,
   mockDeactivateUser,
@@ -9,8 +10,8 @@ import {
   mockReactivateUser,
   mockResetUserPassword,
 } from "@/mock-data/store";
-import type { Role } from "@/services/permissions";
-import type { AdminUserView, CreateAdminUserRequest } from "@/features/users/types";
+import type { Permission, Role } from "@/services/permissions";
+import type { AccessOptions, AdminUserView, CreateAdminUserRequest } from "@/features/users/types";
 
 /** The backend sends the company as a number; the screens treat every id as a string. */
 type WireUser = Omit<AdminUserView, "companyId"> & { companyId: number | string };
@@ -29,11 +30,20 @@ export async function createUser(request: CreateAdminUserRequest): Promise<Admin
   return fromWire(await apiFetch<WireUser>("/admin/users", { method: "POST", body: request }));
 }
 
-export async function changeUserRole(userId: string, role: Role): Promise<AdminUserView> {
-  if (IS_MOCK) return mockChangeUserRole(userId, role);
+/**
+ * Changes a user's job title and ticked boxes together. It takes effect on their next request, which asks them to sign
+ * in again.
+ */
+export async function changeUserAccess(userId: string, role: Role, permissions: Permission[]): Promise<AdminUserView> {
+  if (IS_MOCK) return mockChangeUserAccess(userId, role, permissions);
   return fromWire(
-    await apiFetch<WireUser>(`/admin/users/${userId}/role`, { method: "POST", body: { role } }),
+    await apiFetch<WireUser>(`/admin/users/${userId}/access`, { method: "PUT", body: { role, permissions } }),
   );
+}
+
+export function getAccessOptions(signal?: AbortSignal): Promise<AccessOptions> {
+  if (IS_MOCK) return mockGetAccessOptions();
+  return apiFetch<AccessOptions>("/admin/users/access-options", { signal });
 }
 
 /**
@@ -74,4 +84,5 @@ export function resetUserPassword(userId: string, password: string): Promise<voi
 
 export const userKeys = {
   all: ["users"] as const,
+  accessOptions: ["users", "access-options"] as const,
 };

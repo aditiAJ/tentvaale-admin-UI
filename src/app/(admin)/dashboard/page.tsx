@@ -3,7 +3,7 @@ import { RequirePermission } from "@/components/require-permission";
 
 export default function Page() {
   return (
-    <RequirePermission permission="REPORTING_READ">
+    <RequirePermission permission="DASHBOARD_VIEW">
       <DashboardPage />
     </RequirePermission>
   );

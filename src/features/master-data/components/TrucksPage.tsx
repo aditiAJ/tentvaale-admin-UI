@@ -68,7 +68,10 @@ function StatusBadge({ truck }: { truck: TruckView }) {
 
 /** The fleet: what each vehicle is, how much it carries, and whether it can go out. */
 export function TrucksPage() {
-  const canWrite = useCan("LOGISTICS_WRITE");
+  const canAdd = useCan("TRUCK_ADD");
+  const canEdit = useCan("TRUCK_EDIT");
+  const canDelete = useCan("TRUCK_DELETE");
+  const hasRowActions = canEdit || canDelete;
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TruckView | null>(null);
@@ -104,7 +107,7 @@ export function TrucksPage() {
 
   const rows = paginate(visible, page, pageSize);
   const filtering = search.trim() !== "" || filter !== "all";
-  const columns = canWrite ? 6 : 5;
+  const columns = hasRowActions ? 6 : 5;
 
   const onSort = (key: SortKey) => {
     setSort((current) => nextSort(current, key));
@@ -117,7 +120,7 @@ export function TrucksPage() {
         title="Trucks"
         description="The fleet that moves stock to and from events."
         actions={
-          canWrite ? (
+          canAdd ? (
             <Button onClick={() => setCreating(true)}>
               <Plus />
               New truck
@@ -174,7 +177,7 @@ export function TrucksPage() {
                 <SortHeader label="Load" column="load" sort={sort} onSort={onSort} className="text-right" />
                 <SortHeader label="Cargo space" column="space" sort={sort} onSort={onSort} className="text-right" />
                 <SortHeader label="Status" column="status" sort={sort} onSort={onSort} />
-                {canWrite ? (
+                {hasRowActions ? (
                   <TH className="text-right">
                     <span className="sr-only">Actions</span>
                   </TH>
@@ -215,12 +218,12 @@ export function TrucksPage() {
                         <TD>
                           <StatusBadge truck={truck} />
                         </TD>
-                        {canWrite ? (
+                        {hasRowActions ? (
                           <TD>
                             <RowActions
                               label={truck.registration}
-                              onEdit={() => setEditing(truck)}
-                              onRemove={() => setRemoving(truck)}
+                              onEdit={canEdit ? () => setEditing(truck) : undefined}
+                              onRemove={canDelete ? () => setRemoving(truck) : undefined}
                             />
                           </TD>
                         ) : null}
@@ -250,7 +253,7 @@ export function TrucksPage() {
             title="No trucks yet"
             description="Add the vehicles you send stock out in."
             action={
-              canWrite ? (
+              canAdd ? (
                 <Button onClick={() => setCreating(true)}>
                   <Plus />
                   New truck

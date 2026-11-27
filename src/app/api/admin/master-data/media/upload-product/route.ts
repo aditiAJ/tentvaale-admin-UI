@@ -22,7 +22,7 @@ function problem(status: number, detail: string) {
 export async function POST(request: Request) {
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) {
-    // Real authorization (does this token have MASTER_DATA_WRITE) is still
+    // Real authorization (may this token add or edit a product) is still
     // Java's call at the forwarding step below — this is only a cheap gate so
     // an unauthenticated request can't make this route do real CPU work.
     return problem(401, "Not authenticated");

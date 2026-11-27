@@ -10,7 +10,7 @@ export default async function Page({
   const { orderId } = await searchParams;
 
   return (
-    <RequirePermission permission="INVENTORY_READ">
+    <RequirePermission permission="STOCK_VIEW">
       <StockMovementsPage initialOrderId={typeof orderId === "string" ? orderId : ""} />
     </RequirePermission>
   );

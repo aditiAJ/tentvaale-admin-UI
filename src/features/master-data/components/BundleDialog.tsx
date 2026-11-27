@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/features/auth";
 import { useMemo, useState } from "react";
 import {
   Controller,
@@ -145,6 +146,7 @@ export function BundleDialog({
   const [pickError, setPickError] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaAsset[]>(existing?.media ?? []);
   const [mediaBusy, setMediaBusy] = useState(false);
+  const canAddOccasion = useCan("CATEGORY_ADD");
   const [newOccasion, setNewOccasion] = useState("");
   const [occasionError, setOccasionError] = useState<string | null>(null);
 
@@ -407,6 +409,7 @@ export function BundleDialog({
                   />
                 )}
               />
+              {canAddOccasion ? (
               <div className="flex items-center gap-2">
                 <Input
                   value={newOccasion}
@@ -436,6 +439,7 @@ export function BundleDialog({
                   Add occasion
                 </Button>
               </div>
+              ) : null}
             </div>
           )}
         </Field>

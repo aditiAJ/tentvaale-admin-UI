@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useCan } from "@/features/auth";
 import { ApiError } from "@/services/api-client";
 import {
   listNumbering,
@@ -47,6 +48,7 @@ export function NumberingPage() {
 }
 
 function NumberingRow({ numbering }: { numbering: Numbering }) {
+  const canEdit = useCan("SETTINGS_EDIT");
   const queryClient = useQueryClient();
   const [prefix, setPrefix] = useState(numbering.prefix);
   const [nextValue, setNextValue] = useState(String(numbering.nextValue));
@@ -78,7 +80,7 @@ function NumberingRow({ numbering }: { numbering: Numbering }) {
         <span className="tabular text-xs text-muted-foreground">Next: {numbering.example}</span>
       </div>
       {error ? <Alert tone="error" title={error} /> : null}
-      <div className="grid gap-3 sm:grid-cols-4">
+      <fieldset disabled={!canEdit} className="grid gap-3 sm:grid-cols-4">
         <Field label="Prefix">
           {(props) => <Input {...props} value={prefix} onChange={(e) => setPrefix(e.target.value)} />}
         </Field>
@@ -92,10 +94,12 @@ function NumberingRow({ numbering }: { numbering: Numbering }) {
           <input type="checkbox" checked={fyReset} onChange={(e) => setFyReset(e.target.checked)} />
           Restart each financial year
         </label>
-      </div>
-      <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || invalid}>
-        Save
-      </Button>
+      </fieldset>
+      {canEdit ? (
+        <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || invalid}>
+          Save
+        </Button>
+      ) : null}
     </section>
   );
 }

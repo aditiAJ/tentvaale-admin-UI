@@ -43,6 +43,9 @@ const when = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", 
  */
 export function OnlinePaymentsPage() {
   const canAct = useCan("PAYMENT_VERIFY");
+  // Dismissing writes a payment off the list; refunding sends money back. Each is its own right.
+  const canDismiss = useCan("PAYMENT_VOID");
+  const canRefund = useCan("PAYMENT_REFUND");
   const queryClient = useQueryClient();
   const status = useQuery({ queryKey: onlineKeys.status, queryFn: ({ signal }) => getOnlineStatus(signal) });
   const list = useQuery({ queryKey: onlineKeys.attention, queryFn: ({ signal }) => listAttention(signal), refetchInterval: 60_000 });
@@ -150,14 +153,14 @@ export function OnlinePaymentsPage() {
                   </TD>
                   <TD className="max-w-xs text-sm">{problem}</TD>
                   <TD>
-                    {canAct ? (
+                    {canAct || canDismiss || canRefund ? (
                       <div className="flex flex-wrap gap-1">
-                        {payment.status === "CAPTURED" && !payment.orderId && !payment.needsReview ? (
+                        {canAct && payment.status === "CAPTURED" && !payment.orderId && !payment.needsReview ? (
                           <Button size="sm" variant="outline" disabled={convert.isPending} onClick={() => convert.mutate(payment.id)}>
                             Create order
                           </Button>
                         ) : null}
-                        {payment.needsReview && payment.gatewayPaymentId && payment.status !== "REFUNDED" ? (
+                        {canRefund && payment.needsReview && payment.gatewayPaymentId && payment.status !== "REFUNDED" ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -170,7 +173,7 @@ export function OnlinePaymentsPage() {
                             Refund
                           </Button>
                         ) : null}
-                        {payment.needsReview ? (
+                        {canDismiss && payment.needsReview ? (
                           <Button size="sm" variant="ghost" disabled={dismiss.isPending} onClick={() => dismiss.mutate(payment.id)}>
                             Done
                           </Button>
